@@ -27,6 +27,7 @@ const Templates = () => {
     sendEmail: true,
     sendSMS: true,
     isActive: true,
+    emailAccount: 'primary',
     attachments: []
   });
 
@@ -200,6 +201,7 @@ const Templates = () => {
       sendEmail: template.sendEmail,
       sendSMS: template.sendSMS,
       isActive: template.isActive,
+      emailAccount: template.email_account || template.emailAccount || 'primary',
       attachments: Array.isArray(existingAttachments) ? existingAttachments : []
     });
     setShowModal(true);
@@ -285,6 +287,7 @@ const Templates = () => {
       sendEmail: true,
       sendSMS: true,
       isActive: true,
+      emailAccount: 'primary',
       attachments: []
     });
   };
@@ -644,7 +647,27 @@ const Templates = () => {
                               className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
                             />
                           </label>
-                          
+
+                          {/* Email Account Selector */}
+                          {formData.sendEmail && (
+                            <div className="p-3 bg-white rounded-lg border border-gray-200">
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Email Account
+                              </label>
+                              <select
+                                value={formData.emailAccount}
+                                onChange={(e) => setFormData({...formData, emailAccount: e.target.value})}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                              >
+                                <option value="primary">📧 Primary (avensismodels.co.uk.crm.bookings@gmail.com)</option>
+                                <option value="secondary">📧 Secondary (camrymodels.co.uk.crm.bookings@gmail.com)</option>
+                              </select>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Select which email account to send from
+                              </p>
+                            </div>
+                          )}
+
                           {/* Attachments */}
                           <div className="p-4 bg-white rounded-lg border border-gray-200">
                             <div className="flex items-center gap-2 mb-3">

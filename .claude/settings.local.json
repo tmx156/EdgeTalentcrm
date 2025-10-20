@@ -8,7 +8,14 @@
       "Bash(git commit:*)",
       "Bash(curl:*)",
       "Bash(taskkill:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(npm start)",
+      "Bash(timeout 15 node:*)",
+      "Bash(timeout:*)",
+      "Bash(tasklist)",
+      "Bash(dir /b *.js)"
     ],
     "deny": [],
     "ask": []

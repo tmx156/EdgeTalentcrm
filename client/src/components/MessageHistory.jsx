@@ -50,7 +50,11 @@ const MessageHistory = ({ bookingHistory, title = "Message History", maxHeight =
                 </div>
               )}
               <div className="text-xs text-gray-600 truncate">
-                <b>Message:</b> {history.details?.body?.slice(0, 80)}{history.details?.body?.length > 80 ? '...' : ''}
+                <b>Message:</b> {history.details?.body ? (
+                  history.details.body === 'No content available' ?
+                    <span className="italic text-gray-400">{history.details.body}</span> :
+                    <>{history.details.body.slice(0, 80)}{history.details.body.length > 80 ? '...' : ''}</>
+                ) : <span className="italic text-gray-400">No message content</span>}
               </div>
               <div className="text-[10px] text-gray-400">
                 {history.details?.direction==='sent'?'To':'From'}: {history.performedByName}

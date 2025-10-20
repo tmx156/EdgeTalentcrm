@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiWifi, FiActivity, FiClock, FiUsers, FiCalendar, FiDollarSign, FiZap, FiTarget, FiAlertCircle, FiMessageSquare, FiMail, FiSend, FiX, FiEye } from 'react-icons/fi';
+import { FiWifi, FiActivity, FiClock, FiUsers, FiCalendar, FiDollarSign, FiZap, FiTarget, FiAlertCircle, FiMessageSquare, FiMail, FiSend, FiX, FiEye, FiArrowLeft, FiArrowRight } from 'react-icons/fi';
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
@@ -14,7 +14,7 @@ const getTodayUK = () => {
 
 const Dashboard = () => {
   const { user } = useAuth();
-  const { isConnected } = useSocket();
+  const { isConnected, socket } = useSocket();
 
   // State management
   const [liveStats, setLiveStats] = useState({ todayBookings: 0, todaySales: 0, todayRevenue: 0, thisHourBookings: 0 });
@@ -34,8 +34,8 @@ const Dashboard = () => {
   const [sendingReply, setSendingReply] = useState(false);
   const [selectedBooker, setSelectedBooker] = useState(null);
   const [isBookerModalOpen, setIsBookerModalOpen] = useState(false);
-  // Locked to today only - no date navigation
-  const selectedActivityDate = new Date().toISOString().split('T')[0];
+  // Date navigation for daily activities
+  const [selectedActivityDate, setSelectedActivityDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Fetch all dashboard data
   const fetchStats = useCallback(async () => {
@@ -459,6 +459,44 @@ const Dashboard = () => {
     };
   }, [fetchStats, fetchBookerActivity, fetchCalendarEvents, fetchRecentActivity, fetchUnreadMessages]);
 
+  // Real-time socket listeners for live updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleBookingUpdate = () => {
+      console.log('📡 Dashboard: Received booking update event - refreshing data');
+      fetchStats();
+      fetchBookerActivity();
+      fetchCalendarEvents();
+      fetchRecentActivity();
+      setLastUpdated(new Date());
+    };
+
+    const handleMessageUpdate = () => {
+      console.log('📡 Dashboard: Received message update event - refreshing messages');
+      fetchUnreadMessages();
+    };
+
+    // Listen to booking-related events
+    socket.on('lead_created', handleBookingUpdate);
+    socket.on('booking_activity', handleBookingUpdate);
+    socket.on('stats_update_needed', handleBookingUpdate);
+
+    // Listen to message events
+    socket.on('new_message', handleMessageUpdate);
+    socket.on('message_read', handleMessageUpdate);
+
+    console.log('📡 Dashboard: Socket listeners registered for real-time updates');
+
+    return () => {
+      socket.off('lead_created', handleBookingUpdate);
+      socket.off('booking_activity', handleBookingUpdate);
+      socket.off('stats_update_needed', handleBookingUpdate);
+      socket.off('new_message', handleMessageUpdate);
+      socket.off('message_read', handleMessageUpdate);
+    };
+  }, [socket, fetchStats, fetchBookerActivity, fetchCalendarEvents, fetchRecentActivity, fetchUnreadMessages]);
+
   // Confirm booking
   const handleConfirmBooking = async (eventId) => {
     try {
@@ -516,7 +554,12 @@ const Dashboard = () => {
     return `${days}d ago`;
   };
 
-  // Locked to today only - navigation removed
+  // Navigate date for daily activities
+  const navigateDate = (direction) => {
+    const currentDate = new Date(selectedActivityDate);
+    currentDate.setDate(currentDate.getDate() + direction);
+    setSelectedActivityDate(currentDate.toISOString().split('T')[0]);
+  };
 
   if (loading) {
     return (
@@ -635,15 +678,46 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* Today's Activity - No Navigation */}
-            <div className="text-xs text-gray-500 font-medium mb-3 sm:mb-4 bg-gray-50 rounded-lg p-3">
-              Viewing Today - Resets at midnight
+            {/* Date Navigation */}
+            <div className="flex items-center justify-between mb-3 sm:mb-4 bg-gray-50 rounded-lg p-3">
+              <button
+                onClick={() => navigateDate(-1)}
+                className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-300 hover:bg-white text-gray-600 transition-colors"
+                title="Previous day"
+              >
+                <FiArrowLeft className="w-4 h-4" />
+              </button>
+              
+              <div className="flex items-center space-x-2">
+                <FiCalendar className="w-4 h-4 text-blue-600" />
+                <input
+                  type="date"
+                  value={selectedActivityDate}
+                  onChange={(e) => setSelectedActivityDate(e.target.value)}
+                  className="px-3 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                />
+                <span className="text-sm font-semibold text-gray-900">
+                  {new Date(selectedActivityDate + 'T12:00:00').toLocaleDateString('en-GB', {
+                    weekday: 'short',
+                    day: 'numeric',
+                    month: 'short'
+                  })}
+                </span>
+              </div>
+
+              <button
+                onClick={() => navigateDate(1)}
+                className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-300 hover:bg-white text-gray-600 transition-colors"
+                title="Next day"
+              >
+                <FiArrowRight className="w-4 h-4" />
+              </button>
             </div>
             <div className="space-y-3">
               {bookerActivity.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <FiActivity className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                  <p>No booking activity today</p>
+                  <p>No booking activity for {new Date(selectedActivityDate + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
                 </div>
               ) : (
                 bookerActivity.map((booker) => (

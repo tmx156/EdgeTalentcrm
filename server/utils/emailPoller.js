@@ -817,29 +817,7 @@ class EmailPoller {
             
             // BULLETPROOF DEDUPLICATION - Will be applied after body extraction
         
-            // Check 2: Content + timestamp within 5 minutes (backup check)
-            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-            const { data: existingByContent, error: contentCheckError } = await this.supabase
-                .from('messages')
-                .select('id, content, created_at')
-                .eq('lead_id', lead.id)
-                .eq('recipient_email', fromAddr)
-                .gte('created_at', fiveMinutesAgo)
-                .limit(5);
-
-            if (contentCheckError) {
-                console.warn(`📧 ⚠️ Content check error: ${contentCheckError.message}`);
-            } else if (existingByContent && existingByContent.length > 0) {
-                // Check if any existing message has similar content
-                const bodyPreview = body.substring(0, 100);
-                for (const existing of existingByContent) {
-                    const existingPreview = existing.content?.substring(0, 100) || '';
-                    if (existingPreview === bodyPreview && existingPreview.length > 10) {
-                        console.log(`📧 ⚠️ Duplicate found by content similarity: ${existing.id}`);
-                        throw new Error('DUPLICATE_CONTENT');
-                    }
-                }
-            }
+            // Check 2: Content + timestamp within 5 minutes (backup check) - Will be applied after body extraction
 
             console.log(`📧 ✅ No duplicates found for UID ${uid}`);
             
@@ -888,7 +866,7 @@ class EmailPoller {
             if (allLeadError) {
                 console.warn(`🛡️ BULLETPROOF: All lead messages check error: ${allLeadError.message}`);
             } else if (allLeadMessages && allLeadMessages.length > 0) {
-                const bodyPreview = body.substring(0, 200);
+                const bodyPreview = rawBodyString.substring(0, 200);
                 for (const existing of allLeadMessages) {
                     const existingPreview = existing.content?.substring(0, 200) || '';
                     if (existingPreview === bodyPreview && existingPreview.length > 20) {
@@ -900,7 +878,7 @@ class EmailPoller {
 
             // Check 3: Content hash comparison (ULTIMATE PROTECTION)
             const crypto = require('crypto');
-            const contentHash = crypto.createHash('md5').update(body).digest('hex');
+            const contentHash = crypto.createHash('md5').update(rawBodyString).digest('hex');
             const { data: existingByHash, error: hashCheckError } = await this.supabase
                 .from('messages')
                 .select('id, content')

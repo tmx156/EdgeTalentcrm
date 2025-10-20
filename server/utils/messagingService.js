@@ -205,24 +205,45 @@ class MessagingService {
       }
 
       // Get booking confirmation template using Supabase
-      const { data: templates, error: templateError } = await supabase
-        .from('templates')
-        .select('*')
-        .eq('type', 'booking_confirmation')
-        .eq('is_active', true)
-        .limit(1);
+      let template = null;
 
-      if (templateError) {
-        console.error('Error fetching template:', templateError);
-        return null;
+      // If templateId is provided in options, fetch that specific template
+      if (options.templateId) {
+        const { data: specificTemplate, error: specificError } = await supabase
+          .from('templates')
+          .select('*')
+          .eq('id', options.templateId)
+          .eq('is_active', true)
+          .single();
+
+        if (specificError) {
+          console.error('Error fetching specific template:', specificError);
+        } else {
+          template = specificTemplate;
+        }
       }
 
-      if (!templates || templates.length === 0) {
-        console.log('❌ No booking confirmation template found');
-        return null;
-      }
+      // Fall back to first active booking_confirmation template if no templateId or not found
+      if (!template) {
+        const { data: templates, error: templateError } = await supabase
+          .from('templates')
+          .select('*')
+          .eq('type', 'booking_confirmation')
+          .eq('is_active', true)
+          .limit(1);
 
-      const template = templates[0];
+        if (templateError) {
+          console.error('Error fetching template:', templateError);
+          return null;
+        }
+
+        if (!templates || templates.length === 0) {
+          console.log('❌ No booking confirmation template found');
+          return null;
+        }
+
+        template = templates[0];
+      }
       console.log('✅ Found template:', {
         id: template.id,
         name: template.name,

@@ -107,8 +107,10 @@ router.get('/', auth, async (req, res) => {
       // All users see only their own templates
       query = query.eq('user_id', req.user.id);
     } else if (req.user.role !== 'admin') {
-      // Non-admin users always see only their own templates
-      query = query.eq('user_id', req.user.id);
+      // Non-admin users see:
+      // 1. Their own templates (any type, any status)
+      // 2. ALL active booking confirmation templates (type OR category = booking_confirmation, so they can send confirmations for any lead)
+      query = query.or(`user_id.eq.${req.user.id},and(or(type.eq.booking_confirmation,category.eq.booking_confirmation),is_active.eq.true)`);
     }
     // Admin without bookersOnly flag sees all templates (for /templates admin page)
 

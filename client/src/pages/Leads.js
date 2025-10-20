@@ -23,11 +23,16 @@ const Leads = () => {
     attended: 0,
     cancelled: 0,
     assigned: 0,
-    rejected: 0
+    rejected: 0,
+    callback: 0,
+    notInterested: 0,
+    wantsEmail: 0,
+    noAnswer: 0
   });
 
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('all'); // New: Date filter
   const [customDateStart, setCustomDateStart] = useState(''); // New: Custom date range start
@@ -199,13 +204,14 @@ const Leads = () => {
       const token = localStorage.getItem('token');
       console.log('🔑 Using token for /api/leads:', token);
       console.log('🔍 Fetching leads with statusFilter:', statusFilter);
+      console.log('🔍 Search term:', debouncedSearchTerm);
 
       // Build params object
       const params = {
         page: currentPage,
         limit: leadsPerPage,
         status: statusFilter,
-        search: debouncedSearchTerm
+        search: debouncedSearchTerm || '' // Ensure empty string instead of undefined
       };
 
       // Add date filter if applicable
@@ -275,7 +281,7 @@ const Leads = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, statusFilter, debouncedSearchTerm, dateFilter, customDateStart, customDateEnd, getDateRange, user, leadsPerPage]);
+  }, [currentPage, statusFilter, debouncedSearchTerm, dateFilter, customDateStart, customDateEnd, user, leadsPerPage]);
 
   const fetchLeadCounts = useCallback(async () => {
     try {
@@ -312,8 +318,73 @@ const Leads = () => {
 
   // Fetch leads when filters or pagination change
   useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        console.log('🔑 Using token for /api/leads:', token);
+        console.log('🔍 Fetching leads with statusFilter:', statusFilter);
+        console.log('🔍 Search term:', debouncedSearchTerm);
+
+        // Build params object
+        const params = {
+          page: currentPage,
+          limit: leadsPerPage,
+          status: statusFilter,
+          search: debouncedSearchTerm || '' // Ensure empty string instead of undefined
+        };
+
+        // Add date filter if applicable
+        const dateRange = getDateRange();
+        if (dateRange) {
+          // Use assigned_at for Assigned status, created_at for all others
+          if (statusFilter === 'Assigned') {
+            params.assigned_at_start = dateRange.start;
+            params.assigned_at_end = dateRange.end;
+            console.log('📅 Assigned date filter applied:', dateFilter, dateRange);
+          } else {
+            params.created_at_start = dateRange.start;
+            params.created_at_end = dateRange.end;
+            console.log('📅 Created date filter applied:', dateFilter, dateRange);
+          }
+        }
+
+        const response = await axios.get('/api/leads', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          params
+        });
+        
+        console.log('📋 Fetched leads response:', response.data);
+        console.log('📋 Total leads fetched:', response.data.leads?.length || 0);
+        console.log('🔍 Status filter used:', statusFilter);
+        
+        // Debug image URLs
+        if (response.data.leads && response.data.leads.length > 0) {
+          console.log('🖼️ Sample image URLs from API:');
+          response.data.leads.slice(0, 3).forEach(lead => {
+            console.log(`  ${lead.name}: image_url = "${lead.image_url}"`);
+          });
+        }
+
+        setLeads(response.data.leads || []);
+        setTotalPages(response.data.totalPages || 1);
+        setTotalLeads(response.data.total || 0);
+      } catch (error) {
+        console.error('Error fetching leads:', error);
+        setLeads([]);
+        // Show user-friendly error message
+        if (error.code === 'ECONNABORTED') {
+          console.error('⏰ Request timeout - server may be slow');
+        } else if (error.response?.status === 500) {
+          console.error('🔥 Server error - check server logs');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [currentPage, statusFilter, debouncedSearchTerm, dateFilter, customDateStart, customDateEnd, user, leadsPerPage]);
 
   // Fetch lead counts on mount
   useEffect(() => {
@@ -368,12 +439,24 @@ const Leads = () => {
 
   // Debounce search term to reduce API calls
   useEffect(() => {
+    // Only show searching indicator if the search term is different from debounced
+    if (searchTerm !== debouncedSearchTerm) {
+      setIsSearching(true);
+    }
+    
     const timer = setTimeout(() => {
-      setDebouncedSearchTerm(searchTerm);
-    }, 200); // Reduced to 200ms for faster response
+      // Only update if the search term has actually changed
+      if (searchTerm !== debouncedSearchTerm) {
+        setDebouncedSearchTerm(searchTerm);
+      }
+      setIsSearching(false);
+    }, 500); // Increased to 500ms to prevent excessive API calls
 
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+    return () => {
+      clearTimeout(timer);
+      setIsSearching(false);
+    };
+  }, [searchTerm, debouncedSearchTerm]);
 
 
   useEffect(() => {
@@ -438,7 +521,8 @@ const Leads = () => {
           
         default:
           // For any other updates, refresh the list and counts
-          fetchLeads();
+          // Trigger a re-fetch by updating a dependency
+          setCurrentPage(prev => prev);
           fetchLeadCounts();
       }
     });
@@ -474,7 +558,8 @@ const Leads = () => {
       setShowAssignModal(false);
       setSelectedLead(null);
       setSelectedBooker('');
-      fetchLeads(); // Refresh the leads list
+      // Trigger a re-fetch by updating a dependency
+      setCurrentPage(prev => prev);
       fetchLeadCounts(); // Refresh the counts
     } catch (error) {
       console.error('Error assigning lead:', error);
@@ -572,7 +657,8 @@ const Leads = () => {
       console.log('✅ Delete response:', response.data);
       alert(`Successfully deleted ${response.data.deletedCount || leadIdsToDelete.length} leads`);
       setSelectedLeads([]);
-      fetchLeads(); // Refresh the leads list
+      // Trigger a re-fetch by updating a dependency
+      setCurrentPage(prev => prev);
       fetchLeadCounts(); // Also refresh counts
     } catch (error) {
       console.error('❌ Error deleting leads:', error);
@@ -610,7 +696,8 @@ const Leads = () => {
       setShowBulkAssignModal(false);
       setBulkAssignBooker('');
       setSelectedLeads([]);
-      fetchLeads(); // Refresh the leads list
+      // Trigger a re-fetch by updating a dependency
+      setCurrentPage(prev => prev);
       fetchLeadCounts(); // Refresh the counts
     } catch (error) {
       console.error('Error bulk assigning leads:', error);
@@ -631,7 +718,8 @@ const Leads = () => {
         status: 'New',
         image_url: ''
       });
-      fetchLeads();
+      // Trigger a re-fetch by updating a dependency
+      setCurrentPage(prev => prev);
       fetchLeadCounts();
     } catch (error) {
       console.error('Error adding lead:', error);
@@ -658,11 +746,13 @@ const Leads = () => {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'Not set';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    if (isNaN(date.getTime())) return 'Invalid date';
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     });
   };
 
@@ -989,7 +1079,8 @@ const Leads = () => {
       setShowAnalysisModal(false);
       setAnalysisData(null);
       setProcessedLeads([]);
-      fetchLeads();
+      // Trigger a re-fetch by updating a dependency
+      setCurrentPage(prev => prev);
       
       alert(`Successfully imported ${response.data.imported} leads`);
     } catch (error) {
@@ -1016,7 +1107,8 @@ const Leads = () => {
       setShowAnalysisModal(false);
       setAnalysisData(null);
       setProcessedLeads([]);
-      fetchLeads();
+      // Trigger a re-fetch by updating a dependency
+      setCurrentPage(prev => prev);
       
       alert(`Successfully imported ${response.data.imported} leads (${duplicateRows.length} duplicates discarded)`);
     } catch (error) {
@@ -1043,7 +1135,8 @@ const Leads = () => {
       setShowAnalysisModal(false);
       setAnalysisData(null);
       setProcessedLeads([]);
-      fetchLeads();
+      // Trigger a re-fetch by updating a dependency
+      setCurrentPage(prev => prev);
       
       alert(`Successfully imported ${response.data.imported} valid leads`);
     } catch (error) {
@@ -1236,7 +1329,7 @@ const Leads = () => {
         {/* Search and Status Filter Row */}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
-            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+            <FiSearch className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${isSearching ? 'text-blue-500 animate-pulse' : 'text-gray-400'}`} />
             <input
               type="text"
               placeholder="Search leads..."
@@ -1244,6 +1337,11 @@ const Leads = () => {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            {isSearching && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+              </div>
+            )}
           </div>
           <div className="flex items-center space-x-2">
             <FiFilter className="h-5 w-5 text-gray-400" />
@@ -1252,13 +1350,28 @@ const Leads = () => {
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
-              <option value="all">All Status</option>
-              <option value="New">🆕 New</option>
-              <option value="Booked">📅 Booked</option>
-              <option value="Attended">✅ Attended</option>
-              <option value="Cancelled">❌ Cancelled</option>
-              <option value="Assigned">👤 Assigned</option>
-              <option value="sales">💰 Sales</option>
+              {user?.role === 'booker' ? (
+                <>
+                  <option value="all">All Status</option>
+                  <option value="Assigned">👤 Assigned</option>
+                  <option value="Booked">📅 Booked</option>
+                  <option value="Call Back">📞 Call Back</option>
+                  <option value="No Answer">📵 No Answer</option>
+                  <option value="Not Interested">🚫 Not Interested</option>
+                  <option value="Wants Email">📧 Wants Email</option>
+                </>
+              ) : (
+                <>
+                  <option value="all">All Status</option>
+                  <option value="New">🆕 New</option>
+                  <option value="Booked">📅 Booked</option>
+                  <option value="Attended">✅ Attended</option>
+                  <option value="Cancelled">❌ Cancelled</option>
+                  <option value="Assigned">👤 Assigned</option>
+                  <option value="Rejected">Rejected</option>
+                  <option value="sales">💰 Sales</option>
+                </>
+              )}
             </select>
           </div>
         </div>
@@ -1365,121 +1478,237 @@ const Leads = () => {
       </div>
 
       {/* Status Overview Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
-        <div 
-          className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-            statusFilter === 'all' 
-              ? 'border-blue-500 bg-blue-50' 
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-          onClick={() => setStatusFilter('all')}
-        >
-          <div className="text-center">
-            <div className="text-2xl font-bold text-gray-900">{leadCounts.total}</div>
-            <div className="text-sm text-gray-600">All Leads</div>
-          </div>
-        </div>
-        
-        <div 
-          className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-            statusFilter === 'New' 
-              ? 'border-orange-500 bg-orange-50' 
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-          onClick={() => setStatusFilter('New')}
-        >
-          <div className="text-center">
-            <div className="text-2xl font-bold text-orange-600">
-              {leadCounts.new}
+      {user?.role === 'booker' ? (
+        // Booker-specific folders
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'all' 
+                ? 'border-blue-500 bg-blue-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('all')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-900">{leadCounts.total}</div>
+              <div className="text-sm text-gray-600">All Leads</div>
             </div>
-            <div className="text-sm text-gray-600">🆕 New</div>
           </div>
-        </div>
-        
-        <div 
-          className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-            statusFilter === 'Booked' 
-              ? 'border-blue-500 bg-blue-50' 
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-          onClick={() => setStatusFilter('Booked')}
-        >
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600">
-              {leadCounts.booked}
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Assigned' 
+                ? 'border-orange-500 bg-orange-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Assigned')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">
+                {leadCounts.assigned}
+              </div>
+              <div className="text-sm text-gray-600">👤 Assigned</div>
             </div>
-            <div className="text-sm text-gray-600">📅 Booked</div>
           </div>
-        </div>
-        
-        <div 
-          className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-            statusFilter === 'Attended' 
-              ? 'border-green-500 bg-green-50' 
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-          onClick={() => setStatusFilter('Attended')}
-        >
-          <div className="text-center">
-            <div className="text-2xl font-bold text-green-600">
-              {leadCounts.attended}
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Booked' 
+                ? 'border-blue-500 bg-blue-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Booked')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {leadCounts.booked}
+              </div>
+              <div className="text-sm text-gray-600">📅 Booked</div>
             </div>
-            <div className="text-sm text-gray-600">✅ Attended</div>
           </div>
-        </div>
-        
-        <div 
-          className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-            statusFilter === 'Cancelled' 
-              ? 'border-red-500 bg-red-50' 
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-          onClick={() => setStatusFilter('Cancelled')}
-        >
-          <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">
-              {leadCounts.cancelled}
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Call Back' 
+                ? 'border-purple-500 bg-purple-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Call Back')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">
+                {leadCounts.callback}
+              </div>
+              <div className="text-sm text-gray-600">📞 Call Back</div>
             </div>
-            <div className="text-sm text-gray-600">❌ Cancelled</div>
           </div>
-        </div>
-        
-        <div 
-          className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-            statusFilter === 'Assigned' 
-              ? 'border-orange-500 bg-orange-50' 
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-          onClick={() => setStatusFilter('Assigned')}
-        >
-          <div className="text-center">
-            <div className="text-2xl font-bold text-orange-600">
-              {leadCounts.assigned}
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'No Answer' 
+                ? 'border-yellow-500 bg-yellow-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('No Answer')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">
+                {leadCounts.noAnswer}
+              </div>
+              <div className="text-sm text-gray-600">📵 No Answer</div>
             </div>
-            <div className="text-sm text-gray-600">👤 Assigned</div>
           </div>
-        </div>
-        
-        <div 
-          className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-            statusFilter === 'Rejected' 
-              ? 'border-red-500 bg-red-50' 
-              : 'border-gray-200 bg-white hover:border-gray-300'
-          }`}
-          onClick={() => {
-            console.log('🔄 Clicking rejected tab, current statusFilter:', statusFilter);
-            setStatusFilter('Rejected');
-            console.log('🔄 Set statusFilter to Rejected');
-          }}
-        >
-          <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">
-              {leadCounts.rejected}
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Not Interested' 
+                ? 'border-red-500 bg-red-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Not Interested')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">
+                {leadCounts.notInterested}
+              </div>
+              <div className="text-sm text-gray-600">🚫 Not Interested</div>
             </div>
-            <div className="text-sm text-gray-600">Rejected</div>
+          </div>
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Wants Email' 
+                ? 'border-teal-500 bg-teal-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Wants Email')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-teal-600">
+                {leadCounts.wantsEmail}
+              </div>
+              <div className="text-sm text-gray-600">📧 Wants Email</div>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        // Admin/Viewer folders (original)
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'all' 
+                ? 'border-blue-500 bg-blue-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('all')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-gray-900">{leadCounts.total}</div>
+              <div className="text-sm text-gray-600">All Leads</div>
+            </div>
+          </div>
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'New' 
+                ? 'border-orange-500 bg-orange-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('New')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">
+                {leadCounts.new}
+              </div>
+              <div className="text-sm text-gray-600">🆕 New</div>
+            </div>
+          </div>
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Booked' 
+                ? 'border-blue-500 bg-blue-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Booked')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {leadCounts.booked}
+              </div>
+              <div className="text-sm text-gray-600">📅 Booked</div>
+            </div>
+          </div>
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Attended' 
+                ? 'border-green-500 bg-green-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Attended')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">
+                {leadCounts.attended}
+              </div>
+              <div className="text-sm text-gray-600">✅ Attended</div>
+            </div>
+          </div>
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Cancelled' 
+                ? 'border-red-500 bg-red-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Cancelled')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">
+                {leadCounts.cancelled}
+              </div>
+              <div className="text-sm text-gray-600">❌ Cancelled</div>
+            </div>
+          </div>
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Assigned' 
+                ? 'border-orange-500 bg-orange-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Assigned')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">
+                {leadCounts.assigned}
+              </div>
+              <div className="text-sm text-gray-600">👤 Assigned</div>
+            </div>
+          </div>
+          
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Rejected' 
+                ? 'border-red-500 bg-red-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => {
+              console.log('🔄 Clicking rejected tab, current statusFilter:', statusFilter);
+              setStatusFilter('Rejected');
+              console.log('🔄 Set statusFilter to Rejected');
+            }}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">
+                {leadCounts.rejected}
+              </div>
+              <div className="text-sm text-gray-600">Rejected</div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Performance indicator */}
       <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">

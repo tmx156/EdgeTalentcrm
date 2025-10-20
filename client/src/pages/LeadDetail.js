@@ -6,11 +6,13 @@ import TagSystem from '../components/TagSystem';
 import PhotoModal from '../components/PhotoModal';
 import LazyImage from '../components/LazyImage';
 import { getOptimizedImageUrl, preloadImages } from '../utils/imageUtils';
+import { useAuth } from '../context/AuthContext';
 
 const LeadDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -74,6 +76,9 @@ const LeadDetail = () => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('Duplicate');
   const [rejecting, setRejecting] = useState(false);
+  
+  // Add state for status change (for bookers)
+  const [changingStatus, setChangingStatus] = useState(false);
 
   // Fallback templates for when API is unavailable
   const fallbackSmsTemplates = [
@@ -810,11 +815,13 @@ const LeadDetail = () => {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'Not set';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    if (isNaN(date.getTime())) return 'Invalid date';
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
   };
 
@@ -1299,8 +1306,8 @@ const LeadDetail = () => {
                                       {message.details.subject}
                                     </p>
                                   )}
-                                  <p className="text-sm whitespace-pre-wrap break-words">
-                                    {message.details?.body || message.details?.message || 'No content'}
+                                  <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                                    {message.details?.body || message.details?.message || 'No content available'}
                                   </p>
                                   
                                   {/* Message metadata */}
@@ -1677,7 +1684,7 @@ const LeadDetail = () => {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Date Added:</span>
                       <span className="text-sm font-medium text-gray-900">
-                        {formatDate(lead.dateBooked)}
+                        {formatDate(lead.created_at)}
                       </span>
                     </div>
                     
@@ -1693,6 +1700,57 @@ const LeadDetail = () => {
                 >
                   Reject Lead
                 </button>
+              )}
+              
+              {/* Add Status Change Dropdown for Bookers */}
+              {!editing && user?.role === 'booker' && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Change Status:</label>
+                  <select
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={lead.status}
+                    onChange={async (e) => {
+                      const newStatus = e.target.value;
+                      if (window.confirm(`Change status to "${newStatus}"?`)) {
+                        setChangingStatus(true);
+                        try {
+                          // Only send the necessary fields to update
+                          const response = await axios.put(`/api/leads/${lead.id}`, { 
+                            name: lead.name,
+                            phone: lead.phone,
+                            email: lead.email,
+                            postcode: lead.postcode,
+                            status: newStatus,
+                            notes: lead.notes,
+                            image_url: lead.image_url
+                          });
+                          
+                          console.log('✅ Status updated successfully:', response.data);
+                          setLead({ ...lead, status: newStatus });
+                          
+                          // Navigate back to leads page with the new status filter
+                          navigate('/leads', { 
+                            state: { statusFilter: newStatus }
+                          });
+                        } catch (err) {
+                          console.error('❌ Status update error:', err);
+                          const errorMessage = err.response?.data?.message || 'Failed to update status. Please try again.';
+                          alert(errorMessage);
+                        } finally {
+                          setChangingStatus(false);
+                        }
+                      }
+                    }}
+                    disabled={changingStatus}
+                  >
+                    <option value="Assigned">👤 Assigned</option>
+                    <option value="Booked">📅 Booked</option>
+                    <option value="Call Back">📞 Call Back</option>
+                    <option value="No Answer">📵 No Answer</option>
+                    <option value="Not Interested">🚫 Not Interested</option>
+                    <option value="Wants Email">📧 Wants Email</option>
+                  </select>
+                </div>
               )}
               
               {/* Add Send Booking Confirmation button */}

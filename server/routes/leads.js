@@ -363,6 +363,10 @@ router.get('/', auth, async (req, res) => {
       console.log(`👑 Admin access: User ${req.user.name} can see all leads`);
     }
 
+    // Filter out ghost bookings (used for stats correction)
+    dataQuery = dataQuery.neq('postcode', 'ZZGHOST');
+    countQuery = countQuery.neq('postcode', 'ZZGHOST');
+
     // Apply status filter
     if (status && status !== 'all') {
       if (status === 'sales') {
@@ -549,6 +553,7 @@ router.get('/calendar', auth, async (req, res) => {
       `)
       .or('date_booked.not.is.null,status.eq.Booked')
       .is('deleted_at', null) // Ensure we don't fetch deleted leads
+      .neq('postcode', 'ZZGHOST') // Exclude ghost bookings (stats correction entries)
       .not('status', 'in', '(Cancelled,Rejected)'); // ✅ Exclude cancelled/rejected bookings from calendar
     
     // PERFORMANCE: Apply date range filter if provided
@@ -1141,10 +1146,19 @@ router.post('/', auth, async (req, res) => {
       if (existingLeads && existingLeads.length > 0) {
         // Update the existing lead
         // Remove fields that don't exist in Supabase schema
-        const { isReschedule, sendEmail, sendSms, rescheduleReason, ...cleanBodyData } = bodyWithoutId;
+        const { isReschedule, sendEmail, sendSms, rescheduleReason, templateId, ...cleanBodyData } = bodyWithoutId;
+
+        // Build update data explicitly to avoid including invalid fields
         const updateData = {
-          ...cleanBodyData,
+          name: bodyWithoutId.name,
+          email: bodyWithoutId.email,
+          phone: bodyWithoutId.phone,
+          postcode: bodyWithoutId.postcode,
+          notes: bodyWithoutId.notes,
+          age: bodyWithoutId.age,
+          parent_phone: bodyWithoutId.parent_phone,
           date_booked: bodyWithoutId.date_booked ? preserveLocalTime(bodyWithoutId.date_booked) : null,
+          time_booked: bodyWithoutId.time_booked,
           status: 'Booked',
           booker_id: req.user.id,
           updated_at: new Date().toISOString(),
@@ -1205,7 +1219,7 @@ router.post('/', auth, async (req, res) => {
     }
     
     // Remove fields that don't exist in Supabase schema
-    const { isReschedule, sendEmail, sendSms, rescheduleReason, ...cleanFilteredBody } = filteredBody;
+    const { isReschedule, sendEmail, sendSms, rescheduleReason, templateId, ...cleanFilteredBody } = filteredBody;
     const finalBody = cleanFilteredBody;
 
     console.log('📊 Server: Creating lead with data:', {
@@ -1563,16 +1577,18 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
     // ROLE-BASED ACCESS CONTROL for lead updates
     // Admin can update any lead
     // Viewer can update any lead (admin-level access for status changes)
-    // Booker can update Confirmed/Unconfirmed on any booking, or other statuses only on their assigned leads
+    // Booker can update Confirmed/Unconfirmed status AND send booking confirmations on any booking
     if (req.user.role !== 'admin' && req.user.role !== 'viewer') {
       // For bookers, check permissions based on status change type
       if (req.user.role === 'booker') {
         const isConfirmationChange = (req.body.is_confirmed !== undefined) ||
                                    (req.body.status === 'Booked' && (req.body.is_confirmed === true || req.body.is_confirmed === false));
         const isAssignedLead = lead.booker_id && lead.booker_id.toString() === req.user.id.toString();
-        
-        if (!isConfirmationChange && !isAssignedLead) {
-          return res.status(403).json({ message: 'Access denied. You can only change Confirmed/Unconfirmed status on any booking, or other statuses on leads assigned to you.' });
+        const isBookingConfirmationOnly = req.body.sendEmail || req.body.sendSms; // Allow sending confirmations
+
+        // Allow if: confirmation change, assigned lead, or just sending booking confirmation
+        if (!isConfirmationChange && !isAssignedLead && !isBookingConfirmationOnly) {
+          return res.status(403).json({ message: 'Access denied. You can only change Confirmed/Unconfirmed status on any booking, send booking confirmations, or update leads assigned to you.' });
         }
       } else {
         // Any other role is denied
@@ -1604,8 +1620,8 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
     // ✅ DAILY ACTIVITY FIX: Set booked_at timestamp when status changes to Booked
     if (oldStatus !== 'Booked' && req.body.status === 'Booked') {
       req.body.booked_at = new Date().toISOString();
-      req.body.ever_booked = true; // ✅ BOOKING HISTORY FIX: Mark as ever booked
-      console.log(`📊 Setting booked_at timestamp for ${lead.name}: ${req.body.booked_at}`);
+      req.body.ever_booked = true; // ✅ BOOKING HISTORY FIX: Mark as ever booked (will be converted to snake_case)
+      console.log(`📊 Setting booked_at and ever_booked for ${lead.name}: ${req.body.booked_at}`);
     }
     
     // ✅ DAILY ACTIVITY FIX: Don't clear date_booked on cancellation
@@ -1623,15 +1639,17 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
     const validUpdateData = {};
     for (const [key, value] of Object.entries(updateData)) {
       // Do not persist transient messaging flags and computed fields
-      if (key === 'sendEmail' || key === 'sendSms' || key === 'booker_name' || key === 'booker_email') continue;
+      if (key === 'sendEmail' || key === 'sendSms' || key === 'templateId' || key === 'booker_name' || key === 'booker_email') continue;
       if (value === undefined) continue; // Skip undefined values completely
 
       // Convert camelCase field names to snake_case for database columns
-      const dbKey = key === 'bookingHistory' ? 'booking_history' : 
+      const dbKey = key === 'bookingHistory' ? 'booking_history' :
                     key === 'dateBooked' ? 'date_booked' :
                     key === 'isConfirmed' ? 'is_confirmed' :
                     key === 'hasSale' ? 'has_sale' :
                     key === 'bookingStatus' ? 'booking_status' :
+                    key === 'everBooked' ? 'ever_booked' :
+                    key === 'bookedAt' ? 'booked_at' :
                     key;
 
       // Convert Date objects to ISO strings
@@ -1677,7 +1695,7 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
     // Filter out any invalid values and convert objects to strings
     const filteredUpdateFields = {};
     for (const [key, value] of Object.entries(updateFields)) {
-      if (key === 'sendEmail' || key === 'sendSms') continue;
+      if (key === 'sendEmail' || key === 'sendSms' || key === 'templateId') continue;
       
       // For certain fields, we want to allow null values to clear them
       const allowNullFields = ['booking_status', 'date_booked', 'reschedule_reason'];
@@ -1877,6 +1895,26 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
           to: req.body.status
         } : null
       });
+
+      // Emit stats update for dashboard real-time refresh
+      global.io.emit('stats_update_needed', {
+        type: 'lead_updated',
+        bookerId: updatedLead.booker_id,
+        leadId: req.params.id,
+        timestamp: new Date()
+      });
+
+      // Emit booking activity if this is a booking
+      if (updatedLead.status === 'Booked' || updatedLead.date_booked) {
+        global.io.emit('booking_activity', {
+          action: 'updated',
+          booker: updatedLead.booker_id,
+          leadName: updatedLead.name,
+          dateBooked: updatedLead.date_booked,
+          timestamp: new Date()
+        });
+      }
+
       global.io.emit('calendar_sync_needed', {
         type: 'lead_updated',
         leadId: req.params.id,

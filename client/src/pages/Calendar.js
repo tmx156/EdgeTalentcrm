@@ -53,6 +53,8 @@ const Calendar = () => {
   const [notesText, setNotesText] = useState('');
   const [sendEmail, setSendEmail] = useState(true);
   const [sendSms, setSendSms] = useState(true);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
+  const [bookingTemplates, setBookingTemplates] = useState([]);
   const [updatingNotes, setUpdatingNotes] = useState(false);
   const [isBookingInProgress, setIsBookingInProgress] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -422,6 +424,34 @@ const Calendar = () => {
       setIsFetching(false);
     }
   }, []); // Empty dependency array - function doesn't need to recreate
+
+  // Fetch booking confirmation templates
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        console.log('📋 Fetching booking confirmation templates...');
+        const response = await axios.get('/api/templates?type=booking_confirmation&isActive=true', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        console.log('📋 Templates response:', response.data);
+        console.log('📋 Number of templates:', response.data?.length || 0);
+        setBookingTemplates(response.data || []);
+        // Set the first template as default if available
+        if (response.data && response.data.length > 0) {
+          setSelectedTemplateId(response.data[0]._id);
+          console.log('📋 Default template selected:', response.data[0].name, response.data[0]._id);
+        } else {
+          console.warn('⚠️ No active booking confirmation templates found');
+        }
+      } catch (error) {
+        console.error('❌ Error fetching booking templates:', error);
+        setBookingTemplates([]);
+      }
+    };
+    fetchTemplates();
+  }, []);
 
   // Use useEffect WITHOUT fetchEvents as dependency to prevent loops
   useEffect(() => {
@@ -884,7 +914,7 @@ const Calendar = () => {
         finalData: createData
       });
       
-      const response = await axios.post('/api/leads', { ...createData, sendEmail, sendSms });
+      const response = await axios.post('/api/leads', { ...createData, sendEmail, sendSms, templateId: selectedTemplateId });
       
       if (response.data.success || response.data.lead || response.data) {
         const leadResult = response.data.lead || response.data;
@@ -1847,9 +1877,18 @@ const Calendar = () => {
             // PERFORMANCE: Skip SMS message processing entirely - too slow
             // This was causing 23+ function calls on every render
 
-            // Don't show "A" tag for brand new bookings (status = "New")
-            // Show it for all other bookings (Booked, Confirmed, etc.)
-            const isNewBooking = arg.event.extendedProps?.status === 'New';
+            // Only show "A" tag for bookings made BEFORE Friday October 17, 2025
+            // Strict rule: No A tags for bookings from Oct 17, 2025 onwards
+            const cutoffDate = new Date('2025-10-17T00:00:00');
+            cutoffDate.setHours(0, 0, 0, 0);
+
+            // Check when the booking was MADE (booked_at), not the appointment date
+            const bookedAtDate = arg.event.extendedProps?.booked_at
+              ? new Date(arg.event.extendedProps.booked_at)
+              : null;
+
+            // Show A tag ONLY if booking was made before October 17, 2025
+            const showATag = bookedAtDate && bookedAtDate < cutoffDate;
 
             return (
               <div className="fc-event-main p-1 flex items-center justify-between">
@@ -1857,7 +1896,7 @@ const Calendar = () => {
                   <div className="fc-event-title text-xs truncate">
                     {arg.timeText && <span className="font-semibold">{arg.timeText} </span>}
                     <span className="inline-flex items-center gap-1">
-                      {!isNewBooking && (
+                      {showATag && (
                         <span className="bg-gray-500 text-white px-1.5 py-0.5 rounded text-[10px] font-semibold">A</span>
                       )}
                       {arg.event.title}
@@ -2026,6 +2065,37 @@ const Calendar = () => {
                     </label>
                   </div>
                   <p className="text-xs text-gray-500 mt-2">Both are checked by default. Uncheck to prevent sending.</p>
+
+                  {/* Template Selector */}
+                  {(sendEmail || sendSms) && (
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select Template
+                      </label>
+                      {bookingTemplates.length > 0 ? (
+                        <>
+                          <select
+                            value={selectedTemplateId || ''}
+                            onChange={(e) => setSelectedTemplateId(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          >
+                            {bookingTemplates.map((template) => (
+                              <option key={template._id} value={template._id}>
+                                {template.name} {(template.email_account || template.emailAccount) === 'secondary' ? '(Camry)' : '(Avensis)'}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Template determines which email account to use
+                          </p>
+                        </>
+                      ) : (
+                        <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3">
+                          ⚠️ No active booking confirmation templates found. Please create one in the Templates page.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-gray-50 rounded-lg p-4 space-y-4">
@@ -2416,6 +2486,37 @@ const Calendar = () => {
                         </label>
                       </div>
                       <p className="text-xs text-gray-500 mt-2">These settings apply when you reschedule from this modal.</p>
+
+                      {/* Template Selector for Reschedule */}
+                      {(sendEmail || sendSms) && (
+                        <div className="mt-3">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Select Template
+                          </label>
+                          {bookingTemplates.length > 0 ? (
+                            <>
+                              <select
+                                value={selectedTemplateId || ''}
+                                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                              >
+                                {bookingTemplates.map((template) => (
+                                  <option key={template._id} value={template._id}>
+                                    {template.name} {(template.email_account || template.emailAccount) === 'secondary' ? '(Camry)' : '(Avensis)'}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Template determines which email account to use
+                              </p>
+                            </>
+                          ) : (
+                            <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-2">
+                              ⚠️ No active booking templates found
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     {/* Assigned User */}
                     {selectedEvent.extendedProps?.booker && (

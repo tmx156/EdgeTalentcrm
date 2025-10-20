@@ -662,7 +662,15 @@ const Layout = ({ children }) => {
     { name: 'Users', href: '/users', icon: FiUser, adminOnly: true },
   ];
 
-  const leadsStatusOptions = [
+  const leadsStatusOptions = user?.role === 'booker' ? [
+    { name: 'All Leads', status: 'all', icon: '📊', color: 'text-gray-600' },
+    { name: 'Assigned', status: 'Assigned', icon: '👤', color: 'text-orange-600' },
+    { name: 'Booked', status: 'Booked', icon: '📅', color: 'text-blue-600' },
+    { name: 'Call Back', status: 'Call Back', icon: '📞', color: 'text-purple-600' },
+    { name: 'No Answer', status: 'No Answer', icon: '📵', color: 'text-yellow-600' },
+    { name: 'Not Interested', status: 'Not Interested', icon: '🚫', color: 'text-red-600' },
+    { name: 'Wants Email', status: 'Wants Email', icon: '📧', color: 'text-teal-600' },
+  ] : [
     { name: 'All Leads', status: 'all', icon: '📊', color: 'text-gray-600' },
     { name: 'New Leads', status: 'New', icon: '🆕', color: 'text-orange-600' },
     { name: 'Booked', status: 'Booked', icon: '📅', color: 'text-blue-600' },
