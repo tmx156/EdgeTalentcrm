@@ -1189,6 +1189,24 @@ router.post('/', auth, async (req, res) => {
               }
             );
             console.log(`📧 Booking confirmation triggered for lead ${_id}`);
+
+            // Add to booking history
+            await addBookingHistoryEntry(
+              _id,
+              'BOOKING_CONFIRMATION_SENT',
+              req.user.id,
+              req.user.name,
+              {
+                appointmentDate: updateData.date_booked,
+                sentVia: {
+                  email: bodyWithoutId.sendEmail || false,
+                  sms: bodyWithoutId.sendSms || false
+                },
+                templateId: bodyWithoutId.templateId || null,
+                timestamp: new Date()
+              },
+              createLeadSnapshot(updated[0])
+            );
           }
         } catch (e) {
           console.error('❌ Failed to send booking confirmation:', e);
@@ -1293,7 +1311,7 @@ router.post('/', auth, async (req, res) => {
           // Immediately trigger booking confirmation on duplicate-update path as well,
           // because some clients may not issue the subsequent PUT we rely on.
           try {
-            if (finalBody.date_booked) {
+            if (finalBody.date_booked && (sendEmail || sendSms)) {
               await MessagingService.sendBookingConfirmation(
                 existingLead.id,
                 req.user.id,
@@ -1301,6 +1319,23 @@ router.post('/', auth, async (req, res) => {
                 { sendEmail: sendEmail || false, sendSms: sendSms || false }
               );
               console.log(`📧 Booking confirmation triggered (duplicate-update path) for lead ${existingLead.id}`);
+
+              // Add to booking history
+              await addBookingHistoryEntry(
+                existingLead.id,
+                'BOOKING_CONFIRMATION_SENT',
+                req.user.id,
+                req.user.name,
+                {
+                  appointmentDate: finalBody.date_booked,
+                  sentVia: {
+                    email: sendEmail || false,
+                    sms: sendSms || false
+                  },
+                  timestamp: new Date()
+                },
+                createLeadSnapshot(updatedLead)
+              );
             }
           } catch (e) {
             console.error('❌ Failed to send booking confirmation (duplicate-update path):', e);
@@ -1484,13 +1519,36 @@ router.post('/', auth, async (req, res) => {
     try {
       if (leadData.status === 'Booked' && leadData.date_booked) {
         const { sendEmail, sendSms } = filteredBody || {};
-        await MessagingService.sendBookingConfirmation(
-          lead.id,
-          leadData.booker,
-          leadData.date_booked,
-          { sendEmail, sendSms }
-        );
-        console.log(`📧 Booking confirmation triggered for new lead ${lead.id}`);
+        if (sendEmail || sendSms) {
+          await MessagingService.sendBookingConfirmation(
+            lead.id,
+            leadData.booker,
+            leadData.date_booked,
+            { sendEmail, sendSms }
+          );
+          console.log(`📧 Booking confirmation triggered for new lead ${lead.id}`);
+
+          // Add to booking history
+          const bookerUser = await dbManager.query('users', {
+            select: 'name',
+            eq: { id: leadData.booker }
+          });
+          await addBookingHistoryEntry(
+            lead.id,
+            'BOOKING_CONFIRMATION_SENT',
+            leadData.booker,
+            bookerUser?.[0]?.name || 'System',
+            {
+              appointmentDate: leadData.date_booked,
+              sentVia: {
+                email: sendEmail || false,
+                sms: sendSms || false
+              },
+              timestamp: new Date()
+            },
+            createLeadSnapshot(lead)
+          );
+        }
       }
     } catch (msgErr) {
       console.error('❌ Failed to send booking confirmation for new lead:', msgErr);
@@ -1800,13 +1858,32 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       try {
         if (req.body.date_booked) {
           const { sendEmail, sendSms } = req.body;
-          await MessagingService.sendBookingConfirmation(
-            req.params.id,
-            currentUser.id,
-            req.body.date_booked,
-            { sendEmail, sendSms }
-          );
-          console.log(`📧 Booking confirmation triggered for lead ${req.params.id}`);
+          if (sendEmail || sendSms) {
+            await MessagingService.sendBookingConfirmation(
+              req.params.id,
+              currentUser.id,
+              req.body.date_booked,
+              { sendEmail, sendSms }
+            );
+            console.log(`📧 Booking confirmation triggered for lead ${req.params.id}`);
+
+            // Add to booking history
+            await addBookingHistoryEntry(
+              req.params.id,
+              'BOOKING_CONFIRMATION_SENT',
+              currentUser.id,
+              currentUser.name,
+              {
+                appointmentDate: req.body.date_booked,
+                sentVia: {
+                  email: sendEmail || false,
+                  sms: sendSms || false
+                },
+                timestamp: new Date()
+              },
+              createLeadSnapshot(updatedLead)
+            );
+          }
         }
       } catch (msgErr) {
         console.error('❌ Failed to send booking confirmation notification:', msgErr);
@@ -1835,13 +1912,33 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       try {
         if (req.body.date_booked) {
           const { sendEmail, sendSms } = req.body;
-          await MessagingService.sendBookingConfirmation(
-            req.params.id,
-            currentUser.id,
-            req.body.date_booked,
-            { sendEmail, sendSms }
-          );
-          console.log(`📧 Reschedule confirmation sent for lead ${req.params.id}`);
+          if (sendEmail || sendSms) {
+            await MessagingService.sendBookingConfirmation(
+              req.params.id,
+              currentUser.id,
+              req.body.date_booked,
+              { sendEmail, sendSms }
+            );
+            console.log(`📧 Reschedule confirmation sent for lead ${req.params.id}`);
+
+            // Add to booking history
+            await addBookingHistoryEntry(
+              req.params.id,
+              'BOOKING_CONFIRMATION_SENT',
+              currentUser.id,
+              currentUser.name,
+              {
+                appointmentDate: req.body.date_booked,
+                sentVia: {
+                  email: sendEmail || false,
+                  sms: sendSms || false
+                },
+                isReschedule: true,
+                timestamp: new Date()
+              },
+              createLeadSnapshot(updatedLead)
+            );
+          }
         }
       } catch (msgErr) {
         console.error('❌ Failed to send reschedule confirmation notification:', msgErr);
@@ -2096,6 +2193,7 @@ router.put('/:id/assign', auth, adminAuth, async (req, res) => {
       .update({
         booker_id: booker,
         status: leadData.status === 'New' ? 'Assigned' : leadData.status,
+        assigned_at: new Date().toISOString(), // Track when lead was assigned
         updated_at: new Date().toISOString()
       })
       .eq('id', req.params.id)
@@ -2522,6 +2620,7 @@ router.put('/bulk-assign', auth, adminAuth, async (req, res) => {
       .update({
         booker_id: bookerId,
         status: 'Assigned',
+        assigned_at: new Date().toISOString(), // Track when leads were assigned
         updated_at: new Date().toISOString()
       })
       .in('id', leadIds);

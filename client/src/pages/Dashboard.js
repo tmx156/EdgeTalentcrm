@@ -99,6 +99,23 @@ const Dashboard = () => {
       const leads = leadsRes.data?.leads || [];
       console.log(`📊 Dashboard: Found ${leads.length} leads booked today using booked_at filter`);
 
+      // Get leads assigned today (for booker statistics)
+      const assignedLeadsRes = await axios.get('/api/leads/public', {
+        params: {
+          assigned_at_start: startUTC,
+          assigned_at_end: endUTC,
+          limit: 1000 // Fetch up to 1000 to ensure we get all assigned leads for the day
+        }
+      });
+      const assignedLeads = assignedLeadsRes.data?.leads || [];
+      console.log(`📊 Dashboard: Found ${assignedLeads.length} leads assigned today using assigned_at filter`);
+      console.log(`📊 Dashboard: Assigned leads sample:`, assignedLeads.slice(0, 3).map(l => ({
+        id: l.id,
+        name: l.name,
+        booker_id: l.booker_id,
+        assigned_at: l.assigned_at
+      })));
+
       // Fetch sales data for admin/viewer - only sales made on selectedActivityDate
       let salesData = [];
       if (user?.role === 'admin' || user?.role === 'viewer') {
@@ -123,6 +140,27 @@ const Dashboard = () => {
       // Group by booker with sales
       const bookerStats = {};
 
+      // Process assigned leads - count all leads assigned today
+      assignedLeads.forEach(lead => {
+        const bookerId = lead.booker_id;
+        if (bookerId) {
+          if (!bookerStats[bookerId]) {
+            const user = users.find(u => u.id === bookerId);
+            bookerStats[bookerId] = {
+              id: bookerId,
+              name: user?.name || 'Unknown',
+              bookings: 0,
+              sales: 0,
+              assigned: 0,
+              bookingDetails: [],
+              salesDetails: [],
+              lastActivity: new Date(lead.assigned_at || lead.created_at)
+            };
+          }
+          bookerStats[bookerId].assigned += 1;
+        }
+      });
+
       // Process bookings - show ALL bookings created today using ever_booked (including cancelled)
       leads.forEach(lead => {
         const bookerId = lead.booker_id;
@@ -136,6 +174,7 @@ const Dashboard = () => {
               name: user?.name || 'Unknown',
               bookings: 0,
               sales: 0,
+              assigned: 0,
               bookingDetails: [],
               salesDetails: [],
               lastActivity: new Date(lead.updated_at || lead.created_at)
@@ -173,6 +212,7 @@ const Dashboard = () => {
               name: user?.name || 'Unknown',
               bookings: 0,
               sales: 0,
+              assigned: 0,
               bookingDetails: [],
               salesDetails: [],
               lastActivity: new Date(sale.created_at)
@@ -199,8 +239,9 @@ const Dashboard = () => {
         }
       });
 
-      // Convert to array and sort by total activity (bookings + sales)
+      // Convert to array, filter out bookers with no bookings/sales, and sort by total activity
       const activity = Object.values(bookerStats)
+        .filter(booker => (booker.bookings > 0 || booker.sales > 0)) // Only show bookers with actual activity
         .sort((a, b) => (b.bookings + b.sales) - (a.bookings + a.sales))
         .map((item, idx) => ({ ...item, rank: idx + 1 }));
 
@@ -1159,16 +1200,37 @@ const Dashboard = () => {
 
             <div className="p-6">
               {/* Stats Summary */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <p className="text-sm text-purple-600 font-semibold">Leads Assigned</p>
+                  <p className="text-3xl font-bold text-purple-700">{selectedBooker.assigned || 0}</p>
+                </div>
                 <div className="bg-blue-50 rounded-lg p-4">
-                  <p className="text-sm text-blue-600 font-semibold">Total Bookings</p>
+                  <p className="text-sm text-blue-600 font-semibold">Leads Booked</p>
                   <p className="text-3xl font-bold text-blue-700">{selectedBooker.bookings || 0}</p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-4">
-                  <p className="text-sm text-green-600 font-semibold">Total Sales</p>
-                  <p className="text-3xl font-bold text-green-700">{selectedBooker.sales || 0}</p>
+                  <p className="text-sm text-green-600 font-semibold">Conversion Rate</p>
+                  <p className="text-3xl font-bold text-green-700">
+                    {selectedBooker.assigned > 0
+                      ? `${Math.round((selectedBooker.bookings / selectedBooker.assigned) * 100)}%`
+                      : '0%'}
+                  </p>
                 </div>
               </div>
+
+              {/* Sales Summary - Show only if there are sales */}
+              {selectedBooker.sales > 0 && (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 mb-6 border border-green-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-green-600 font-semibold">Total Sales</p>
+                      <p className="text-2xl font-bold text-green-700">{selectedBooker.sales}</p>
+                    </div>
+                    <FiDollarSign className="w-8 h-8 text-green-600" />
+                  </div>
+                </div>
+              )}
 
               {/* All Bookings */}
               {selectedBooker.bookingDetails && selectedBooker.bookingDetails.length > 0 && (
