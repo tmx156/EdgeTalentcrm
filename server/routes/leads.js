@@ -1802,10 +1802,19 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       }
       
       // ✅ SCOREBOARD FIX: Set booked_at timestamp when status changes to 'Booked'
-      if (supabaseUpdateFields.status === 'Booked' && lead.status !== 'Booked') {
+      // Check both supabaseUpdateFields.status and req.body.status to catch all booking scenarios
+      const isBeingBooked = (supabaseUpdateFields.status === 'Booked' || req.body.status === 'Booked') && lead.status !== 'Booked';
+      if (isBeingBooked) {
         supabaseUpdateFields.booked_at = new Date().toISOString();
-        supabaseUpdateFields.ever_booked = true; // ✅ BOOKING HISTORY FIX: Mark as ever booked
-        console.log(`📊 Lead ${lead.name} booked at ${supabaseUpdateFields.booked_at}`);
+        supabaseUpdateFields.ever_booked = 1; // Use integer 1 for database consistency
+        console.log(`📊 Lead ${lead.name} booked at ${supabaseUpdateFields.booked_at}, ever_booked set to 1`);
+      }
+      
+      // ✅ ENSURE ever_booked is ALWAYS set when booked_at exists
+      // This catches any edge cases where ever_booked might not be set
+      if (supabaseUpdateFields.booked_at && !supabaseUpdateFields.ever_booked) {
+        supabaseUpdateFields.ever_booked = 1;
+        console.log(`📊 Ensuring ever_booked is set for ${lead.name}`);
       }
       
       const updateResult = await dbManager.update('leads', supabaseUpdateFields, { id: req.params.id });

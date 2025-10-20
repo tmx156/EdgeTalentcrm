@@ -520,8 +520,11 @@ const Dashboard = () => {
 
     // Listen to booking-related events
     socket.on('lead_created', handleBookingUpdate);
+    socket.on('lead_updated', handleBookingUpdate);
     socket.on('booking_activity', handleBookingUpdate);
+    socket.on('booking_update', handleBookingUpdate);
     socket.on('stats_update_needed', handleBookingUpdate);
+    socket.on('diary_updated', handleBookingUpdate);
 
     // Listen to message events
     socket.on('new_message', handleMessageUpdate);
@@ -531,8 +534,11 @@ const Dashboard = () => {
 
     return () => {
       socket.off('lead_created', handleBookingUpdate);
+      socket.off('lead_updated', handleBookingUpdate);
       socket.off('booking_activity', handleBookingUpdate);
+      socket.off('booking_update', handleBookingUpdate);
       socket.off('stats_update_needed', handleBookingUpdate);
+      socket.off('diary_updated', handleBookingUpdate);
       socket.off('new_message', handleMessageUpdate);
       socket.off('message_read', handleMessageUpdate);
     };
