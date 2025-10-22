@@ -172,29 +172,35 @@ const Calendar = () => {
         // Only fetch visible calendar dates (no buffer needed for month navigation)
         startDate = new Date(view.activeStart);
         endDate = new Date(view.activeEnd);
-
-        // Create range key for tracking
-        rangeKey = `${startDate.toISOString()}_${endDate.toISOString()}`;
-        
-        // Check if this range was already loaded (unless force refresh)
-        if (!force && loadedRanges.has(rangeKey)) {
-          console.log('📅 Range already loaded, skipping fetch:', rangeKey);
-          setIsFetching(false);
-          return;
-        }
-
-        dateParams = `&start=${startDate.toISOString()}&end=${endDate.toISOString()}`;
-        console.log(`📅 Fetching events for range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
+      } else {
+        // Fallback: Use current month if calendar not yet initialized
+        const now = new Date();
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+        console.log('📅 Calendar not initialized, using current month range');
       }
 
+      // Create range key for tracking
+      rangeKey = `${startDate.toISOString()}_${endDate.toISOString()}`;
+      
+      // Check if this range was already loaded (unless force refresh)
+      if (!force && loadedRanges.has(rangeKey)) {
+        console.log('📅 Range already loaded, skipping fetch:', rangeKey);
+        setIsFetching(false);
+        return;
+      }
+
+      dateParams = `&start=${startDate.toISOString()}&end=${endDate.toISOString()}`;
+      console.log(`📅 Fetching events for range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
+
       // Use the new calendar endpoint with date filtering
-      // Add cache busting and date range
-      const cacheBuster = `?t=${Date.now()}${dateParams}&limit=1000`;
+      // Increased limit to 600 for better calendar coverage
+      const cacheBuster = `?t=${Date.now()}${dateParams}&limit=600`;
       const response = await axios.get(`/api/leads/calendar${cacheBuster}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        timeout: 10000 // Add timeout to prevent hanging
+        timeout: 15000 // 15 second timeout (reduced from 30s)
       });
 
       const leads = response.data.leads || [];
@@ -654,12 +660,49 @@ const Calendar = () => {
         }
       } catch {}
     };
+    // Handle message sent notifications (booking confirmations)
+    const handleMessageSent = (data) => {
+      console.log('📧 ========== MESSAGE SENT NOTIFICATION ==========');
+      console.log('📧 Status:', data.status);
+      console.log('📧 Type:', data.type);
+      console.log('📧 Lead ID:', data.leadId);
+      console.log('📧 Channels:', data.channels);
+      if (data.status === 'success') {
+        console.log('📧 Email Account:', data.emailAccountName);
+        console.log('📧 Email Account Key:', data.emailAccount);
+        console.log('📧 SMS Provider:', data.smsProvider);
+      } else {
+        console.log('📧 Error:', data.error);
+      }
+      console.log('📧 ==============================================');
+
+      if (data.status === 'success') {
+        // Show success notification with details
+        const details = [];
+        if (data.channels.email) {
+          details.push(`Email via ${data.emailAccountName || 'email'}`);
+        }
+        if (data.channels.sms) {
+          details.push(`SMS via ${data.smsProvider || 'SMS'}`);
+        }
+
+        const message = `✅ ${data.message || 'Booking confirmation sent: ' + details.join(' and ')}`;
+        alert(message);
+      } else if (data.status === 'error') {
+        // Show error notification
+        alert(`❌ ${data.message || 'Failed to send booking confirmation'}`);
+      }
+    };
+
     // Listen for both event names to ensure compatibility
     socket.on('sms_received', handleSmsReceived);
     socket.on('message_received', handleSmsReceived);
+    socket.on('message_sent', handleMessageSent);
+
     return () => {
       socket.off('sms_received', handleSmsReceived);
       socket.off('message_received', handleSmsReceived);
+      socket.off('message_sent', handleMessageSent);
     };
   }, [socket, selectedEvent]);
 
@@ -830,12 +873,21 @@ const Calendar = () => {
       console.log('📊 Booking already in progress, ignoring duplicate request');
       return;
     }
-    
+
     if (!leadForm.name || !leadForm.phone) {
       alert('Please fill in required fields (Name and Phone)');
       return;
     }
-    
+
+    console.log('📅 ========== SAVE BOOKING START ==========');
+    console.log('📅 Lead Form:', leadForm);
+    console.log('📅 Is Reschedule:', leadForm.isReschedule);
+    console.log('📅 Send Email:', sendEmail);
+    console.log('📅 Send SMS:', sendSms);
+    console.log('📅 Selected Template ID:', selectedTemplateId);
+    console.log('📅 Available Templates:', bookingTemplates.map(t => ({ id: t._id, name: t.name })));
+    console.log('📅 ========================================');
+
     setIsBookingInProgress(true);
 
     // Use the clicked time directly from selectedDate, but ensure we're working with local time
@@ -914,8 +966,17 @@ const Calendar = () => {
         finalData: createData
       });
       
+      console.log('📤 Sending booking request with:', {
+        ...createData,
+        sendEmail,
+        sendSms,
+        templateId: selectedTemplateId
+      });
+
       const response = await axios.post('/api/leads', { ...createData, sendEmail, sendSms, templateId: selectedTemplateId });
-      
+
+      console.log('✅ Booking API response:', response.data);
+
       if (response.data.success || response.data.lead || response.data) {
         const leadResult = response.data.lead || response.data;
         
@@ -1156,7 +1217,7 @@ const Calendar = () => {
         `This will:\n` +
         `• Remove the booking from the calendar\n` +
         `• Move the lead status to "Cancelled"\n` +
-        `• Clear the booking date\n` +
+        `• Preserve the original booking date for tracking\n` +
         `• Update the daily diary\n\n` +
         `This action cannot be undone.`;
 
@@ -1183,12 +1244,12 @@ const Calendar = () => {
         ...selectedEvent.extendedProps.lead
       };
 
-      // For cancellation, clear the booking date and set to Cancelled
+      // For cancellation, set status to Cancelled but preserve the original booking date
       if (newStatus === 'Cancelled') {
         updateData = {
           ...updateData,
           status: 'Cancelled', // Set to Cancelled status
-          date_booked: null, // Clear the booking date
+          // Keep date_booked preserved for tracking history in daily activities
           cancellation_reason: 'Appointment cancelled via calendar'
         };
       } else if (newStatus === 'Confirmed') {
@@ -1418,10 +1479,14 @@ const Calendar = () => {
     }
 
     const leadName = selectedEvent.extendedProps.lead.name || selectedEvent.title.split(' - ')[0];
-    
+
     if (!window.confirm(`Are you sure you want to reschedule ${leadName}'s appointment?`)) {
       return;
     }
+
+    console.log('📅 Starting reschedule for:', leadName);
+    console.log('📅 Current template selected:', selectedTemplateId);
+    console.log('📅 Available templates:', bookingTemplates.length);
 
     // Load the lead data into the form for rescheduling
     setLeadForm({
@@ -1432,7 +1497,7 @@ const Calendar = () => {
       postcode: selectedEvent.extendedProps.lead.postcode || '',
       status: 'Booked', // Keep as booked for rescheduling
       notes: selectedEvent.extendedProps.lead.notes || '',
-              image_url: selectedEvent.extendedProps.lead.image_url || '',
+      image_url: selectedEvent.extendedProps.lead.image_url || '',
       isReschedule: true
     });
 
@@ -1440,13 +1505,22 @@ const Calendar = () => {
     setShowEventModal(false);
     setSendEmail(true);
     setSendSms(true);
+
+    // Ensure a template is selected - use first template if none selected
+    if (!selectedTemplateId && bookingTemplates.length > 0) {
+      console.log('⚠️ No template selected, setting default template:', bookingTemplates[0].name);
+      setSelectedTemplateId(bookingTemplates[0]._id);
+    }
+
     setShowLeadFormModal(true);
-    
+
     // Set the selected date to the current event date for easy rescheduling
     if (selectedEvent.start) {
       const dt = new Date(selectedEvent.start);
       setSelectedDate({ dateStr: dt.toISOString(), date: dt });
     }
+
+    console.log('📅 Reschedule modal opened - Template ID:', selectedTemplateId || bookingTemplates[0]?._id);
   };
 
   // Navigation functions for day-specific booking browsing

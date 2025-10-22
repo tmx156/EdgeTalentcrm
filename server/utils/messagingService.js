@@ -269,15 +269,19 @@ class MessagingService {
         return null;
       }
 
-      // Create message record using Supabase
+      // Create message record using Supabase with generated ID
+      const { v4: uuidv4 } = require('uuid');
+      const messageId = uuidv4();
+
       const { data: messageResult, error: messageError } = await supabase
         .from('messages')
         .insert({
+          id: messageId, // Explicitly provide ID
           lead_id: leadId,
           type: (effectiveSendEmail && effectiveSendSms) ? 'both' : (effectiveSendEmail ? 'email' : 'sms'),
           content: effectiveSendEmail ? processedTemplate.email_body : processedTemplate.sms_body,
-          status: 'sent',
-          email_status: effectiveSendEmail ? 'sent' : null,
+          status: 'pending', // Start as pending, will be updated after actual send
+          email_status: effectiveSendEmail ? 'pending' : null,
           subject: effectiveSendEmail ? processedTemplate.subject : null,
           recipient_email: effectiveSendEmail ? lead.email : null,
           recipient_phone: effectiveSendSms ? lead.phone : null,
@@ -457,16 +461,26 @@ class MessagingService {
       }
 
       // Send actual messages according to effective channels
+      // Track which services were used for notification
+      let emailResult = null;
+      let smsResult = null;
+      const emailAccount = options.emailAccount || template.email_account || 'primary';
+
       if (effectiveSendEmail) {
-        // Use email account from options or template
-        const emailAccount = options.emailAccount || template.email_account || 'primary';
-        await this.sendEmail(message, emailAccount);
+        emailResult = await this.sendEmail(message, emailAccount);
       }
       if (effectiveSendSms) {
-        await this.sendSMS(message);
+        smsResult = await this.sendSMS(message);
       }
 
-      return message;
+      // Return message with metadata about what was sent
+      return {
+        ...message,
+        emailAccount: effectiveSendEmail ? emailAccount : null,
+        emailSent: !!emailResult,
+        smsSent: !!smsResult,
+        smsProvider: 'BulkSMS'
+      };
     } catch (error) {
       console.error('Error sending booking confirmation:', error);
       throw error;

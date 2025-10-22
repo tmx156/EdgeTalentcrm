@@ -19,6 +19,51 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
 
   const [loading, setLoading] = useState(false);
   const [receiptSending, setReceiptSending] = useState(false);
+  const [receiptTemplates, setReceiptTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+
+  // Fetch active receipt templates
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        const response = await fetch('/api/templates?isActive=true', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        if (response.ok) {
+          const templates = await response.json();
+          // Filter for receipt templates
+          const receiptTemplates = templates.filter(t =>
+            t.type === 'receipt' ||
+            t.type === 'sale_receipt' ||
+            t.type === 'payment_receipt' ||
+            t.type === 'sale_notification'
+          );
+          setReceiptTemplates(receiptTemplates);
+
+          // Set first template as default if available
+          if (receiptTemplates.length > 0) {
+            const defaultTemplateId = receiptTemplates[0]._id;
+            setSelectedTemplateId(defaultTemplateId);
+            console.log('📋 Default template selected:', {
+              id: defaultTemplateId,
+              name: receiptTemplates[0].name,
+              email_account: receiptTemplates[0].email_account,
+              allTemplates: receiptTemplates.map(t => `${t.name} (${t.email_account})`)
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching templates:', error);
+      }
+    };
+
+    if (isOpen) {
+      fetchTemplates();
+    }
+  }, [isOpen]);
 
   // Update form data when existingSale changes
   useEffect(() => {
@@ -164,6 +209,21 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
     try {
       const promises = [];
 
+      // Find selected template for debugging
+      const selectedTemplate = receiptTemplates.find(t => t._id === selectedTemplateId);
+      console.log('📧 FRONTEND: Sending receipt with template:', {
+        selectedTemplateId: selectedTemplateId,
+        selectedTemplateIdType: typeof selectedTemplateId,
+        templateId: selectedTemplateId,
+        templateName: selectedTemplate?.name,
+        emailAccount: selectedTemplate?.email_account || 'primary',
+        allTemplates: receiptTemplates.map(t => ({
+          id: t._id,
+          name: t.name,
+          email_account: t.email_account
+        }))
+      });
+
       if (formData.emailReceipt) {
         promises.push(
           fetch(`/api/sales/${saleId}/send-receipt/email`, {
@@ -173,7 +233,8 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
               'Authorization': `Bearer ${localStorage.getItem('token')}`
             },
             body: JSON.stringify({
-              email: formData.customEmail || lead.email
+              email: formData.customEmail || lead.email,
+              templateId: selectedTemplateId
             })
           }).then(async response => {
             if (!response.ok) {
@@ -194,7 +255,8 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
               'Authorization': `Bearer ${localStorage.getItem('token')}`
             },
             body: JSON.stringify({
-              phone: formData.customPhone || lead.phone
+              phone: formData.customPhone || lead.phone,
+              templateId: selectedTemplateId
             })
           }).then(async response => {
             if (!response.ok) {
@@ -456,61 +518,63 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
             <p className="text-sm text-gray-500">Image upload feature will be available in the next update.</p>
           </div>
 
-          {/* Receipt Options */}
-          <div className="bg-blue-50 p-4 rounded-lg">
-            <h3 className="font-medium text-gray-900 mb-3">Send Receipt</h3>
+          {/* Receipt Options - TEMPORARILY DISABLED */}
+          <div className="bg-gray-100 p-4 rounded-lg border-2 border-gray-300 opacity-60">
+            <h3 className="font-medium text-gray-600 mb-3">Send Receipt (Temporarily Disabled)</h3>
             <div className="space-y-3">
+              {/* Template Selection */}
+              {receiptTemplates.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-500 mb-2">
+                    Receipt Template
+                  </label>
+                  <select
+                    value={selectedTemplateId}
+                    disabled={true}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-200 text-gray-500 cursor-not-allowed"
+                  >
+                    {receiptTemplates.map(template => (
+                      <option key={template._id} value={template._id}>
+                        {template.name} {template.email_account === 'secondary' ? '(Camry)' : '(Avensis)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="flex items-center">
                 <input
                   type="checkbox"
                   id="emailReceipt"
                   name="emailReceipt"
-                  checked={formData.emailReceipt}
-                  onChange={handleInputChange}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  checked={false}
+                  disabled={true}
+                  className="w-4 h-4 text-gray-400 border-gray-300 rounded cursor-not-allowed"
                 />
-                <label htmlFor="emailReceipt" className="ml-2 text-sm text-gray-700 flex items-center">
+                <label htmlFor="emailReceipt" className="ml-2 text-sm text-gray-500 flex items-center cursor-not-allowed">
                   <Mail className="w-4 h-4 mr-1" />
                   Send Email Receipt
                 </label>
               </div>
-
-              {formData.emailReceipt && (
-                <input
-                  type="email"
-                  name="customEmail"
-                  value={formData.customEmail}
-                  onChange={handleInputChange}
-                  placeholder={lead.email || "Enter email address"}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              )}
 
               <div className="flex items-center">
                 <input
                   type="checkbox"
                   id="smsReceipt"
                   name="smsReceipt"
-                  checked={formData.smsReceipt}
-                  onChange={handleInputChange}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                  checked={false}
+                  disabled={true}
+                  className="w-4 h-4 text-gray-400 border-gray-300 rounded cursor-not-allowed"
                 />
-                <label htmlFor="smsReceipt" className="ml-2 text-sm text-gray-700 flex items-center">
+                <label htmlFor="smsReceipt" className="ml-2 text-sm text-gray-500 flex items-center cursor-not-allowed">
                   <MessageSquare className="w-4 h-4 mr-1" />
                   Send SMS Receipt
                 </label>
               </div>
 
-              {formData.smsReceipt && (
-                <input
-                  type="tel"
-                  name="customPhone"
-                  value={formData.customPhone}
-                  onChange={handleInputChange}
-                  placeholder={lead.phone || "Enter phone number"}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              )}
+              <div className="mt-2 text-xs text-gray-500 italic">
+                Receipt sending is temporarily disabled for maintenance. You can send receipts manually from the Sales page.
+              </div>
             </div>
           </div>
 

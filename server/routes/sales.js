@@ -5,6 +5,7 @@ const multer = require('multer');
 const path = require('path');
 const nodemailer = require('nodemailer');
 const { sendCustomMessage } = require('../utils/smsService');
+const { sendEmail, createTransporter } = require('../utils/emailService');
 const dbManager = require('../database-connection-manager');
 
 // Import Supabase client for direct operations
@@ -624,6 +625,13 @@ router.post('/:saleId/send-receipt/email', auth, async (req, res) => {
   try {
     const { email, subject, message, templateId } = req.body;
 
+    console.log('📧 Sales receipt email request:', {
+      saleId: req.params.saleId,
+      email,
+      templateId,
+      hasTemplateId: !!templateId
+    });
+
     // Fetch sale from Supabase
     const { data: sale, error: saleError } = await supabase
       .from('sales')
@@ -636,10 +644,12 @@ router.post('/:saleId/send-receipt/email', auth, async (req, res) => {
       return res.status(404).json({ error: 'Sale not found' });
     }
 
-    let emailSubject, emailBody;
+    let emailSubject, emailBody, emailAccount;
 
     // If templateId is provided, use the template
     if (templateId) {
+      console.log(`🔍 Looking up template with ID: ${templateId}`);
+      
       const { data: template, error: templateError } = await supabase
         .from('templates')
         .select('*')
@@ -647,18 +657,33 @@ router.post('/:saleId/send-receipt/email', auth, async (req, res) => {
         .single();
 
       if (templateError || !template) {
-        console.error('Template not found:', templateError);
+        console.error('❌ Template not found:', templateError);
+        console.error('   Template ID searched:', templateId);
         return res.status(404).json({ error: 'Template not found' });
       }
 
-      if (template.type !== 'sale_notification') {
-        return res.status(400).json({ error: 'Template is not a sales notification template' });
+      console.log('✅ Template found:', {
+        id: template.id,
+        name: template.name,
+        type: template.type,
+        email_account: template.email_account
+      });
+
+      // Accept receipt templates and sale notification templates
+      const validTemplateTypes = ['receipt', 'sale_receipt', 'payment_receipt', 'sale_notification'];
+      if (!validTemplateTypes.includes(template.type)) {
+        console.error('❌ Invalid template type:', template.type);
+        return res.status(400).json({ error: 'Template must be a receipt or sale notification template' });
       }
+
+      // Get email account from template (defaults to primary if not specified)
+      emailAccount = template.email_account || 'primary';
+      console.log(`📧 Email account from template: ${emailAccount} (type: ${typeof emailAccount})`);
 
       // Process template variables
       const receiptId = sale.id.toString().slice(-6).toUpperCase();
       const formattedAmount = `£${sale.amount.toFixed(2)}`;
-      
+
       emailSubject = template.subject
         .replace('{leadName}', 'Customer')
         .replace('{companyName}', 'Modelling Studio CRM')
@@ -687,7 +712,8 @@ router.post('/:saleId/send-receipt/email', auth, async (req, res) => {
         .replace(/{currentDate}/g, new Date().toLocaleDateString())
         .replace(/{currentTime}/g, new Date().toLocaleTimeString());
     } else {
-      // Use default email content
+      // Use default email content and primary account
+      emailAccount = 'primary';
       const formattedAmount = `£${sale.amount.toFixed(2)}`;
       emailSubject = subject || 'Your Purchase Receipt - Modelling Studio CRM';
       emailBody = `
@@ -708,14 +734,37 @@ router.post('/:saleId/send-receipt/email', auth, async (req, res) => {
       `;
     }
 
+    // Determine which email account to use based on template setting
+    const accountToUse = emailAccount === 'secondary' ? 'secondary' : 'primary';
+    console.log(`📧 Email account selection:`, {
+      templateEmailAccount: emailAccount,
+      accountToUse,
+      willUseCamry: accountToUse === 'secondary',
+      willUseAvensis: accountToUse === 'primary'
+    });
+
+    // Use the emailService which handles multiple accounts correctly
+    const transporter = createTransporter(accountToUse);
+
+    if (!transporter) {
+      console.error(`❌ Failed to create transporter for ${accountToUse} account`);
+      return res.status(500).json({ error: `Email account ${accountToUse} not configured` });
+    }
+
     const mailOptions = {
-      from: process.env.EMAIL_USER,
       to: email || '',
       subject: emailSubject,
       html: emailBody
     };
 
+    console.log(`📤 Sending receipt email:`, {
+      to: email,
+      from: accountToUse === 'secondary' ? 'CAMRY (secondary)' : 'AVENSIS (primary)',
+      subject: emailSubject?.substring(0, 50) + '...'
+    });
+
     await transporter.sendMail(mailOptions);
+    console.log(`✅ Receipt sent successfully from ${accountToUse.toUpperCase()} account to ${email}`);
 
     res.json({ success: true, message: 'Receipt sent successfully' });
   } catch (error) {
@@ -756,8 +805,10 @@ router.post('/:saleId/send-receipt/sms', auth, async (req, res) => {
         return res.status(404).json({ error: 'Template not found' });
       }
 
-      if (template.type !== 'sale_notification') {
-        return res.status(400).json({ error: 'Template is not a sales notification template' });
+      // Accept receipt templates and sale notification templates
+      const validTemplateTypes = ['receipt', 'sale_receipt', 'payment_receipt', 'sale_notification'];
+      if (!validTemplateTypes.includes(template.type)) {
+        return res.status(400).json({ error: 'Template must be a receipt or sale notification template' });
       }
 
       // Process template variables

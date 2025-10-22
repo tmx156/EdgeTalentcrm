@@ -241,7 +241,7 @@ const BookersTemplates = () => {
             </div>
           ) : (
             templates.map((template) => (
-              <div key={template.id} className="bg-white rounded-lg shadow p-6 flex flex-col gap-4">
+              <div key={template._id} className="bg-white rounded-lg shadow p-6 flex flex-col gap-4">
                 <div className="flex items-center gap-2 mb-2">
                   {template.sendEmail && <FiMail className="text-blue-500" title="Email" />}
                   {template.sendSMS && <FiPhone className="text-green-500" title="SMS" />}
@@ -251,7 +251,7 @@ const BookersTemplates = () => {
                 <div className="flex gap-2 mt-auto">
                   <button onClick={() => handlePreview(template)} className="p-2 hover:bg-gray-100 rounded" title="Preview"><FiEye /></button>
                   <button onClick={() => handleEdit(template)} className="p-2 hover:bg-gray-100 rounded" title="Edit"><FiEdit /></button>
-                  <button onClick={() => handleDelete(template.id)} className="p-2 hover:bg-gray-100 rounded text-red-600" title="Delete"><FiTrash2 /></button>
+                  <button onClick={() => handleDelete(template._id)} className="p-2 hover:bg-gray-100 rounded text-red-600" title="Delete"><FiTrash2 /></button>
                 </div>
               </div>
             ))

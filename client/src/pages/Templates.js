@@ -41,9 +41,10 @@ const Templates = () => {
       'Diary Templates': ['booking_confirmation', 'appointment_reminder', 'no_show', 'reschedule', 'cancellation'],
       'Retargeting Templates': ['retargeting_gentle', 'retargeting_urgent', 'retargeting_final', 'retargeting'],
       'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance'],
+      'Receipts': ['receipt', 'sale_receipt', 'payment_receipt'],
       'Lead Details Templates': ['custom', 'booker']
     };
-    const grouped = { 'Diary Templates': [], 'Retargeting Templates': [], 'Sale Templates': [], 'Lead Details Templates': [] };
+    const grouped = { 'Diary Templates': [], 'Retargeting Templates': [], 'Sale Templates': [], 'Receipts': [], 'Lead Details Templates': [] };
     templates.forEach(t => {
       let found = false;
       for (const [cat, types] of Object.entries(categories)) {
@@ -486,8 +487,8 @@ const Templates = () => {
                                 style={{ minWidth: 0 }}
                               >
                                 <option key="select-lead-placeholder" value="">Select lead to test...</option>
-                                {(leads || []).map((lead) => (
-                                  <option key={`lead-${lead._id}`} value={lead._id}>
+                                {(leads || []).map((lead, index) => (
+                                  <option key={`lead-${lead.id || index}`} value={lead.id}>
                                     {lead.name} ({lead.email})
                                   </option>
                                 ))}
@@ -588,6 +589,9 @@ const Templates = () => {
                             <option key="sale_followup_paid" value="sale_followup_paid">✅ Paid in Full - Follow-up</option>
                             <option key="sale_finance_agreement" value="sale_finance_agreement">📋 Finance Agreement - Welcome</option>
                             <option key="sale_followup_finance" value="sale_followup_finance">💳 Finance Agreement - Follow-up</option>
+                            <option key="receipt" value="receipt">🧾 Receipt</option>
+                            <option key="sale_receipt" value="sale_receipt">🧾 Sale Receipt</option>
+                            <option key="payment_receipt" value="payment_receipt">🧾 Payment Receipt</option>
                           </select>
                         </div>
 

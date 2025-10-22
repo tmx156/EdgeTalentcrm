@@ -23,6 +23,21 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const router = express.Router();
 
+// Helper function to wrap promises with timeout
+const withTimeout = (promise, timeoutMs, operationName = 'Operation') => {
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => {
+      reject(new Error(`${operationName} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).catch((error) => {
+    console.error(`❌ ${operationName} error:`, error.message);
+    // Return null on error so booking still succeeds
+    return null;
+  });
+};
+
 // TIMEZONE FIX: Helper function to preserve local time when saving to database
 const preserveLocalTime = (dateString) => {
   if (!dateString) return null;
@@ -529,8 +544,8 @@ router.get('/calendar', auth, async (req, res) => {
     // PERFORMANCE: Get pagination and date range from query params
     const { start, end, page = 1, limit = 200, offset = 0 } = req.query;
 
-    // Validate and cap limit to prevent performance issues - increased for diary-style loading
-    const validatedLimit = Math.min(parseInt(limit) || 1000, 2000);
+    // Validate and cap limit to prevent performance issues - INCREASED to 600 since message fetching disabled
+    const validatedLimit = Math.min(parseInt(limit) || 600, 600);
     const pageInt = Math.max(parseInt(page) || 1, 1);
     const offsetInt = parseInt(offset) || ((pageInt - 1) * validatedLimit);
     
@@ -543,13 +558,13 @@ router.get('/calendar', auth, async (req, res) => {
     // Get paginated booked leads using Supabase with date filtering for performance
     let leads, error, totalCount;
     
-    // PERFORMANCE: Optimize the query structure
+    // PERFORMANCE: Optimize the query structure - REMOVED heavy fields
     let query = supabase
       .from('leads')
       .select(`
-        id, name, phone, email, age, status, date_booked, booker_id,
-        is_confirmed, booking_status, booking_history, has_sale,
-        created_at, updated_at, postcode, notes, image_url
+        id, name, phone, email, status, date_booked, booker_id,
+        is_confirmed, booking_status, has_sale,
+        created_at, postcode, notes, image_url
       `)
       .or('date_booked.not.is.null,status.eq.Booked')
       .is('deleted_at', null) // Ensure we don't fetch deleted leads
@@ -668,8 +683,9 @@ router.get('/calendar', auth, async (req, res) => {
       }
     }
 
+    // PERFORMANCE: Skip message fetching to prevent timeouts - messages can be loaded on-demand
     // Fetch messages from messages table and merge with booking_history
-    if (leads && leads.length > 0) {
+    if (false && leads && leads.length > 0) { // DISABLED to prevent timeouts
       try {
         console.log(`📨 Calendar API: Fetching messages for ${leads.length} leads...`);
         console.log(`📨 Calendar API: Lead IDs: ${leads.map(l => l.id).join(', ')}`);
@@ -1175,10 +1191,13 @@ router.post('/', auth, async (req, res) => {
           eq: { id: _id }
         });
         
-        // Send booking confirmation if requested
-        try {
-          if (updateData.date_booked && (bodyWithoutId.sendEmail || bodyWithoutId.sendSms)) {
-            await MessagingService.sendBookingConfirmation(
+        // Send booking confirmation if requested (NON-BLOCKING)
+        if (updateData.date_booked && (bodyWithoutId.sendEmail || bodyWithoutId.sendSms)) {
+          console.log(`📧 Triggering non-blocking booking confirmation for lead ${_id}`);
+
+          // Fire and forget - don't wait for completion
+          withTimeout(
+            MessagingService.sendBookingConfirmation(
               _id,
               req.user.id,
               updateData.date_booked,
@@ -1187,11 +1206,32 @@ router.post('/', auth, async (req, res) => {
                 sendSms: bodyWithoutId.sendSms || false,
                 templateId: bodyWithoutId.templateId || null
               }
-            );
-            console.log(`📧 Booking confirmation triggered for lead ${_id}`);
+            ),
+            30000,
+            'Booking confirmation'
+          ).then((result) => {
+            console.log(`✅ Booking confirmation sent successfully for lead ${_id}`);
 
-            // Add to booking history
-            await addBookingHistoryEntry(
+            // Send WebSocket notification to user
+            if (global.io) {
+              global.io.emit('message_sent', {
+                leadId: _id,
+                type: 'booking_confirmation',
+                status: 'success',
+                channels: {
+                  email: result?.emailSent,
+                  sms: result?.smsSent
+                },
+                emailAccount: result?.emailAccount,
+                emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+                smsProvider: result?.smsProvider || 'BulkSMS',
+                message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
+                timestamp: new Date()
+              });
+            }
+
+            // Try to add booking history (also non-blocking)
+            addBookingHistoryEntry(
               _id,
               'BOOKING_CONFIRMATION_SENT',
               req.user.id,
@@ -1206,10 +1246,24 @@ router.post('/', auth, async (req, res) => {
                 timestamp: new Date()
               },
               createLeadSnapshot(updated[0])
-            );
-          }
-        } catch (e) {
-          console.error('❌ Failed to send booking confirmation:', e);
+            ).catch(e => {
+              console.error('⚠️ Booking history entry failed (non-critical):', e.message);
+            });
+          }).catch((error) => {
+            console.error(`❌ Booking confirmation failed for lead ${_id}:`, error.message);
+
+            // Send failure notification
+            if (global.io) {
+              global.io.emit('message_sent', {
+                leadId: _id,
+                type: 'booking_confirmation',
+                status: 'failed',
+                error: error.message,
+                message: `Failed to send booking confirmation: ${error.message}`,
+                timestamp: new Date()
+              });
+            }
+          });
         }
         
         // Emit real-time update
@@ -1308,20 +1362,43 @@ router.post('/', auth, async (req, res) => {
           });
           const updatedLead = updatedLeads[0];
 
-          // Immediately trigger booking confirmation on duplicate-update path as well,
-          // because some clients may not issue the subsequent PUT we rely on.
-          try {
-            if (finalBody.date_booked && (sendEmail || sendSms)) {
-              await MessagingService.sendBookingConfirmation(
+          // Immediately trigger booking confirmation on duplicate-update path as well (NON-BLOCKING)
+          if (finalBody.date_booked && (sendEmail || sendSms)) {
+            console.log(`📧 Triggering non-blocking booking confirmation (duplicate-update path) for lead ${existingLead.id}`);
+
+            // Fire and forget - don't wait for completion
+            withTimeout(
+              MessagingService.sendBookingConfirmation(
                 existingLead.id,
                 req.user.id,
                 finalBody.date_booked,
-                { sendEmail: sendEmail || false, sendSms: sendSms || false }
-              );
-              console.log(`📧 Booking confirmation triggered (duplicate-update path) for lead ${existingLead.id}`);
+                { sendEmail: sendEmail || false, sendSms: sendSms || false, templateId: finalBody.templateId || null }
+              ),
+              30000,
+              'Booking confirmation (duplicate path)'
+            ).then((result) => {
+              console.log(`✅ Booking confirmation sent (duplicate-update path) for lead ${existingLead.id}`);
 
-              // Add to booking history
-              await addBookingHistoryEntry(
+              // Send WebSocket notification
+              if (global.io) {
+                global.io.emit('message_sent', {
+                  leadId: existingLead.id,
+                  type: 'booking_confirmation',
+                  status: 'success',
+                  channels: {
+                    email: result?.emailSent,
+                    sms: result?.smsSent
+                  },
+                  emailAccount: result?.emailAccount,
+                  emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+                  smsProvider: result?.smsProvider || 'BulkSMS',
+                  message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
+                  timestamp: new Date()
+                });
+              }
+
+              // Try to add booking history (non-blocking)
+              addBookingHistoryEntry(
                 existingLead.id,
                 'BOOKING_CONFIRMATION_SENT',
                 req.user.id,
@@ -1332,13 +1409,28 @@ router.post('/', auth, async (req, res) => {
                     email: sendEmail || false,
                     sms: sendSms || false
                   },
+                  templateId: finalBody.templateId || null,
                   timestamp: new Date()
                 },
                 createLeadSnapshot(updatedLead)
-              );
-            }
-          } catch (e) {
-            console.error('❌ Failed to send booking confirmation (duplicate-update path):', e);
+              ).catch(e => {
+                console.error('⚠️ Booking history entry failed (non-critical):', e.message);
+              });
+            }).catch((error) => {
+              console.error(`❌ Booking confirmation failed (duplicate-update path) for lead ${existingLead.id}:`, error.message);
+
+              // Send failure notification
+              if (global.io) {
+                global.io.emit('message_sent', {
+                  leadId: existingLead.id,
+                  type: 'booking_confirmation',
+                  status: 'failed',
+                  error: error.message,
+                  message: `Failed to send booking confirmation: ${error.message}`,
+                  timestamp: new Date()
+                });
+              }
+            });
           }
 
           // Enhanced real-time update emission
@@ -1515,25 +1607,50 @@ router.post('/', auth, async (req, res) => {
       }
     }
 
-    // Trigger booking confirmation (email/SMS) for newly created booked leads
-    try {
-      if (leadData.status === 'Booked' && leadData.date_booked) {
-        const { sendEmail, sendSms } = filteredBody || {};
-        if (sendEmail || sendSms) {
-          await MessagingService.sendBookingConfirmation(
+    // Trigger booking confirmation (email/SMS) for newly created booked leads (NON-BLOCKING)
+    if (leadData.status === 'Booked' && leadData.date_booked) {
+      const { sendEmail, sendSms, templateId } = filteredBody || {};
+      if (sendEmail || sendSms) {
+        console.log(`📧 Triggering non-blocking booking confirmation for new lead ${lead.id}`);
+
+        // Fire and forget - don't wait for completion
+        withTimeout(
+          MessagingService.sendBookingConfirmation(
             lead.id,
             leadData.booker,
             leadData.date_booked,
-            { sendEmail, sendSms }
-          );
-          console.log(`📧 Booking confirmation triggered for new lead ${lead.id}`);
+            { sendEmail, sendSms, templateId: templateId || null }
+          ),
+          30000,
+          'Booking confirmation (new lead)'
+        ).then(async (result) => {
+          console.log(`✅ Booking confirmation sent for new lead ${lead.id}`);
 
-          // Add to booking history
+          // Send WebSocket notification
+          if (global.io) {
+            global.io.emit('message_sent', {
+              leadId: lead.id,
+              type: 'booking_confirmation',
+              status: 'success',
+              channels: {
+                email: result?.emailSent,
+                sms: result?.smsSent
+              },
+              emailAccount: result?.emailAccount,
+              emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+              smsProvider: result?.smsProvider || 'BulkSMS',
+              message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
+              timestamp: new Date()
+            });
+          }
+
+          // Try to add booking history (non-blocking)
           const bookerUser = await dbManager.query('users', {
             select: 'name',
             eq: { id: leadData.booker }
-          });
-          await addBookingHistoryEntry(
+          }).catch(() => []);
+
+          addBookingHistoryEntry(
             lead.id,
             'BOOKING_CONFIRMATION_SENT',
             leadData.booker,
@@ -1544,14 +1661,29 @@ router.post('/', auth, async (req, res) => {
                 email: sendEmail || false,
                 sms: sendSms || false
               },
+              templateId: templateId || null,
               timestamp: new Date()
             },
             createLeadSnapshot(lead)
-          );
-        }
+          ).catch(e => {
+            console.error('⚠️ Booking history entry failed (non-critical):', e.message);
+          });
+        }).catch((error) => {
+          console.error(`❌ Booking confirmation failed for new lead ${lead.id}:`, error.message);
+
+          // Send failure notification
+          if (global.io) {
+            global.io.emit('message_sent', {
+              leadId: lead.id,
+              type: 'booking_confirmation',
+              status: 'failed',
+              error: error.message,
+              message: `Failed to send booking confirmation: ${error.message}`,
+              timestamp: new Date()
+            });
+          }
+        });
       }
-    } catch (msgErr) {
-      console.error('❌ Failed to send booking confirmation for new lead:', msgErr);
     }
 
     // Enhanced real-time update for lead creation
@@ -1863,21 +1995,45 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
         createLeadSnapshot(updatedLead)
       );
 
-      // Trigger booking confirmation (email + optional SMS per template)
-      try {
-        if (req.body.date_booked) {
-          const { sendEmail, sendSms } = req.body;
-          if (sendEmail || sendSms) {
-            await MessagingService.sendBookingConfirmation(
+      // Trigger booking confirmation (email + optional SMS per template) (NON-BLOCKING)
+      if (req.body.date_booked) {
+        const { sendEmail, sendSms, templateId } = req.body;
+        if (sendEmail || sendSms) {
+          console.log(`📧 Triggering non-blocking booking confirmation (initial booking) for lead ${req.params.id}`);
+
+          // Fire and forget - don't wait for completion
+          withTimeout(
+            MessagingService.sendBookingConfirmation(
               req.params.id,
               currentUser.id,
               req.body.date_booked,
-              { sendEmail, sendSms }
-            );
-            console.log(`📧 Booking confirmation triggered for lead ${req.params.id}`);
+              { sendEmail, sendSms, templateId: templateId || null }
+            ),
+            30000,
+            'Booking confirmation (initial booking)'
+          ).then((result) => {
+            console.log(`✅ Booking confirmation sent (initial booking) for lead ${req.params.id}`);
 
-            // Add to booking history
-            await addBookingHistoryEntry(
+            // Send WebSocket notification
+            if (global.io) {
+              global.io.emit('message_sent', {
+                leadId: req.params.id,
+                type: 'booking_confirmation',
+                status: 'success',
+                channels: {
+                  email: result?.emailSent,
+                  sms: result?.smsSent
+                },
+                emailAccount: result?.emailAccount,
+                emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+                smsProvider: result?.smsProvider || 'BulkSMS',
+                message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
+                timestamp: new Date()
+              });
+            }
+
+            // Try to add booking history (non-blocking)
+            addBookingHistoryEntry(
               req.params.id,
               'BOOKING_CONFIRMATION_SENT',
               currentUser.id,
@@ -1888,14 +2044,29 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
                   email: sendEmail || false,
                   sms: sendSms || false
                 },
+                templateId: templateId || null,
                 timestamp: new Date()
               },
               createLeadSnapshot(updatedLead)
-            );
-          }
+            ).catch(e => {
+              console.error('⚠️ Booking history entry failed (non-critical):', e.message);
+            });
+          }).catch((error) => {
+            console.error(`❌ Booking confirmation failed (initial booking) for lead ${req.params.id}:`, error.message);
+
+            // Send failure notification
+            if (global.io) {
+              global.io.emit('message_sent', {
+                leadId: req.params.id,
+                type: 'booking_confirmation',
+                status: 'failed',
+                error: error.message,
+                message: `Failed to send booking confirmation: ${error.message}`,
+                timestamp: new Date()
+              });
+            }
+          });
         }
-      } catch (msgErr) {
-        console.error('❌ Failed to send booking confirmation notification:', msgErr);
       }
     } else if (isReschedule || isDateChange) {
       console.log(`📅 Adding RESCHEDULE for lead ${lead.name} (oldDate: ${oldDateBooked}, newDate: ${req.body.date_booked})`);
@@ -1917,21 +2088,45 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
         createLeadSnapshot(updatedLead)
       );
 
-      // Also send updated booking confirmation on reschedule
-      try {
-        if (req.body.date_booked) {
-          const { sendEmail, sendSms } = req.body;
-          if (sendEmail || sendSms) {
-            await MessagingService.sendBookingConfirmation(
+      // Also send updated booking confirmation on reschedule (NON-BLOCKING)
+      if (req.body.date_booked) {
+        const { sendEmail, sendSms, templateId } = req.body;
+        if (sendEmail || sendSms) {
+          console.log(`📧 Triggering non-blocking reschedule confirmation for lead ${req.params.id}`);
+
+          // Fire and forget - don't wait for completion
+          withTimeout(
+            MessagingService.sendBookingConfirmation(
               req.params.id,
               currentUser.id,
               req.body.date_booked,
-              { sendEmail, sendSms }
-            );
-            console.log(`📧 Reschedule confirmation sent for lead ${req.params.id}`);
+              { sendEmail, sendSms, templateId: templateId || null }
+            ),
+            30000,
+            'Booking confirmation (reschedule)'
+          ).then((result) => {
+            console.log(`✅ Reschedule confirmation sent for lead ${req.params.id}`);
 
-            // Add to booking history
-            await addBookingHistoryEntry(
+            // Send WebSocket notification
+            if (global.io) {
+              global.io.emit('message_sent', {
+                leadId: req.params.id,
+                type: 'booking_confirmation',
+                status: 'success',
+                channels: {
+                  email: result?.emailSent,
+                  sms: result?.smsSent
+                },
+                emailAccount: result?.emailAccount,
+                emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+                smsProvider: result?.smsProvider || 'BulkSMS',
+                message: `Reschedule confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
+                timestamp: new Date()
+              });
+            }
+
+            // Try to add booking history (non-blocking)
+            addBookingHistoryEntry(
               req.params.id,
               'BOOKING_CONFIRMATION_SENT',
               currentUser.id,
@@ -1942,15 +2137,30 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
                   email: sendEmail || false,
                   sms: sendSms || false
                 },
+                templateId: templateId || null,
                 isReschedule: true,
                 timestamp: new Date()
               },
               createLeadSnapshot(updatedLead)
-            );
-          }
+            ).catch(e => {
+              console.error('⚠️ Booking history entry failed (non-critical):', e.message);
+            });
+          }).catch((error) => {
+            console.error(`❌ Reschedule confirmation failed for lead ${req.params.id}:`, error.message);
+
+            // Send failure notification
+            if (global.io) {
+              global.io.emit('message_sent', {
+                leadId: req.params.id,
+                type: 'booking_confirmation',
+                status: 'failed',
+                error: error.message,
+                message: `Failed to send reschedule confirmation: ${error.message}`,
+                timestamp: new Date()
+              });
+            }
+          });
         }
-      } catch (msgErr) {
-        console.error('❌ Failed to send reschedule confirmation notification:', msgErr);
       }
     } else if (isCancellation) {
       console.log(`📅 Adding CANCELLATION for lead ${lead.name} - moving to Cancelled`);
@@ -2821,27 +3031,31 @@ router.get('/calendar-public', async (req, res) => {
   try {
     console.log(`📅 Public Calendar API: Fetching events`);
 
-    const { start, end, limit = 200 } = req.query;
-    const validatedLimit = Math.min(parseInt(limit) || 200, 500);
+    const { start, end, limit = 600 } = req.query;
+    const validatedLimit = Math.min(parseInt(limit) || 600, 600); // INCREASED to 600 for better calendar coverage
 
     console.log(`📅 Date range filter - Start: ${start || 'none'}, End: ${end || 'none'}, Limit: ${validatedLimit}`);
+
+    // REQUIRE date range to prevent full table scan
+    if (!start || !end) {
+      return res.status(400).json({
+        message: 'Date range required',
+        error: 'start and end parameters are required for public calendar queries'
+      });
+    }
 
     let query = supabase
       .from('leads')
       .select(`
         id, name, phone, email, status, date_booked, booker_id,
-        is_confirmed, booking_status, booking_history, has_sale,
-        created_at, updated_at, postcode, notes, image_url
+        is_confirmed, booking_status, has_sale,
+        created_at, postcode, notes, image_url
       `)
       .or('date_booked.not.is.null,status.eq.Booked')
       .is('deleted_at', null)
-      .not('status', 'in', '(Cancelled,Rejected)'); // ✅ Exclude cancelled/rejected from calendar
-
-    if (start && end) {
-      query = query
-        .gte('date_booked', start)
-        .lte('date_booked', end);
-    }
+      .not('status', 'in', '(Cancelled,Rejected)') // ✅ Exclude cancelled/rejected from calendar
+      .gte('date_booked', start)
+      .lte('date_booked', end);
 
     const { data: leads, error } = await query
       .order('date_booked', { ascending: true })
@@ -4655,47 +4869,50 @@ router.patch('/:id/quick-status', auth, async (req, res) => {
 // @access  Public (temporary)
 router.get('/public', async (req, res) => {
   try {
-    const { date_booked_start, date_booked_end, limit } = req.query;
+    const { date_booked_start, date_booked_end, limit, booked_at_start, booked_at_end, created_at_start, created_at_end, updated_at_start, updated_at_end, assigned_at_start, assigned_at_end } = req.query;
 
     console.log('📊 PUBLIC LEADS API: Dashboard requesting lead details');
-    console.log(`📅 Date range: ${date_booked_start} to ${date_booked_end}`);
 
-    let queryOptions = {
-      select: '*'
-    };
+    // Use Supabase directly for proper filtering
+    let query = supabase.from('leads').select('*');
 
-    // Apply date filters - support multiple date fields
-    if (date_booked_start && date_booked_end) {
-      queryOptions.gte = { date_booked: date_booked_start };
-      queryOptions.lte = { date_booked: date_booked_end };
-    }
-
-    // ✅ DAILY ACTIVITY FIX: Support booked_at filtering (when leads were booked)
-    const { created_at_start, created_at_end, updated_at_start, updated_at_end, booked_at_start, booked_at_end } = req.query;
-    
+    // ✅ DAILY ACTIVITY FIX: Priority order - booked_at > assigned_at > created_at > updated_at > date_booked
     if (booked_at_start && booked_at_end) {
-      queryOptions.gte = { booked_at: booked_at_start };
-      queryOptions.lte = { booked_at: booked_at_end };
-      console.log(`📅 Public leads filtering by booked date (NEW METHOD): ${booked_at_start} to ${booked_at_end}`);
+      query = query.gte('booked_at', booked_at_start).lte('booked_at', booked_at_end);
+      console.log(`📅 Public leads filtering by booked_at: ${booked_at_start} to ${booked_at_end}`);
+    } else if (assigned_at_start && assigned_at_end) {
+      query = query.gte('assigned_at', assigned_at_start).lte('assigned_at', assigned_at_end);
+      console.log(`📅 Public leads filtering by assigned_at: ${assigned_at_start} to ${assigned_at_end}`);
     } else if (created_at_start && created_at_end) {
-      queryOptions.gte = { created_at: created_at_start };
-      queryOptions.lte = { created_at: created_at_end };
-      console.log(`📅 Public leads filtering by creation date: ${created_at_start} to ${created_at_end}`);
+      query = query.gte('created_at', created_at_start).lte('created_at', created_at_end);
+      console.log(`📅 Public leads filtering by created_at: ${created_at_start} to ${created_at_end}`);
     } else if (updated_at_start && updated_at_end) {
-      queryOptions.gte = { updated_at: updated_at_start };
-      queryOptions.lte = { updated_at: updated_at_end };
-      console.log(`📅 Public leads filtering by updated date: ${updated_at_start} to ${updated_at_end}`);
+      query = query.gte('updated_at', updated_at_start).lte('updated_at', updated_at_end);
+      console.log(`📅 Public leads filtering by updated_at: ${updated_at_start} to ${updated_at_end}`);
+    } else if (date_booked_start && date_booked_end) {
+      query = query.gte('date_booked', date_booked_start).lte('date_booked', date_booked_end);
+      console.log(`📅 Public leads filtering by date_booked: ${date_booked_start} to ${date_booked_end}`);
     }
+
+    // Exclude ghost bookings
+    query = query.neq('postcode', 'ZZGHOST');
 
     // Apply limit
     if (limit) {
-      queryOptions.limit = parseInt(limit);
+      query = query.limit(parseInt(limit));
+    } else {
+      query = query.limit(1000); // Default limit
     }
 
-    const leads = await dbManager.query('leads', queryOptions);
+    const { data: leads, error } = await query;
 
-    console.log(`📊 PUBLIC LEADS RESULT: Found ${leads.length} leads`);
-    res.json({ leads });
+    if (error) {
+      console.error('❌ Supabase query error:', error);
+      throw error;
+    }
+
+    console.log(`📊 PUBLIC LEADS RESULT: Found ${leads?.length || 0} leads`);
+    res.json({ leads: leads || [] });
 
   } catch (error) {
     console.error('❌ Public leads error:', error);

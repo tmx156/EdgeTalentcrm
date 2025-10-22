@@ -1,0 +1,505 @@
+{
+  "summary": {
+    "total": 38,
+    "found": 38,
+    "notFound": 0,
+    "searchDate": "2025-10-22T00:14:59.583Z"
+  },
+  "foundLeads": [
+    {
+      "csvName": "NIKI DEE",
+      "csvEmail": "nikidee.7@btinternet.com",
+      "csvPhone": "7849434989",
+      "foundLead": {
+        "id": "722a7c4d-4c79-4533-9d5a-ce14acb2ea21",
+        "name": "NIKI DEE",
+        "email": "nikidee.7@btinternet.com",
+        "phone": "7849434989",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Jacqueline Rowen",
+      "csvEmail": "jacrowen@icloud.com",
+      "csvPhone": "7342773574",
+      "foundLead": {
+        "id": "72fe824d-0522-4d05-bd20-8d237223098d",
+        "name": "Jacqueline Rowen",
+        "email": "jacrowen@icloud.com",
+        "phone": "7342773574",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Talia pearl lesser",
+      "csvEmail": "taliaplesser@gmail.com",
+      "csvPhone": "7568312934",
+      "foundLead": {
+        "id": "1a96e2b6-71a4-4729-8a48-4c7a510e5c43",
+        "name": "Talia pearl lesser",
+        "email": "taliaplesser@gmail.com",
+        "phone": "7568312934",
+        "status": "Booked",
+        "dateBooked": "2025-10-26T15:00:00"
+      }
+    },
+    {
+      "csvName": "Renata",
+      "csvEmail": "renata_muncey@yahoo.co.uk",
+      "csvPhone": "7427953662",
+      "foundLead": {
+        "id": "0aaec48f-4222-4e38-a41b-a52b6864a32f",
+        "name": "Renata",
+        "email": "renata_muncey@yahoo.co.uk",
+        "phone": "7427953662",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Louise OReilly",
+      "csvEmail": "louiseucmak@gmail.com",
+      "csvPhone": "7741569690",
+      "foundLead": {
+        "id": "9f68968a-8e14-4a54-9c20-7789839cc0f9",
+        "name": "Louise OReilly",
+        "email": "louiseucmak@gmail.com",
+        "phone": "7741569690",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Helen McMullan",
+      "csvEmail": "helenmc@hotmail.com",
+      "csvPhone": "7414248490",
+      "foundLead": {
+        "id": "2033bd10-ca55-4a77-a5a2-adfee3602e9a",
+        "name": "Helen McMullan",
+        "email": "helenmc@hotmail.com",
+        "phone": "7414248490",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Katrina Bradley",
+      "csvEmail": "katrinajane71@hotmail.com",
+      "csvPhone": "07395 230463",
+      "foundLead": {
+        "id": "10987f30-84b6-4117-ae85-9395e27baed5",
+        "name": "Katrina Bradley",
+        "email": "katrinajane71@hotmail.com",
+        "phone": "07395 230463",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Amanda Balmbra",
+      "csvEmail": "abalmbra10@gmail.com",
+      "csvPhone": "7771631098",
+      "foundLead": {
+        "id": "57be0b6f-1941-4830-9406-2e783fa2ccee",
+        "name": "Amanda Balmbra",
+        "email": "abalmbra10@gmail.com",
+        "phone": "7771631098",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Chrissie Douglass",
+      "csvEmail": "dustieb45@hotmail.com",
+      "csvPhone": "7887602017",
+      "foundLead": {
+        "id": "3329a3e3-b841-4719-9c2c-bae7007e85b0",
+        "name": "Chrissie Douglass",
+        "email": "dustieb45@hotmail.com",
+        "phone": "7887602017",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Marwa",
+      "csvEmail": "ner0_m@hotmail.com",
+      "csvPhone": "440734224667",
+      "foundLead": {
+        "id": "5489b437-c4d5-485d-b8dc-34b11fa6ed35",
+        "name": "Marwa",
+        "email": "ner0_m@hotmail.com",
+        "phone": "440734224667",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Gillian",
+      "csvEmail": "jill.tinsley62@gmail.com",
+      "csvPhone": "7955507106",
+      "foundLead": {
+        "id": "aba56db3-f737-4460-8ef9-11366eb4f516",
+        "name": "Gillian",
+        "email": "jill.tinsley62@gmail.com",
+        "phone": "7955507106",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Jane holland",
+      "csvEmail": "jane.holland71@gmail.com",
+      "csvPhone": "7907105548",
+      "foundLead": {
+        "id": "bb134971-793a-4056-9825-593ae9800c8f",
+        "name": "Jane holland",
+        "email": "jane.holland71@gmail.com",
+        "phone": "7907105548",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Lorna fox",
+      "csvEmail": "foxylorna@live.co.uk",
+      "csvPhone": "7900998541",
+      "foundLead": {
+        "id": "a0e45e45-ade2-4b05-a8c5-016772eb7396",
+        "name": "Lorna fox",
+        "email": "foxylorna@live.co.uk",
+        "phone": "7900998541",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Kris burton",
+      "csvEmail": "chrisburton261@gmail.com",
+      "csvPhone": "7510816616",
+      "foundLead": {
+        "id": "20b93150-f3e3-4cba-8237-2cd849fdd4b6",
+        "name": "Kris burton",
+        "email": "chrisburton261@gmail.com",
+        "phone": "7510816616",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Heather Smyth",
+      "csvEmail": "heathersmyth@gmail.com",
+      "csvPhone": "7835834523",
+      "foundLead": {
+        "id": "bec17505-1bda-4dc5-8077-f7aee3130d34",
+        "name": "Heather Smyth",
+        "email": "heathersmyth@gmail.com",
+        "phone": "7835834523",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Natasha Peters",
+      "csvEmail": "petenatas@yahoo.com",
+      "csvPhone": "7597640183",
+      "foundLead": {
+        "id": "7d57cebc-a2f9-41ea-8942-3e49079769b5",
+        "name": "Natasha Peters",
+        "email": "petenatas@yahoo.com",
+        "phone": "7597640183",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "David Stewart",
+      "csvEmail": "solutionsinprint@gmail.com",
+      "csvPhone": "7710527063",
+      "foundLead": {
+        "id": "804bdb21-591f-4bfa-9367-ab152833d0b7",
+        "name": "David Stewart",
+        "email": "solutionsinprint@gmail.com",
+        "phone": "7710527063",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Lily-Mae",
+      "csvEmail": "jomeg30@hotmail.co.uk",
+      "csvPhone": "7597379301",
+      "foundLead": {
+        "id": "e04be5a4-1135-4dab-b578-07dce0cfa4ac",
+        "name": "Lily-Mae",
+        "email": "jomeg30@hotmail.co.uk",
+        "phone": "7597379301",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Harry David Jackson",
+      "csvEmail": "sjllewellyn@hotmail.co.uk",
+      "csvPhone": "7970450737",
+      "foundLead": {
+        "id": "bc8b650b-8021-436b-865d-726f2e7a35cc",
+        "name": "Harry David Jackson",
+        "email": "sjllewellyn@hotmail.co.uk",
+        "phone": "7970450737",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Felicia Brookes",
+      "csvEmail": "felbrookes@hotmail.co.uk",
+      "csvPhone": "7952947211",
+      "foundLead": {
+        "id": "495f1832-cfdb-4974-85d4-0b9ba4b36561",
+        "name": "Felicia Brookes",
+        "email": "felbrookes@hotmail.co.uk",
+        "phone": "7952947211",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Kellie Baxter",
+      "csvEmail": "kbaxter94@hotmail.com",
+      "csvPhone": "447599070865",
+      "foundLead": {
+        "id": "371755c7-2413-4221-bc0c-05be65317f6c",
+        "name": "Kellie Baxter",
+        "email": "kbaxter94@hotmail.com",
+        "phone": "447599070865",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Sharon bradbury",
+      "csvEmail": "shareenuk1@hotmail.co.uk",
+      "csvPhone": "7585046537",
+      "foundLead": {
+        "id": "36767432-6439-4bbd-b71d-9d06609e6aee",
+        "name": "Sharon bradbury",
+        "email": "shareenuk1@hotmail.co.uk",
+        "phone": "7585046537",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Annette Jackson",
+      "csvEmail": "Annetteaj1968@yahoo.com",
+      "csvPhone": "7888034255",
+      "foundLead": {
+        "id": "938ccd21-492a-4ca5-8cb5-b3be4b628dac",
+        "name": "Annette Jackson",
+        "email": "Annetteaj1968@yahoo.com",
+        "phone": "7888034255",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Ainsley Kerr",
+      "csvEmail": "ainsleyk_2004@hotmail.com",
+      "csvPhone": "7749094001",
+      "foundLead": {
+        "id": "06e12056-f643-4f43-9388-0c068f9bb7b6",
+        "name": "Ainsley Kerr",
+        "email": "ainsleyk_2004@hotmail.com",
+        "phone": "7749094001",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Carol Butler",
+      "csvEmail": "freckle7196@gmail.com",
+      "csvPhone": "7707251164",
+      "foundLead": {
+        "id": "6ce4efc7-ff78-4f06-b5a6-70b9bcc53dc1",
+        "name": "Carol Butler",
+        "email": "freckle7196@gmail.com",
+        "phone": "7707251164",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Tracey Doyle",
+      "csvEmail": "tracey.raff@icloud.com",
+      "csvPhone": "7939336292",
+      "foundLead": {
+        "id": "e580d881-49a8-4f17-9019-e20f0c52ac0d",
+        "name": "Tracey Doyle",
+        "email": "tracey.raff@icloud.com",
+        "phone": "7939336292",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Jayne Peters",
+      "csvEmail": "jayne.peters@mail.com",
+      "csvPhone": "7889297192",
+      "foundLead": {
+        "id": "0b8b0efe-42b5-4dca-9e0e-849d0bc56e1c",
+        "name": "Jayne Peters",
+        "email": "jayne.peters@mail.com",
+        "phone": "7889297192",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Jacqueline Mackenzie Robb",
+      "csvEmail": "jacquelinemackenzierobb@yahoo.com",
+      "csvPhone": "7831235221",
+      "foundLead": {
+        "id": "3ef266ed-8e93-4fcb-816d-95b6de0a9d13",
+        "name": "Jacqueline Mackenzie Robb",
+        "email": "jacquelinemackenzierobb@yahoo.com",
+        "phone": "7831235221",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Eluned yaxley",
+      "csvEmail": "treflys@hotmail.co.uk",
+      "csvPhone": "7856611983",
+      "foundLead": {
+        "id": "c9c627ff-3bcb-4691-ba44-c4420d750efd",
+        "name": "Eluned yaxley",
+        "email": "treflys@hotmail.co.uk",
+        "phone": "7856611983",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Henrietta Evans",
+      "csvEmail": "bykerh@gmail.com",
+      "csvPhone": "7762354828",
+      "foundLead": {
+        "id": "7d56500c-aa69-4868-a58b-75a386acdf36",
+        "name": "Henrietta Evans",
+        "email": "bykerh@gmail.com",
+        "phone": "7762354828",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Gill Hall",
+      "csvEmail": "hgilly1962@gmail.com",
+      "csvPhone": "7482431209",
+      "foundLead": {
+        "id": "facf94d0-4aef-427a-98b9-39d1992816f2",
+        "name": "Gill Hall",
+        "email": "hgilly1962@gmail.com",
+        "phone": "7482431209",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Andrea Rahal",
+      "csvEmail": "mehargandrea@gmail.com",
+      "csvPhone": "7842477817",
+      "foundLead": {
+        "id": "acc60574-f979-483f-8232-1a123f7c7a74",
+        "name": "Andrea Rahal",
+        "email": "mehargandrea@gmail.com",
+        "phone": "7842477817",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Peachy Butterfield",
+      "csvEmail": "peachybutterfield@gmail.com",
+      "csvPhone": "7733165209",
+      "foundLead": {
+        "id": "7fff1ba8-5c76-4223-8096-9f4d3bcd0cdb",
+        "name": "Peachy Butterfield",
+        "email": "peachybutterfield@gmail.com",
+        "phone": "7733165209",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Lamara Andrew",
+      "csvEmail": "lamaraandrew@myyahoo.com",
+      "csvPhone": "7721922317",
+      "foundLead": {
+        "id": "19b58662-eba0-44f2-88b8-d5762bac80fe",
+        "name": "Lamara Andrew",
+        "email": "lamaraandrew@myyahoo.com",
+        "phone": "7721922317",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Yasmin Melville",
+      "csvEmail": "debnair84@googlemail.com",
+      "csvPhone": "7712813891",
+      "foundLead": {
+        "id": "b6b3f15e-11b0-42eb-9937-48ee32a25371",
+        "name": "Yasmin Melville",
+        "email": "debnair84@googlemail.com",
+        "phone": "7712813891",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "YAHYA",
+      "csvEmail": "yguled65@gmail.com",
+      "csvPhone": "7392634040",
+      "foundLead": {
+        "id": "bc9dc655-c554-4142-8cfb-0b85668b2b56",
+        "name": "YAHYA",
+        "email": "yguled65@gmail.com",
+        "phone": "7392634040",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Eileen Inglis",
+      "csvEmail": "eeinglis345@gmail.com",
+      "csvPhone": "7786414836",
+      "foundLead": {
+        "id": "106c1392-ab50-48ac-82f9-50fa1c105736",
+        "name": "Eileen Inglis",
+        "email": "eeinglis345@gmail.com",
+        "phone": "7786414836",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    },
+    {
+      "csvName": "Paul Dolgin",
+      "csvEmail": "pauldolgin@hotmail.com",
+      "csvPhone": "7947646049",
+      "foundLead": {
+        "id": "95404cbb-71c5-4340-b029-2714a8553509",
+        "name": "Paul Dolgin",
+        "email": "pauldolgin@hotmail.com",
+        "phone": "7947646049",
+        "status": "Assigned",
+        "dateBooked": null
+      }
+    }
+  ],
+  "notFoundLeads": []
+}

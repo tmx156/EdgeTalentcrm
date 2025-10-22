@@ -161,12 +161,13 @@ const Dashboard = () => {
         }
       });
 
-      // Process bookings - show ALL bookings created today using ever_booked (including cancelled)
+      // Process bookings - show ALL bookings made today (using booked_at timestamp)
       leads.forEach(lead => {
         const bookerId = lead.booker_id;
 
-        // ✅ EVER_BOOKED FIX: Count all bookings made today, regardless of current status
-        if (bookerId && lead.ever_booked) {
+        // ✅ DAILY ACTIVITY FIX: Count all bookings made today, regardless of current status
+        // The leads array already contains only bookings made on the selected date (filtered by booked_at)
+        if (bookerId) {
           if (!bookerStats[bookerId]) {
             const user = users.find(u => u.id === bookerId);
             bookerStats[bookerId] = {
@@ -177,7 +178,7 @@ const Dashboard = () => {
               assigned: 0,
               bookingDetails: [],
               salesDetails: [],
-              lastActivity: new Date(lead.updated_at || lead.created_at)
+              lastActivity: new Date(lead.booked_at || lead.updated_at || lead.created_at)
             };
           }
           bookerStats[bookerId].bookings += 1;
@@ -190,11 +191,11 @@ const Dashboard = () => {
             time: lead.date_booked ? new Date(lead.date_booked).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '12:00',
             status: 'Booked', // Always show as "Booked" in daily activities (real status tracked elsewhere)
             dateBooked: lead.date_booked,
-            bookedAt: lead.updated_at || lead.created_at,
-            bookedAgo: timeAgo(new Date(lead.updated_at || lead.created_at))
+            bookedAt: lead.booked_at || lead.updated_at || lead.created_at,
+            bookedAgo: timeAgo(new Date(lead.booked_at || lead.updated_at || lead.created_at))
           });
 
-          const activityDate = new Date(lead.updated_at || lead.created_at);
+          const activityDate = new Date(lead.booked_at || lead.updated_at || lead.created_at);
           if (activityDate > bookerStats[bookerId].lastActivity) {
             bookerStats[bookerId].lastActivity = activityDate;
           }
@@ -265,8 +266,17 @@ const Dashboard = () => {
   // Fetch calendar events
   const fetchCalendarEvents = useCallback(async () => {
     try {
+      // Get current month range to reduce query load
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString();
+
       const calRes = await axios.get('/api/leads/calendar-public', {
-        params: { limit: 500 }
+        params: {
+          limit: 100,
+          start,
+          end
+        }
       });
 
       const rawEvents = calRes.data?.events || [];
@@ -814,7 +824,7 @@ const Dashboard = () => {
                                   {booking.status}
                                 </span>
                                 <p className="text-xs text-gray-500 mt-1">
-                                  {new Date(booking.dateBooked).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                  {booking.dateBooked ? new Date(booking.dateBooked).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'No date'}
                                 </p>
                               </div>
                             </div>
@@ -1271,7 +1281,7 @@ const Dashboard = () => {
                               {booking.status}
                             </span>
                             <p className="text-xs text-gray-500 mt-1">
-                              {new Date(booking.dateBooked).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                              {booking.dateBooked ? new Date(booking.dateBooked).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'No date'}
                             </p>
                           </div>
                         </div>
