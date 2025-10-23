@@ -3,11 +3,11 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { 
-  FiCalendar, FiClock, FiMapPin, FiUser, FiX, FiPhone, FiMail, 
-  FiFileText, FiWifi, FiActivity, FiCheckCircle, 
+import {
+  FiCalendar, FiClock, FiMapPin, FiUser, FiX, FiPhone, FiMail,
+  FiFileText, FiWifi, FiActivity, FiCheckCircle,
   FiExternalLink, FiCheck, FiSettings, FiEdit, FiMessageSquare,
-  FiChevronDown, FiChevronUp, FiChevronLeft, FiChevronRight, FiSearch
+  FiChevronDown, FiChevronUp, FiChevronLeft, FiChevronRight, FiSearch, FiDownload
 } from 'react-icons/fi';
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
@@ -58,7 +58,9 @@ const Calendar = () => {
   const [updatingNotes, setUpdatingNotes] = useState(false);
   const [isBookingInProgress, setIsBookingInProgress] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [currentView, setCurrentView] = useState('dayGridMonth');
+  const [currentDate, setCurrentDate] = useState(new Date());
+
   // Reject lead modal state
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('Duplicate');
@@ -1760,6 +1762,47 @@ const Calendar = () => {
   //   );
   // };
 
+  // Export calendar day to CSV
+  const handleExportCalendar = async () => {
+    try {
+      // Get the exact date from the calendar API
+      const calendarApi = calendarRef.current.getApi();
+      const viewDate = calendarApi.getDate();
+
+      // Format date in local timezone to avoid UTC conversion issues
+      const year = viewDate.getFullYear();
+      const month = String(viewDate.getMonth() + 1).padStart(2, '0');
+      const day = String(viewDate.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      console.log(`📥 Exporting calendar for ${dateStr}...`);
+      console.log(`📅 View date:`, viewDate);
+      console.log(`📅 Formatted date string:`, dateStr);
+
+      const response = await axios.get(`/api/leads/calendar/export-csv?date=${dateStr}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        responseType: 'blob'
+      });
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `calendar_${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      console.log(`✅ Calendar exported successfully for ${dateStr}`);
+    } catch (error) {
+      console.error('Error exporting calendar:', error);
+      alert('Failed to export calendar. Please try again.');
+    }
+  };
+
   return (
     <div className="space-y-3 sm:space-y-4 lg:space-y-6">
       {/* Page Header */}
@@ -1815,8 +1858,8 @@ const Calendar = () => {
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="mb-3 sm:mb-4">
+      {/* Search Bar and Export Button */}
+      <div className="mb-3 sm:mb-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="relative w-full sm:max-w-md">
           <div className="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
             <FiSearch className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
@@ -1838,21 +1881,32 @@ const Calendar = () => {
               </button>
             </div>
           )}
+          {searchTerm && (
+            <p className="mt-2 text-xs sm:text-sm text-gray-600">
+              Found {events.filter(event => {
+                const search = searchTerm.toLowerCase();
+                const leadName = event.extendedProps?.lead?.name || event.title || '';
+                const leadPhone = event.extendedProps?.phone || '';
+                const leadEmail = event.extendedProps?.lead?.email || '';
+                return (
+                  leadName.toLowerCase().includes(search) ||
+                  leadPhone.includes(search) ||
+                  leadEmail.toLowerCase().includes(search)
+                );
+              }).length} results
+            </p>
+          )}
         </div>
-        {searchTerm && (
-          <p className="mt-2 text-xs sm:text-sm text-gray-600">
-            Found {events.filter(event => {
-              const search = searchTerm.toLowerCase();
-              const leadName = event.extendedProps?.lead?.name || event.title || '';
-              const leadPhone = event.extendedProps?.phone || '';
-              const leadEmail = event.extendedProps?.lead?.email || '';
-              return (
-                leadName.toLowerCase().includes(search) ||
-                leadPhone.includes(search) ||
-                leadEmail.toLowerCase().includes(search)
-              );
-            }).length} results
-          </p>
+
+        {/* Export Calendar Button - Only show in day view */}
+        {currentView === 'timeGridDay' && (
+          <button
+            onClick={handleExportCalendar}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors whitespace-nowrap"
+          >
+            <FiDownload className="h-4 w-4" />
+            <span className="text-sm font-medium">Export Day to CSV</span>
+          </button>
         )}
       </div>
 
@@ -1896,6 +1950,10 @@ const Calendar = () => {
             // PERFORMANCE: Skip this - let initial fetch handle it
             // This was causing duplicate fetches
             console.log('📅 View initialized:', dateInfo.view.type, dateInfo.startStr, 'to', dateInfo.endStr);
+
+            // Track current view and date for export functionality
+            setCurrentView(dateInfo.view.type);
+            setCurrentDate(dateInfo.start);
           }}
           eventTimeFormat={{
             hour: 'numeric',

@@ -902,6 +902,177 @@ router.get('/calendar', auth, async (req, res) => {
   }
 });
 
+// @route   GET /api/leads/calendar/export-csv
+// @desc    Export calendar day to CSV
+// @access  Private
+router.get('/calendar/export-csv', auth, async (req, res) => {
+  try {
+    const { date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ message: 'Date parameter is required' });
+    }
+
+    console.log(`📥 Exporting calendar CSV for date: ${date}`);
+
+    // Parse the date - add 'T00:00:00' to ensure it's treated as local time, not UTC
+    const [year, month, day] = date.split('-');
+    const startOfDayUTC = `${year}-${month}-${day}T00:00:00.000Z`;
+    const endOfDayUTC = `${year}-${month}-${day}T23:59:59.999Z`;
+
+    console.log(`📅 Querying bookings between ${startOfDayUTC} and ${endOfDayUTC}`);
+
+    // Fetch all leads for this date
+    const { data: leads, error } = await supabase
+      .from('leads')
+      .select('id, name, phone, date_booked, notes, status, postcode, email, booking_history')
+      .gte('date_booked', startOfDayUTC)
+      .lte('date_booked', endOfDayUTC)
+      .is('deleted_at', null)
+      .neq('postcode', 'ZZGHOST')
+      .not('status', 'in', '(Cancelled,Rejected)')
+      .order('date_booked', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching leads for CSV export:', error);
+      return res.status(500).json({ message: 'Failed to fetch calendar data' });
+    }
+
+    console.log(`📊 Found ${leads.length} bookings for ${date}`);
+
+    // Group leads by time slot
+    const timeSlots = {};
+
+    leads.forEach(lead => {
+      const dateBooked = new Date(lead.date_booked);
+
+      // Format time as HH:MM (convert from UTC to UK time - BST = UTC+1)
+      const ukDate = new Date(dateBooked.getTime() + (1 * 60 * 60 * 1000));
+      const hours = ukDate.getUTCHours().toString().padStart(2, '0');
+      const minutes = ukDate.getUTCMinutes().toString().padStart(2, '0');
+      const time = `${hours}:${minutes}`;
+
+      if (!timeSlots[time]) {
+        timeSlots[time] = [];
+      }
+
+      // Get person's name
+      const name = (lead.name || '').replace(/,/g, ';');
+      const phone = (lead.phone || '').replace(/,/g, ';');
+
+      // Find which email account was used
+      let emailAccount = '';
+      if (lead.booking_history && Array.isArray(lead.booking_history)) {
+        const emailEntries = lead.booking_history
+          .filter(entry =>
+            (entry.action === 'BOOKING_CONFIRMATION_SENT' || entry.action === 'EMAIL_SENT') &&
+            entry.details
+          )
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        for (const entry of emailEntries) {
+          if (entry.details.emailAccountName) {
+            emailAccount = entry.details.emailAccountName;
+            break;
+          }
+          if (entry.details.body || entry.lead_snapshot?.email_body) {
+            const emailBody = entry.details.body || entry.lead_snapshot?.email_body || '';
+            if (emailBody.includes('Camry Models')) {
+              emailAccount = 'Camry Models';
+              break;
+            } else if (emailBody.includes('Avensis Models')) {
+              emailAccount = 'Avensis Models';
+              break;
+            }
+          }
+        }
+      }
+
+      // Combine all notes fields
+      const notesArray = [];
+      if (lead.notes) notesArray.push(lead.notes);
+      if (lead.status && lead.status !== 'Booked') notesArray.push(`(${lead.status})`);
+      const notes = notesArray.join(' | ').replace(/,/g, ';').replace(/\n/g, ' ').replace(/"/g, '""');
+
+      timeSlots[time].push({ name, phone, notes, emailAccount });
+    });
+
+    // Generate all time slots from 10:00 to 17:45
+    const allTimeSlots = [];
+    for (let hour = 10; hour < 18; hour++) {
+      for (let minute = 0; minute < 60; minute += 15) {
+        const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        allTimeSlots.push(timeStr);
+        if (hour === 17 && minute === 45) break;
+      }
+    }
+
+    // Find the maximum number of bookings in any single time slot
+    let maxBookings = 1;
+    allTimeSlots.forEach(time => {
+      const bookings = timeSlots[time] || [];
+      if (bookings.length > maxBookings) {
+        maxBookings = bookings.length;
+      }
+    });
+
+    console.log(`📊 Max bookings in a single time slot: ${maxBookings}`);
+
+    // Build CSV header dynamically based on max bookings
+    const csvRows = [];
+    const headerParts = ['Time'];
+    for (let i = 1; i <= maxBookings; i++) {
+      if (i === 1) {
+        headerParts.push('Person\'s Name', 'Phone Number', 'Notes', 'Email Account');
+      } else {
+        headerParts.push(`Person\'s Name ${i}`, `Phone Number ${i}`, `Notes ${i}`, `Email Account ${i}`);
+      }
+    }
+    csvRows.push(headerParts.join(','));
+
+    // Build CSV rows
+    allTimeSlots.forEach(time => {
+      const bookings = timeSlots[time] || [];
+
+      if (bookings.length === 0) {
+        // Empty row with correct number of columns
+        const emptyRow = [time];
+        for (let i = 0; i < maxBookings * 4; i++) {
+          emptyRow.push('');
+        }
+        csvRows.push(emptyRow.join(','));
+      } else {
+        const row = [time];
+        // Add all bookings for this time slot
+        for (let i = 0; i < maxBookings; i++) {
+          if (bookings[i]) {
+            row.push(bookings[i].name);
+            row.push(bookings[i].phone);
+            row.push(bookings[i].notes);
+            row.push(bookings[i].emailAccount || '');
+          } else {
+            // Fill empty columns for consistency
+            row.push('', '', '', '');
+          }
+        }
+        csvRows.push(row.join(','));
+      }
+    });
+
+    const csvContent = csvRows.join('\n');
+
+    // Set headers for CSV download
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="calendar_${date}.csv"`);
+    res.send(csvContent);
+
+    console.log(`✅ Calendar CSV exported successfully for ${date}`);
+  } catch (error) {
+    console.error('Error exporting calendar CSV:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // @route   GET /api/leads/:id/history
 // @desc    Get booking history for a lead
 // @access  Private
