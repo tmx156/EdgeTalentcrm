@@ -35,23 +35,29 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
         if (response.ok) {
           const templates = await response.json();
           // Filter for receipt templates
-          const receiptTemplates = templates.filter(t =>
-            t.type === 'receipt' ||
-            t.type === 'sale_receipt' ||
-            t.type === 'payment_receipt' ||
-            t.type === 'sale_notification'
-          );
-          setReceiptTemplates(receiptTemplates);
+          const receiptTemplates = templates.filter(t => {
+            const type = (t.type || '').toLowerCase();
+            const category = (t.category || '').toLowerCase();
+            return (
+              type.includes('receipt') ||
+              type.includes('sale_notification') ||
+              category.includes('receipt') ||
+              category.includes('sale') ||
+              category.includes('payment')
+            );
+          });
+          const templatesToUse = receiptTemplates.length > 0 ? receiptTemplates : templates;
+          setReceiptTemplates(templatesToUse);
 
           // Set first template as default if available
-          if (receiptTemplates.length > 0) {
-            const defaultTemplateId = receiptTemplates[0]._id;
+          if (templatesToUse.length > 0) {
+            const defaultTemplateId = templatesToUse[0]._id;
             setSelectedTemplateId(defaultTemplateId);
             console.log('📋 Default template selected:', {
               id: defaultTemplateId,
-              name: receiptTemplates[0].name,
-              email_account: receiptTemplates[0].email_account,
-              allTemplates: receiptTemplates.map(t => `${t.name} (${t.email_account})`)
+              name: templatesToUse[0].name,
+              email_account: templatesToUse[0].email_account,
+              allTemplates: templatesToUse.map(t => `${t.name} (${t.email_account})`)
             });
           }
         }
@@ -298,6 +304,8 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
 
   if (!isOpen) return null;
 
+  const receiptsDisabled = receiptTemplates.length === 0;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[98vh] flex flex-col overflow-hidden">
@@ -518,20 +526,20 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
             <p className="text-sm text-gray-500">Image upload feature will be available in the next update.</p>
           </div>
 
-          {/* Receipt Options - TEMPORARILY DISABLED */}
-          <div className="bg-gray-100 p-4 rounded-lg border-2 border-gray-300 opacity-60">
-            <h3 className="font-medium text-gray-600 mb-3">Send Receipt (Temporarily Disabled)</h3>
-            <div className="space-y-3">
+          {/* Receipt Options */}
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+            <h3 className="font-medium text-gray-900 mb-3">Send Receipt</h3>
+            <div className="space-y-4">
               {/* Template Selection */}
-              {receiptTemplates.length > 0 && (
+              {receiptTemplates.length > 0 ? (
                 <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Receipt Template
                   </label>
                   <select
                     value={selectedTemplateId}
-                    disabled={true}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-200 text-gray-500 cursor-not-allowed"
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {receiptTemplates.map(template => (
                       <option key={template._id} value={template._id}>
@@ -539,42 +547,97 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
                       </option>
                     ))}
                   </select>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Selected template determines the sender account and message format.
+                  </p>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-600 bg-white border border-gray-200 rounded-md p-3">
+                  No receipt templates available. Add one in Templates to send automated receipts.
                 </div>
               )}
 
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="emailReceipt"
-                  name="emailReceipt"
-                  checked={false}
-                  disabled={true}
-                  className="w-4 h-4 text-gray-400 border-gray-300 rounded cursor-not-allowed"
-                />
-                <label htmlFor="emailReceipt" className="ml-2 text-sm text-gray-500 flex items-center cursor-not-allowed">
-                  <Mail className="w-4 h-4 mr-1" />
-                  Send Email Receipt
+              <div className="flex flex-col space-y-3">
+                <label className={`flex items-center ${receiptsDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                  <input
+                    type="checkbox"
+                    id="emailReceipt"
+                    name="emailReceipt"
+                    checked={formData.emailReceipt}
+                    onChange={handleInputChange}
+                    disabled={receiptsDisabled}
+                    className="w-4 h-4 text-blue-500 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                  <span className="ml-2 text-sm text-gray-700 flex items-center">
+                    <Mail className="w-4 h-4 mr-1" />
+                    Send Email Receipt
+                  </span>
                 </label>
+
+                {formData.emailReceipt && (
+                  <div className="pl-6 space-y-2">
+                    <label className="block text-xs font-medium text-gray-600">
+                      Recipient Email
+                    </label>
+                    <input
+                      type="email"
+                      name="customEmail"
+                      value={formData.customEmail}
+                      onChange={handleInputChange}
+                      placeholder={lead.email || 'customer@example.com'}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Leave blank to use {lead.email || 'the lead email on file'}.
+                    </p>
+                  </div>
+                )}
+
+                <label className={`flex items-center ${receiptsDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                  <input
+                    type="checkbox"
+                    id="smsReceipt"
+                    name="smsReceipt"
+                    checked={formData.smsReceipt}
+                    onChange={handleInputChange}
+                    disabled={receiptsDisabled}
+                    className="w-4 h-4 text-blue-500 border-gray-300 rounded focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed"
+                  />
+                  <span className="ml-2 text-sm text-gray-700 flex items-center">
+                    <MessageSquare className="w-4 h-4 mr-1" />
+                    Send SMS Receipt
+                  </span>
+                </label>
+
+                {formData.smsReceipt && (
+                  <div className="pl-6 space-y-2">
+                    <label className="block text-xs font-medium text-gray-600">
+                      Recipient Phone
+                    </label>
+                    <input
+                      type="tel"
+                      name="customPhone"
+                      value={formData.customPhone}
+                      onChange={handleInputChange}
+                      placeholder={lead.phone || '+44 1234 567890'}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Leave blank to use {lead.phone || 'the lead phone number on file'}.
+                    </p>
+                  </div>
+                )}
               </div>
 
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="smsReceipt"
-                  name="smsReceipt"
-                  checked={false}
-                  disabled={true}
-                  className="w-4 h-4 text-gray-400 border-gray-300 rounded cursor-not-allowed"
-                />
-                <label htmlFor="smsReceipt" className="ml-2 text-sm text-gray-500 flex items-center cursor-not-allowed">
-                  <MessageSquare className="w-4 h-4 mr-1" />
-                  Send SMS Receipt
-                </label>
-              </div>
-
-              <div className="mt-2 text-xs text-gray-500 italic">
-                Receipt sending is temporarily disabled for maintenance. You can send receipts manually from the Sales page.
-              </div>
+              {receiptsDisabled ? (
+                <div className="text-xs text-orange-700 bg-orange-100 rounded-md p-3">
+                  Add receipt templates in Templates to enable automatic receipt sending.
+                </div>
+              ) : (
+                <div className="text-xs text-blue-700 bg-blue-100 rounded-md p-3">
+                  Receipts are sent immediately after saving the sale when selected above. You can choose email, SMS, or both.
+                </div>
+              )}
             </div>
           </div>
 
