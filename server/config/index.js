@@ -17,8 +17,8 @@ const config = {
 
   // Supabase Configuration
   supabase: {
-    url: process.env.SUPABASE_URL || 'https://tnltvfzltdeilanxhlvy.supabase.co',
-    anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubHR2ZnpsdGRlaWxhbnhobHZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxOTk4MzUsImV4cCI6MjA3Mjc3NTgzNX0.T_HaALQeSiCjLkpVuwQZUFnJbuSyRy2wf2kWiqJ99Lc',
+    url: process.env.SUPABASE_URL || 'https://ziqsvwoyafespvaychlg.supabase.co',
+    anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjI1MjYsImV4cCI6MjA3ODk5ODUyNn0.KvfjYdS-Nv4i33p4X-IqMvwDVqbj5XbIe5-KR6ZL0WM',
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || null
   },
 
@@ -60,9 +60,9 @@ config.validate = function() {
     console.warn('Using fallback values - please set proper environment variables in production');
   }
 
-  // Warn about hardcoded credentials
-  if (this.supabase.anonKey.includes('tnltvfzltdeilanxhlvy')) {
-    console.warn('⚠️ Using hardcoded Supabase credentials - create .env file for production');
+  // Warn about hardcoded credentials (updated for new database)
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    console.warn('⚠️ Using fallback Supabase credentials - set SUPABASE_URL and SUPABASE_ANON_KEY in .env for production');
   }
 
   return missing.length === 0;

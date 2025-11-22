@@ -40,6 +40,7 @@ router.post('/login', async (req, res) => {
     let userError = null;
 
     try {
+      // Select all columns (password_hash might not exist yet, that's OK)
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -76,31 +77,18 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // Check if user has a password hash (for existing users)
-    if (user.password_hash) {
-      // Compare password with bcrypt
-      const isMatch = await bcrypt.compare(password, user.password_hash);
-      if (!isMatch) {
-        return res.status(401).json({ message: 'Invalid credentials' });
-      }
-    } else {
-      // For users without password hash, check if it's the admin user
-      if (user.email === 'admin@crm.com' && password === 'admin123') {
-        // Update the user with a proper password hash using Supabase
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const { error: updateError } = await supabase
-          .from('users')
-          .update({ password_hash: hashedPassword })
-          .eq('id', user.id);
-
-        if (updateError) {
-          console.error('Error updating password hash:', updateError);
-          return res.status(500).json({ message: 'Error updating password' });
-        }
-      } else {
-        return res.status(401).json({ message: 'Invalid credentials' });
-      }
+    // Check if user has a password hash (check both password_hash and password columns)
+    const storedPassword = user.password_hash || user.password;
+    
+    if (!storedPassword) {
+      console.error('User has no password set:', user.email);
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    
+    // Compare password with bcrypt
+    const isMatch = await bcrypt.compare(password, storedPassword);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
 
     // Generate JWT token

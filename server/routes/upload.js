@@ -7,10 +7,9 @@ const { auth } = require('../middleware/auth');
 const imageOptimizer = require('../services/imageOptimizer');
 const { createClient } = require('@supabase/supabase-js');
 
-// Supabase configuration
-const supabaseUrl = 'https://tnltvfzltdeilanxhlvy.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubHR2ZnpsdGRlaWxhbnhobHZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxOTk4MzUsImV4cCI6MjA3Mjc3NTgzNX0.T_HaALQeSiCjLkpVuwQZUFnJbuSyRy2wf2kWiqJ99Lc';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Supabase configuration - use centralized config
+const config = require('../config');
+const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
 
 const router = express.Router();
 

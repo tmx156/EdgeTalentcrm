@@ -51,6 +51,7 @@ const legacyRoutes = require('./routes/legacy');
 const bookerAnalyticsRoutes = require('./routes/booker-analytics');
 const emailTestRoutes = require('./routes/email-test');
 const usersPublicRoutes = require('./routes/usersPublic');
+const salesapeRoutes = require('./routes/salesape');
 // TEMPORARILY DISABLED: const scheduler = require('./utils/scheduler');
 const { startEmailPoller } = require('./utils/emailPoller');
 const FinanceReminderService = require('./services/financeReminderServiceSupabase');
@@ -429,6 +430,7 @@ app.use('/api/sms', smsRoutes);
 app.use('/api/legacy', legacyRoutes);
 app.use('/api/booker-analytics', bookerAnalyticsRoutes);
 app.use('/api/email-test', emailTestRoutes);
+app.use('/api/salesape', salesapeRoutes);
 // TEMPORARILY DISABLED: app.use('/api/performance', require('./routes/performance'));
 
 // --- Lightweight short link storage for long booking confirmations ---

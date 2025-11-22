@@ -1,14 +1,16 @@
 const { createClient } = require('@supabase/supabase-js');
 const nodemailer = require('nodemailer');
+const config = require('../config');
 
 class FinanceReminderService {
   constructor() {
-    // Use the same Supabase configuration as the main app
-    const supabaseUrl = process.env.SUPABASE_URL || 'https://tnltvfzltdeilanxhlvy.supabase.co';
-    const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubHR2ZnpsdGRlaWxhbnhobHZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxOTk4MzUsImV4cCI6MjA3Mjc3NTgzNX0.T_HaALQeSiCjLkpVuwQZUFnJbuSyRy2wf2kWiqJ99Lc';
+    // Use centralized Supabase configuration
+    const supabaseUrl = config.supabase.url;
+    const supabaseKey = config.supabase.serviceRoleKey || config.supabase.anonKey;
 
     this.supabase = createClient(supabaseUrl, supabaseKey);
     this.emailTransporter = null;
+    this.financeTableExists = null; // Cache for table existence check
     this.initializeEmail();
   }
 
@@ -293,8 +295,40 @@ class FinanceReminderService {
     `;
   }
 
+  async checkFinanceTableExists() {
+    if (this.financeTableExists !== null) {
+      return this.financeTableExists;
+    }
+
+    try {
+      // Try a simple query to check if table exists
+      const { error } = await this.supabase
+        .from('finance')
+        .select('id')
+        .limit(1);
+
+      if (error && (error.message.includes('does not exist') || error.message.includes('schema cache'))) {
+        console.log('ℹ️ Finance table not found - finance reminders disabled');
+        this.financeTableExists = false;
+        return false;
+      }
+
+      this.financeTableExists = true;
+      return true;
+    } catch (e) {
+      this.financeTableExists = false;
+      return false;
+    }
+  }
+
   async processDuePayments() {
     try {
+      // Check if finance table exists before proceeding
+      const tableExists = await this.checkFinanceTableExists();
+      if (!tableExists) {
+        return; // Silently skip if table doesn't exist
+      }
+
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 7); // Check payments due within 7 days
 
@@ -316,7 +350,10 @@ class FinanceReminderService {
         .order('due_date', { ascending: true });
 
       if (error) {
-        console.error('❌ Error fetching due payments:', error.message);
+        // Don't spam logs if table just doesn't exist
+        if (!error.message.includes('schema cache') && !error.message.includes('does not exist')) {
+          console.error('❌ Error fetching due payments:', error.message);
+        }
         return;
       }
 
@@ -384,6 +421,13 @@ class FinanceReminderService {
   async startReminderScheduler() {
     console.log('🚀 Starting finance reminder scheduler...');
 
+    // Check if finance table exists first
+    const tableExists = await this.checkFinanceTableExists();
+    if (!tableExists) {
+      console.log('ℹ️ Finance table not found - reminder scheduler disabled');
+      return;
+    }
+
     // Process reminders every 6 hours
     setInterval(async () => {
       console.log('⏰ Running scheduled finance reminder check...');
@@ -392,6 +436,7 @@ class FinanceReminderService {
 
     // Also run once immediately
     await this.processDuePayments();
+    console.log('✅ Finance reminder scheduler running');
   }
 }
 

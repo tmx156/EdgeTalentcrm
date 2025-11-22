@@ -284,7 +284,7 @@ const Calendar = () => {
           
           // Create end date (default to 15 minutes after start)
           const endDate = new Date(startDate);
-          endDate.setMinutes(endDate.getMinutes() + 15);
+          endDate.setMinutes(endDate.getMinutes() + 30);
           
           // Parse booking history for SMS notification icon
           let bookingHistory = lead.booking_history || [];
@@ -895,7 +895,7 @@ const Calendar = () => {
     // Use the clicked time directly from selectedDate, but ensure we're working with local time
     const selectedDateTime = selectedDate.date || new Date(selectedDate.dateStr);
     const endDateTime = new Date(selectedDateTime);
-    endDateTime.setMinutes(endDateTime.getMinutes() + 15); // 15-minute booking slots
+    endDateTime.setMinutes(endDateTime.getMinutes() + 30); // 30-minute booking slots to match calendar intervals
     
     // TIMEZONE FIX: Preserve exact local time without UTC conversion
     const year = selectedDateTime.getFullYear();
@@ -906,7 +906,7 @@ const Calendar = () => {
     
     // Create a new date with the same local time components
     const localDateTime = new Date(year, month, date, hours, minutes, 0, 0);
-    const localEndDateTime = new Date(year, month, date, hours, minutes + 15, 0, 0);
+    const localEndDateTime = new Date(year, month, date, hours, minutes + 30, 0, 0);
     
     // Create ISO string that preserves local time (avoiding UTC conversion)
     // This is the key fix - we manually construct the ISO string to avoid timezone shifts
@@ -986,13 +986,15 @@ const Calendar = () => {
         const isExistingLead = response.data.isExistingLead || false;
         
         // Create the final calendar event with the real lead ID
+        // Use same display logic as fetchEvents - show "Unconfirmed" for new bookings, "Confirmed" only when manually changed
+        const displayStatus = leadResult.is_confirmed ? 'Confirmed' : 'Unconfirmed';
         const newEvent = {
           id: leadResult.id || tempEventId,
-          title: `${leadForm.name} - Booked`,
+          title: `${leadForm.name} - ${displayStatus}`,
           start: localDateTime,
           end: localEndDateTime,
-          backgroundColor: getEventColor('Booked', leadResult.hasSale, leadResult.is_confirmed),
-          borderColor: getEventColor('Booked', leadResult.hasSale, leadResult.is_confirmed),
+          backgroundColor: getEventColor(displayStatus, leadResult.hasSale, leadResult.is_confirmed),
+          borderColor: getEventColor(displayStatus, leadResult.hasSale, leadResult.is_confirmed),
           extendedProps: {
             lead: {
               ...leadResult,
@@ -1000,6 +1002,7 @@ const Calendar = () => {
             },
             phone: leadForm.phone,
             status: 'Booked',
+            displayStatus: displayStatus, // Store display status for consistency
             booker: currentUser.name || 'Current User',
             isConfirmed: leadResult.is_confirmed || false
           }
@@ -1962,15 +1965,15 @@ const Calendar = () => {
           }}
           slotMinTime="10:00:00"
           slotMaxTime="18:15:00"
-          slotDuration="00:15:00"
-          slotLabelInterval="00:15:00"
+          slotDuration="00:30:00"
+          slotLabelInterval="00:30:00"
           slotLabelFormat={{
             hour: 'numeric',
             minute: '2-digit',
             meridiem: 'short'
           }}
           allDaySlot={false}
-          snapDuration="00:15:00"
+          snapDuration="00:30:00"
           selectConstraint={{
             start: '10:00',
             end: '18:15'
@@ -1980,17 +1983,21 @@ const Calendar = () => {
           moreLinkClick="popover"
           dayMaxEventRows={false}
           forceEventDuration={true}
-          defaultTimedEventDuration='00:15:00'
+          defaultTimedEventDuration='00:30:00'
           progressiveEventRendering={true}
           lazyFetching={false}
+          slotEventOverlap={false}
+          eventOverlap={false}
+          displayEventTime={true}
+          displayEventEnd={true}
           views={{
             dayGridMonth: {
-              dayMaxEventRows: 3,
+              dayMaxEventRows: false,
               moreLinkClick: 'popover',
               showNonCurrentDates: true,
               weekNumbers: false,
               fixedWeekCount: false,
-              height: 500
+              height: 'auto'
             },
             timeGridWeek: {
               allDaySlot: false,
@@ -2023,13 +2030,13 @@ const Calendar = () => {
             const showATag = bookedAtDate && bookedAtDate < cutoffDate;
 
             return (
-              <div className="fc-event-main p-1 flex items-center justify-between">
+              <div className="fc-event-main p-2 flex items-center justify-between h-full">
                 <div className="fc-event-title-container flex-1 overflow-hidden">
-                  <div className="fc-event-title text-xs truncate">
-                    {arg.timeText && <span className="font-semibold">{arg.timeText} </span>}
+                  <div className="fc-event-title text-sm font-semibold">
+                    {arg.timeText && <span className="font-bold mr-1">{arg.timeText} </span>}
                     <span className="inline-flex items-center gap-1">
                       {showATag && (
-                        <span className="bg-gray-500 text-white px-1.5 py-0.5 rounded text-[10px] font-semibold">A</span>
+                        <span className="bg-gray-500 text-white px-2 py-1 rounded text-xs font-semibold">A</span>
                       )}
                       {arg.event.title}
                     </span>

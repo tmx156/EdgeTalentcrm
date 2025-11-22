@@ -12,10 +12,9 @@ const getDb = () => {
   throw new Error('SQLite is disabled - use Supabase instead');
 };
 
-// Initialize Supabase
-const supabaseUrl = process.env.SUPABASE_URL || 'https://tnltvfzltdeilanxhlvy.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubHR2ZnpsdGRlaWxhbnhobHZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxOTk4MzUsImV4cCI6MjA3Mjc3NTgzNX0.T_HaALQeSiCjLkpVuwQZUFnJbuSyRy2wf2kWiqJ99Lc';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Initialize Supabase - use centralized config
+const config = require('../config');
+const supabase = createClient(config.supabase.url, config.supabase.anonKey);
 
 // Get message history for a lead
 router.get('/lead/:leadId', auth, async (req, res) => {

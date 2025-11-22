@@ -5,6 +5,7 @@ import { useSocket } from '../context/SocketContext';
 import axios from 'axios';
 import ConnectionStatus from './ConnectionStatus';
 import MessageModal from './MessageModal';
+import EdgeTalentLogo from '../EDGE TALENT 500x500 px BLK RED LOGOff.png';
 import { 
   FiHome, 
   FiUsers, 
@@ -736,7 +737,11 @@ const Layout = ({ children }) => {
           
           <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
             <div className="flex-shrink-0 flex items-center px-4">
-              <h1 className="text-xl font-bold text-gray-900">CRM Studio</h1>
+              <img
+                src={EdgeTalentLogo}
+                alt="EDGE TALENT"
+                className="h-10 w-auto object-contain"
+              />
             </div>
             <nav className="mt-5 px-2 space-y-1">
               {filteredNavigation.map((item) => (
@@ -952,7 +957,11 @@ const Layout = ({ children }) => {
         <div className="flex-1 flex flex-col min-h-0 border-r border-gray-200 bg-white">
           <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
             <div className="flex items-center flex-shrink-0 px-4">
-              <h1 className="text-xl font-bold text-gray-900">CRM Studio</h1>
+              <img
+                src={EdgeTalentLogo}
+                alt="EDGE TALENT"
+                className="h-10 w-auto object-contain"
+              />
             </div>
             <nav className="mt-5 flex-1 px-2 bg-white space-y-1">
               {filteredNavigation.map((item) => (

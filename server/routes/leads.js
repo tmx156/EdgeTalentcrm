@@ -12,10 +12,9 @@ const { sendSMS, sendAppointmentReminder, sendStatusUpdate, sendCustomMessage } 
 const { v4: uuidv4 } = require('uuid'); // Added for UUID generation
 const { createClient } = require('@supabase/supabase-js');
 
-// Supabase configuration
-const supabaseUrl = 'https://tnltvfzltdeilanxhlvy.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubHR2ZnpsdGRlaWxhbnhobHZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxOTk4MzUsImV4cCI6MjA3Mjc3NTgzNX0.T_HaALQeSiCjLkpVuwQZUFnJbuSyRy2wf2kWiqJ99Lc';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Supabase configuration - use centralized config
+const config = require('../config');
+const supabase = createClient(config.supabase.url, config.supabase.anonKey);
 
 // IMPORTANT: Diary updates should only be triggered by registered users manually
 // All upload processes create leads with status 'New' and no dateBooked to prevent
@@ -2574,8 +2573,8 @@ router.put('/:id/assign', auth, adminAuth, async (req, res) => {
     // Update the lead - assign booker and change status to Assigned if currently New
     // Use service role client to bypass RLS policies
     const serviceRoleClient = createClient(
-      process.env.SUPABASE_URL || 'https://tnltvfzltdeilanxhlvy.supabase.co',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+      config.supabase.url,
+      config.supabase.serviceRoleKey || config.supabase.anonKey
     );
 
     const { data: updateResult, error: updateError } = await serviceRoleClient
@@ -2971,8 +2970,8 @@ router.put('/bulk-assign', auth, adminAuth, async (req, res) => {
 
     // Create service role client to bypass RLS policies for admin operations
     const serviceRoleClient = createClient(
-      process.env.SUPABASE_URL || 'https://tnltvfzltdeilanxhlvy.supabase.co',
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY
+      config.supabase.url,
+      config.supabase.serviceRoleKey || config.supabase.anonKey
     );
 
     const { data: bookers, error: bookerError } = await serviceRoleClient

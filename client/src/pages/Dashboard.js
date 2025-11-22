@@ -667,7 +667,7 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
             {/* Total Bookings Today */}
             <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg sm:rounded-xl p-3 sm:p-4 lg:p-6 text-white">
               <div className="flex items-center justify-between">
@@ -800,7 +800,7 @@ const Dashboard = () => {
                     {booker.bookingDetails && booker.bookingDetails.length > 0 && (
                       <div className="space-y-3 mb-3">
                         {booker.bookingDetails.slice(0, 2).map((booking) => (
-                          <div key={booking.id} className="bg-white border border-gray-200 rounded-lg p-4">
+                          <div key={booking.id} className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4">
                             <div className="flex items-start justify-between">
                               <div className="flex items-start space-x-3">
                                 <div className="flex-shrink-0">
@@ -837,7 +837,7 @@ const Dashboard = () => {
                     {booker.salesDetails && booker.salesDetails.length > 0 && (
                       <div className="space-y-3 mb-3">
                         {booker.salesDetails.slice(0, 2).map((sale) => (
-                          <div key={sale.id} className="bg-green-50 border border-green-200 rounded-lg p-4">
+                          <div key={sale.id} className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
                             <div className="flex items-start justify-between">
                               <div className="flex items-start space-x-3">
                                 <div className="flex-shrink-0">
@@ -904,7 +904,7 @@ const Dashboard = () => {
                 </div>
 
                 {/* Stats boxes */}
-                <div className="grid grid-cols-3 gap-3 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6">
                   <div className="bg-blue-50 rounded-lg p-4">
                     <div className="text-4xl font-bold text-blue-600 mb-1">{calendarStats.total}</div>
                     <div className="flex items-center text-sm text-blue-600">
@@ -1123,7 +1123,7 @@ const Dashboard = () => {
       {/* Message Reply Modal */}
       {selectedMessage && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-full sm:max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-4 sm:p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-gray-900">Reply to Message</h3>

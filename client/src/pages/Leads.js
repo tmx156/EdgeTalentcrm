@@ -2034,7 +2034,7 @@ const Leads = () => {
       {/* Add Lead Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ pointerEvents: 'auto' }}>
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-4 sm:p-5 border w-11/12 max-w-md shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Add New Lead</h3>
               <form onSubmit={handleAddLead} className="space-y-4">
@@ -2133,7 +2133,7 @@ const Leads = () => {
       {/* Assign Lead Modal */}
       {showAssignModal && selectedLead && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-4 sm:p-5 border w-11/12 max-w-md shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
                 Assign Lead: {selectedLead.name}
@@ -2190,7 +2190,7 @@ const Leads = () => {
       {/* Bulk Assign Modal */}
       {showBulkAssignModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-4 sm:p-5 border w-11/12 max-w-md shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">
                 Bulk Assign {selectedLeads.length} Leads

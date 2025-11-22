@@ -687,17 +687,17 @@ const LeadsNew = () => {
       {/* Modern Sticky Header */}
       <div className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-gray-200/50 shadow-sm">
         <div className="px-6 py-4">
-          {/* Top Row */}
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+          {/* Top Row - Responsive for mobile */}
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
                 Leads Management
               </h1>
               <div className="flex items-center space-x-2">
                 <FiWifi className={`h-4 w-4 ${isConnected ? 'text-green-500' : 'text-red-500'}`} />
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                  isConnected 
-                    ? 'bg-green-100 text-green-700' 
+                  isConnected
+                    ? 'bg-green-100 text-green-700'
                     : 'bg-red-100 text-red-700'
                 }`}>
                   {isConnected ? 'Live' : 'Offline'}
@@ -707,8 +707,8 @@ const LeadsNew = () => {
                 {totalLeads} Total Leads
               </div>
             </div>
-            
-            <div className="flex items-center space-x-3">
+
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               {selectedLeads.length > 0 && (
                 <>
                   <div className="flex items-center space-x-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-xl">
@@ -937,7 +937,7 @@ const LeadsNew = () => {
             </div>
 
             {/* Custom Date Range */}
-            <div className="flex items-center space-x-2 ml-auto">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:ml-auto">
               <input
                 type="date"
                 value={customDateStart}
@@ -981,7 +981,7 @@ const LeadsNew = () => {
       <div className="px-6 py-6">
         {viewMode === 'grid' ? (
           /* Modern Card Grid View */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
             {leads.map((lead) => (
               <div
                 key={lead.id}
@@ -1086,7 +1086,9 @@ const LeadsNew = () => {
         ) : (
           /* Modern Table View */
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <table className="w-full">
+            {/* Mobile-responsive scroll container */}
+            <div className="overflow-x-auto">
+              <table className="w-full">
               <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                 <tr>
                   <th className="px-6 py-4 text-left">
@@ -1194,6 +1196,7 @@ const LeadsNew = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -1259,7 +1262,7 @@ const LeadsNew = () => {
       {/* Add Lead Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ pointerEvents: 'auto' }}>
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Add New Lead</h3>
               <form onSubmit={handleAddLead} className="space-y-4">
@@ -1358,7 +1361,7 @@ const LeadsNew = () => {
       {/* Upload CSV Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ pointerEvents: 'auto' }}>
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Upload Leads</h3>
 
@@ -1422,7 +1425,7 @@ const LeadsNew = () => {
       {/* Beautiful Loading Modal */}
       {uploadStatus && uploadStatus.trim() !== '' && (uploadStatus.includes('Analyzing') || uploadStatus.includes('Processing') || uploadStatus.includes('Uploading') || uploadStatus.includes('Auto-processing') || uploadStatus.includes('Complete')) && (
         <div className="fixed inset-0 bg-black bg-opacity-75 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="relative mx-auto p-8 border w-96 shadow-2xl rounded-2xl bg-white transform transition-all duration-300">
+          <div className="relative mx-auto p-8 border w-full max-w-md shadow-2xl rounded-2xl bg-white transform transition-all duration-300">
             <div className="text-center">
               {/* Animated Icon */}
               <div className="mb-6">
@@ -1499,7 +1502,7 @@ const LeadsNew = () => {
       {/* Bulk Delete Confirmation Modal */}
       {showBulkDeleteModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ pointerEvents: 'auto' }}>
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
                 <FiTrash2 className="h-6 w-6 text-red-600" />
@@ -1530,7 +1533,7 @@ const LeadsNew = () => {
       {/* Bulk Assign Modal */}
       {showBulkAssignModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ pointerEvents: 'auto' }}>
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
             <div className="mt-3">
               <div className="flex items-center justify-center w-12 h-12 mx-auto bg-purple-100 rounded-full mb-4">
                 <FiUserPlus className="h-6 w-6 text-purple-600" />

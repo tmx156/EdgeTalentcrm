@@ -1156,7 +1156,7 @@ const Messages = () => {
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0 md:space-x-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0 sm:space-x-4">
           {/* Search */}
           <div className="flex-1 md:max-w-xl">
             <div className="relative">
