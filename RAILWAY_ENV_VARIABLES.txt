@@ -1,0 +1,46 @@
+# Copy and paste these EXACT values into Railway's Variables tab (Raw Editor)
+# These are your working Supabase credentials from your local setup
+
+# Supabase Configuration (REQUIRED - ALL FROM THE SAME PROJECT)
+SUPABASE_URL=https://ziqsvwoyafespvaychlg.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjI1MjYsImV4cCI6MjA3ODk5ODUyNn0.KvfjYdS-Nv4i33p4X-IqMvwDVqbj5XbIe5-KR6ZL0WM
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d285YWZlc3B2YXljaGxnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzQyMjUyNiwiZXhwIjoyMDc4OTk4NTI2fQ.VT-JI3OAZ_ecZO28mW7YUmVXKltk3ENXwSe_yvnK2kQ
+SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d285YWZlc3B2YXljaGxnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzQyMjUyNiwiZXhwIjoyMDc4OTk4NTI2fQ.VT-JI3OAZ_ecZO28mW7YUmVXKltk3ENXwSe_yvnK2kQ
+
+# React App Supabase Configuration (for client-side)
+REACT_APP_SUPABASE_URL=https://ziqsvwoyafespvaychlg.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjI1MjYsImV4cCI6MjA3ODk5ODUyNn0.KvfjYdS-Nv4i33p4X-IqMvwDVqbj5XbIe5-KR6ZL0WM
+
+# JWT Configuration
+JWT_SECRET=your-fallback-secret-key
+JWT_EXPIRE=30d
+
+# SMS Configuration (BulkSMS)
+BULKSMS_USERNAME=tmx2566
+BULKSMS_PASSWORD=Booker100
+BULKSMS_FROM_NUMBER=+447786201100
+BULKSMS_POLL_INTERVAL_MS=60000
+
+# SalesApe Configuration (if you want to enable it)
+# SALESAPE_ENABLED=true
+# SALESAPE_API_KEY=your-salesape-api-key-here
+# SALESAPE_WEBHOOK_URL=your-salesape-webhook-url-here
+# SALESAPE_AIRTABLE_BASE_ID=your-airtable-base-id-here
+# SALESAPE_AIRTABLE_API_KEY=your-airtable-api-key-here
+
+# Email Configuration (optional - comment out if not using)
+# EMAIL_USER=your-email@gmail.com
+# EMAIL_PASSWORD=your-app-specific-password
+# GMAIL_USER=your-email@gmail.com
+# GMAIL_PASS=your-app-specific-password
+
+# Node Configuration
+NODE_ENV=production
+PORT=5000
+
+# Client URL (Railway will auto-generate this)
+# CLIENT_URL will be auto-set by Railway
+
+# IMPORTANT: DELETE ANY OLD VARIABLES LIKE:
+# - Any SUPABASE_URL pointing to tnltvfzltdeilanxhlvy.supabase.co
+# - Any old/different SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY values

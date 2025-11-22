@@ -4,11 +4,12 @@ const { simpleParser } = require('mailparser');
 const { randomUUID } = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const config = require('../config');
 
 // --- Configuration ---
-// Using existing Supabase credentials from config
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://tnltvfzltdeilanxhlvy.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubHR2ZnpsdGRlaWxhbnhobHZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxOTk4MzUsImV4cCI6MjA3Mjc3NTgzNX0.T_HaALQeSiCjLkpVuwQZUFnJbuSyRy2wf2kWiqJ99Lc';
+// Use centralized Supabase credentials - no more hardcoded old URLs
+const SUPABASE_URL = process.env.SUPABASE_URL || config.supabase.url;
+const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || config.supabase.serviceRoleKey || config.supabase.anonKey;
 
 // Email account configurations
 const EMAIL_ACCOUNTS = {
