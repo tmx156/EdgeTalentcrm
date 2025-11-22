@@ -1,5 +1,5 @@
-# Use Node.js 18 as the base image
-FROM node:18-alpine
+# Use Node.js 20 as the base image (recommended for Supabase)
+FROM node:20-alpine
 
 # Set working directory
 WORKDIR /app
@@ -21,7 +21,14 @@ RUN cd client && npm install
 # Copy the rest of the application
 COPY . .
 
-# Build the client
+# Set build-time environment variables for React app
+# These are baked into the client build
+ARG REACT_APP_SUPABASE_URL
+ARG REACT_APP_SUPABASE_ANON_KEY
+ENV REACT_APP_SUPABASE_URL=$REACT_APP_SUPABASE_URL
+ENV REACT_APP_SUPABASE_ANON_KEY=$REACT_APP_SUPABASE_ANON_KEY
+
+# Build the client with environment variables
 RUN npm run build
 
 # Expose port

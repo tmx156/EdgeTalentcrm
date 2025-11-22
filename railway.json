@@ -1,36 +1,16 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "buildCommand": "npm run railway:build",
-    "startCommand": "npm run railway:start"
-  },
-  "deploy": {
-    "restartPolicyType": "ON_FAILURE",
-    "numReplicas": 1,
-    "healthcheckPath": "/api/health",
-    "healthcheckTimeout": 300
-  },
-  "networking": {
-    "outboundConnections": {
-      "allowed": [
-        {
-          "host": "smtp.gmail.com",
-          "ports": [465, 587]
-        },
-        {
-          "host": "imap.gmail.com", 
-          "ports": [993]
-        },
-        {
-          "host": "ziqsvwoyafespvaychlg.supabase.co",
-          "ports": [443]
-        }
-      ]
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile",
+    "buildArgs": {
+      "REACT_APP_SUPABASE_URL": "https://ziqsvwoyafespvaychlg.supabase.co",
+      "REACT_APP_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjI1MjYsImV4cCI6MjA3ODk5ODUyNn0.KvfjYdS-Nv4i33p4X-IqMvwDVqbj5XbIe5-KR6ZL0WM"
     }
   },
-  "environment": {
-    "NODE_ENV": "production",
-    "NODE_OPTIONS": "--max-old-space-size=2048",
-    "CI": "false"
+  "deploy": {
+    "startCommand": "npm run railway:start",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
   }
 }
