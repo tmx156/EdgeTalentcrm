@@ -19,7 +19,7 @@ const config = {
   supabase: {
     url: process.env.SUPABASE_URL || 'https://ziqsvwoyafespvaychlg.supabase.co',
     anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjI1MjYsImV4cCI6MjA3ODk5ODUyNn0.KvfjYdS-Nv4i33p4X-IqMvwDVqbj5XbIe5-KR6ZL0WM',
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || null
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzQyMjUyNiwiZXhwIjoyMDc4OTk4NTI2fQ.VT-JI3OAZ_ecZO28mW7YUmVXKltk3ENXwSe_yvnK2kQ'
   },
 
   // SMS Configuration (BulkSMS) - Check credentials

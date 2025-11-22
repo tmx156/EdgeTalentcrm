@@ -19,9 +19,14 @@ class SupabaseStorageService {
     try {
       // Check if bucket exists
       const { data: buckets, error } = await supabase.storage.listBuckets();
-      
+
       if (error) {
-        console.error('❌ Error listing buckets:', error);
+        // Don't spam logs - storage might not be configured
+        if (error.message && !error.message.includes('JWS')) {
+          console.error('❌ Error listing buckets:', error);
+        } else {
+          console.log('ℹ️ Storage not configured - skipping bucket initialization');
+        }
         return;
       }
 
