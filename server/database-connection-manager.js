@@ -21,8 +21,8 @@ class DatabaseConnectionManager {
       console.error('❌ Failed to initialize Supabase client:', error);
       // Fallback to direct initialization if config fails
       try {
-        const fallbackUrl = process.env.SUPABASE_URL || 'https://tnltvfzltdeilanxhlvy.supabase.co';
-        const fallbackKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubHR2ZnpsdGRlaWxhbnhobHZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxOTk4MzUsImV4cCI6MjA3Mjc3NTgzNX0.T_HaALQeSiCjLkpVuwQZUFnJbuSyRy2wf2kWiqJ99Lc';
+        const fallbackUrl = process.env.SUPABASE_URL || config.supabase.url;
+        const fallbackKey = process.env.SUPABASE_ANON_KEY || config.supabase.anonKey;
         this.client = createClient(fallbackUrl, fallbackKey);
         console.log('✅ Supabase client initialized with fallback credentials');
       } catch (fallbackError) {
