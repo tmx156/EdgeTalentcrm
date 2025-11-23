@@ -22,8 +22,8 @@ const supabase = createClient(
 const SALESAPE_CONFIG = {
   // Their Airtable endpoint
   AIRTABLE_URL: 'https://api.airtable.com/v0/appoT1TexUksGanE8/tblTJGg187Ub84aXf',
-  // PAT code will be stored in environment variable
-  PAT_CODE: process.env.SALESAPE_PAT_CODE,
+  // PAT code will be stored in environment variable (support both variable names)
+  PAT_CODE: process.env.SALESAPE_PAT_CODE || process.env.SALESAPE_PAT,
   // Base Details record ID (from their requirements)
   BASE_DETAILS_ID: process.env.SALESAPE_BASE_DETAILS_ID || 'recThsoXqOHJCdgZY'
 };

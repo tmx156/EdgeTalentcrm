@@ -7,6 +7,8 @@ import PhotoModal from '../components/PhotoModal';
 import LazyImage from '../components/LazyImage';
 import { getOptimizedImageUrl, preloadImages } from '../utils/imageUtils';
 import { useAuth } from '../context/AuthContext';
+import SalesApeButton from '../components/SalesApeButton';
+import SalesApeStatus from '../components/SalesApeStatus';
 
 const LeadDetail = () => {
   const { id } = useParams();
@@ -1692,6 +1694,20 @@ const LeadDetail = () => {
                   </div>
                 </div>
               </div>
+
+              {/* SalesApe Integration */}
+              {!editing && (
+                <div className="mt-4">
+                  <SalesApeButton 
+                    lead={lead} 
+                    onSuccess={(data) => {
+                      // Refresh lead data after successful send
+                      fetchLead();
+                    }}
+                  />
+                </div>
+              )}
+
               {/* Add Reject button in the details card (after notes section) */}
               {!editing && lead.status !== 'Rejected' && (
                 <button
@@ -1781,6 +1797,9 @@ const LeadDetail = () => {
                   Send Booking Confirmation SMS
                 </button>
               )}
+
+              {/* SalesApe Status Display */}
+              <SalesApeStatus lead={lead} />
             </div>
           </div>
         </div>
