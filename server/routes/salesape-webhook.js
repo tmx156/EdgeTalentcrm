@@ -130,7 +130,12 @@ router.post('/update', async (req, res) => {
       Post_Conversation_Summary,
       Conversation_Summary,
       Full_Conversation,
-      Portal_Link
+      Portal_Link,
+      // Booking information (if provided)
+      Booking_Date,
+      Booking_Time,
+      Event_Type,
+      Calendar_Link
     } = req.body;
 
     // Validate CRM_ID
@@ -158,6 +163,28 @@ router.post('/update', async (req, res) => {
       updateData.salesape_portal_link = Portal_Link;
     }
 
+    // If booking information is provided, update the lead's booking details
+    if (Booking_Date || Booking_Time || SalesAPE_Goal_Hit) {
+      if (Booking_Date) {
+        updateData.date_booked = Booking_Date;
+      }
+      if (Booking_Time) {
+        updateData.time_booked = Booking_Time;
+      }
+      // If goal was hit, mark as booked
+      if (SalesAPE_Goal_Hit) {
+        updateData.status = 'Booked';
+        updateData.is_confirmed = true;
+      }
+      
+      console.log('📅 Booking information received:', {
+        date: Booking_Date,
+        time: Booking_Time,
+        eventType: Event_Type,
+        calendarLink: Calendar_Link
+      });
+    }
+
     // Update the lead in our database
     const { data: lead, error } = await supabase
       .from('leads')
@@ -178,16 +205,31 @@ router.post('/update', async (req, res) => {
       goalHit: SalesAPE_Goal_Hit
     });
 
-    // If goal was hit, you might want to trigger additional actions
+    // If goal was hit, trigger additional actions
     if (SalesAPE_Goal_Hit && !lead.salesape_goal_hit) {
       console.log('🎯 SalesApe achieved goal for lead:', CRM_ID);
-      // You could trigger notifications, update stats, etc.
+      console.log('✅ Lead status updated to: Booked');
+      
+      // Log booking details if available
+      if (Booking_Date || Booking_Time) {
+        console.log('📅 Booking Details:');
+        console.log(`   - Date: ${Booking_Date || 'Not provided'}`);
+        console.log(`   - Time: ${Booking_Time || 'Not provided'}`);
+        console.log(`   - Event Type: ${Event_Type || 'Not provided'}`);
+        console.log(`   - Calendar Link: ${Calendar_Link || 'Not provided'}`);
+      }
+      
+      // You could trigger notifications, update stats, send confirmation emails, etc.
+      // Example: Send confirmation email to the lead
+      // Example: Notify admin/booker about new booking
     }
 
     res.json({ 
       success: true, 
       message: 'Lead updated successfully',
-      leadId: CRM_ID 
+      leadId: CRM_ID,
+      bookingReceived: !!(Booking_Date || Booking_Time),
+      statusUpdated: SalesAPE_Goal_Hit
     });
 
   } catch (error) {
@@ -273,6 +315,27 @@ router.post('/meeting-booked/:leadId', async (req, res) => {
 });
 
 /**
+ * Test endpoint to see raw webhook data
+ * GET /api/salesape-webhook/test-log
+ */
+router.get('/test-log', (req, res) => {
+  res.json({
+    message: 'Webhook test endpoint ready',
+    instructions: 'Send a POST to /api/salesape-webhook/update to test',
+    expectedFields: [
+      'Airtable_Record_ID',
+      'CRM_ID',
+      'SalesAPE_Status',
+      'SalesAPE_Goal_Hit',
+      'Booking_Date (if booking made)',
+      'Booking_Time (if booking made)',
+      'Event_Type (if booking made)',
+      'Calendar_Link (if provided)'
+    ]
+  });
+});
+
+/**
  * Health check endpoint
  */
 router.get('/health', (req, res) => {
@@ -282,7 +345,8 @@ router.get('/health', (req, res) => {
     endpoints: {
       webhook: '/api/salesape-webhook/update',
       trigger: '/api/salesape-webhook/trigger/:leadId',
-      meetingBooked: '/api/salesape-webhook/meeting-booked/:leadId'
+      meetingBooked: '/api/salesape-webhook/meeting-booked/:leadId',
+      testLog: '/api/salesape-webhook/test-log'
     }
   });
 });
