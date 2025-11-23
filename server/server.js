@@ -431,6 +431,9 @@ app.use('/api/legacy', legacyRoutes);
 app.use('/api/booker-analytics', bookerAnalyticsRoutes);
 app.use('/api/email-test', emailTestRoutes);
 app.use('/api/salesape', salesapeRoutes);
+// SalesApe Webhook Integration (for receiving updates from SalesApe)
+const { router: salesapeWebhookRouter } = require('./routes/salesape-webhook');
+app.use('/api/salesape-webhook', salesapeWebhookRouter);
 // TEMPORARILY DISABLED: app.use('/api/performance', require('./routes/performance'));
 
 // --- Lightweight short link storage for long booking confirmations ---

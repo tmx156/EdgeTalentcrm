@@ -1,0 +1,17 @@
+# ADD THESE TO YOUR RAILWAY ENVIRONMENT VARIABLES
+# This enables SalesApe API integration
+
+# Enable SalesApe Integration
+SALESAPE_ENABLED=true
+
+# API Key for SalesApe to authenticate with your CRM
+# IMPORTANT: Change this to your own secure key!
+SALESAPE_API_KEY=YOUR_SECURE_API_KEY_HERE
+
+# Optional: If you have Airtable integration
+# SALESAPE_AIRTABLE_BASE_ID=your-airtable-base-id
+# SALESAPE_AIRTABLE_API_KEY=your-airtable-api-key
+# SALESAPE_AIRTABLE_TABLE_NAME=Leads
+
+# Optional: If you have a webhook URL
+# SALESAPE_WEBHOOK_URL=https://your-webhook-url.com
