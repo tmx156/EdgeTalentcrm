@@ -19,7 +19,7 @@ This is the simplest method and doesn't require GitHub Actions.
    - Click on your service (deployment)
    - Go to **Settings** tab
    - Under **Source**, click **Connect GitHub Repo**
-   - Select repository: `tmx156/Crm`
+   - Select repository: `tmx156/EdgeTalentcrm`
    - Select branch: `main`
    - Click **Connect**
 
@@ -66,14 +66,14 @@ If you prefer to use GitHub Actions (already configured in `.github/workflows/ra
    Copy the Service ID from the output.
 
 3. **Add Secrets to GitHub**
-   - Go to: https://github.com/tmx156/Crm/settings/secrets/actions
+   - Go to: https://github.com/tmx156/EdgeTalentcrm/settings/secrets/actions
    - Click **New repository secret**
    - Add two secrets:
      - `RAILWAY_TOKEN`: Paste the token from step 1
      - `RAILWAY_SERVICE_ID`: Paste the service ID from step 2
 
 4. **Enable GitHub Actions**
-   - Go to: https://github.com/tmx156/Crm/actions
+   - Go to: https://github.com/tmx156/EdgeTalentcrm/actions
    - Enable workflows if disabled
 
 ### ✅ After Setup:
@@ -144,7 +144,7 @@ Just run `railway up` after pushing to GitHub.
 
 ## Current Status
 
-✅ GitHub repository: Connected (`tmx156/Crm`)
+✅ GitHub repository: Connected (`tmx156/EdgeTalentcrm`)
 ✅ Latest commit pushed: "Update CRM: Add slot-based calendar system, remove legacy pages, and enhance lead management"
 ✅ Dockerfile: Present and configured
 ✅ railway.json: Present with correct configuration
