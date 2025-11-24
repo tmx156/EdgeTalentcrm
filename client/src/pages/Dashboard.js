@@ -3,14 +3,7 @@ import { FiWifi, FiActivity, FiClock, FiUsers, FiCalendar, FiDollarSign, FiZap, 
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { toZonedTime, format } from 'date-fns-tz';
-
-const getTodayUK = () => {
-  const ukTz = 'Europe/London';
-  const now = new Date();
-  const ukNow = toZonedTime(now, ukTz);
-  return format(ukNow, 'yyyy-MM-dd', { timeZone: ukTz });
-};
+import { getCurrentUKTime, getTodayUK, getGreeting, getUKTimeString } from '../utils/timeUtils';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -26,7 +19,7 @@ const Dashboard = () => {
   const [recentActivity, setRecentActivity] = useState([]);
   const [unreadMessages, setUnreadMessages] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [currentTime, setCurrentTime] = useState(getCurrentUKTime());
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [replyMode, setReplyMode] = useState('sms');
@@ -128,9 +121,10 @@ const Dashboard = () => {
           // Filter sales client-side to only include those created on selectedActivityDate in UK time
           salesData = (salesRes.data || []).filter(sale => {
             if (!sale.created_at) return false;
-            const ukTz = 'Europe/London';
-            const saleDateUK = format(toZonedTime(new Date(sale.created_at), ukTz), 'yyyy-MM-dd', { timeZone: ukTz });
-            return saleDateUK === todayUK;
+            const saleDateUK = getTodayUK();
+            const saleDate = new Date(sale.created_at);
+            const saleDateStr = saleDate.toISOString().split('T')[0];
+            return saleDateStr === todayUK;
           });
         } catch (err) {
           console.error('Error fetching sales:', err);
@@ -383,10 +377,7 @@ const Dashboard = () => {
   const fetchRecentActivity = useCallback(async () => {
     try {
       // Use UK timezone for "today"
-      const ukTz = 'Europe/London';
-      const now = new Date();
-      const ukNow = toZonedTime(now, ukTz);
-      const todayUK = format(ukNow, 'yyyy-MM-dd', { timeZone: ukTz });
+      const todayUK = getTodayUK();
 
       // Create UK time range and convert to UTC
       const startOfDayUK = new Date(todayUK + 'T00:00:00');
@@ -413,9 +404,9 @@ const Dashboard = () => {
           const todayUK = getTodayUK();
           salesData = (salesRes.data || []).filter(sale => {
             if (!sale.created_at) return false;
-            const ukTz = 'Europe/London';
-            const saleDateUK = format(toZonedTime(new Date(sale.created_at), ukTz), 'yyyy-MM-dd', { timeZone: ukTz });
-            return saleDateUK === todayUK;
+            const saleDate = new Date(sale.created_at);
+            const saleDateStr = saleDate.toISOString().split('T')[0];
+            return saleDateStr === todayUK;
           });
         } catch (err) {
           console.error('Error fetching sales for activity:', err);
@@ -491,8 +482,8 @@ const Dashboard = () => {
     fetchRecentActivity();
     fetchUnreadMessages();
 
-    // Update clock every second
-    const clockTimer = setInterval(() => setCurrentTime(new Date()), 1000);
+    // Update clock every second with UK time
+    const clockTimer = setInterval(() => setCurrentTime(getCurrentUKTime()), 1000);
 
     // Auto-refresh every 30 seconds
     const refreshTimer = setInterval(() => {
@@ -635,12 +626,12 @@ const Dashboard = () => {
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
             <div className="flex items-center space-x-2">
               <div className="h-2 w-2 sm:h-3 sm:w-3 bg-red-500 rounded-full animate-pulse"></div>
-              <h1 className="text-base sm:text-xl lg:text-2xl font-bold text-gray-900">LIVE OPERATIONS</h1>
+              <h1 className="text-base sm:text-xl lg:text-2xl font-bold text-gray-900">{getGreeting(user?.name || 'User')}</h1>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-4 lg:gap-6 text-xs sm:text-sm w-full sm:w-auto">
               <div className="flex items-center space-x-2">
                 <FiClock className="h-4 w-4 text-gray-500" />
-                <span className="font-mono text-gray-700">{currentTime.toLocaleTimeString()}</span>
+                <span className="font-mono text-gray-700">{getUKTimeString(currentTime)} UK</span>
               </div>
               <div className="flex items-center space-x-2">
                 <FiWifi className={`h-4 w-4 ${isConnected ? 'text-green-500' : 'text-red-500'}`} />

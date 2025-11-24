@@ -562,7 +562,7 @@ router.get('/calendar', auth, async (req, res) => {
       .from('leads')
       .select(`
         id, name, phone, email, status, date_booked, booker_id,
-        is_confirmed, booking_status, has_sale,
+        is_confirmed, booking_status, has_sale, time_booked, booking_slot,
         created_at, postcode, notes, image_url
       `)
       .or('date_booked.not.is.null,status.eq.Booked')
@@ -1345,6 +1345,7 @@ router.post('/', auth, async (req, res) => {
           parent_phone: bodyWithoutId.parent_phone,
           date_booked: bodyWithoutId.date_booked ? preserveLocalTime(bodyWithoutId.date_booked) : null,
           time_booked: bodyWithoutId.time_booked,
+          booking_slot: bodyWithoutId.booking_slot || 1, // Default to slot 1 if not specified
           status: 'Booked',
           booker_id: req.user.id,
           updated_at: new Date().toISOString(),
@@ -1509,6 +1510,8 @@ router.post('/', auth, async (req, res) => {
           const updateFields = {
             status: 'Booked',
             date_booked: finalBody.date_booked ? preserveLocalTime(finalBody.date_booked) : null,
+            time_booked: finalBody.time_booked,
+            booking_slot: finalBody.booking_slot || 1, // Default to slot 1 if not specified
             booker_id: req.user.id,
             booked_at: new Date().toISOString(), // ✅ BOOKING HISTORY FIX: Set booked_at timestamp
             ever_booked: true, // ✅ BOOKING HISTORY FIX: Mark as ever booked
@@ -1679,6 +1682,8 @@ router.post('/', auth, async (req, res) => {
       created_by_user_id: req.user.id, // Track who created this booking
       status: leadData.status || 'New',
       date_booked: leadData.date_booked ? preserveLocalTime(leadData.date_booked) : null,
+      time_booked: leadData.time_booked || null,
+      booking_slot: leadData.booking_slot || 1, // Default to slot 1 if not specified
       booking_history: JSON.stringify([]), // booking_history starts empty
       notes: leadData.notes || '',
       // Convert boolean to integer for database compatibility
@@ -2005,6 +2010,8 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       // Convert camelCase field names to snake_case for database columns
       const dbKey = key === 'bookingHistory' ? 'booking_history' :
                     key === 'dateBooked' ? 'date_booked' :
+                    key === 'timeBooked' ? 'time_booked' :
+                    key === 'bookingSlot' ? 'booking_slot' :
                     key === 'isConfirmed' ? 'is_confirmed' :
                     key === 'hasSale' ? 'has_sale' :
                     key === 'bookingStatus' ? 'booking_status' :
@@ -3218,7 +3225,7 @@ router.get('/calendar-public', async (req, res) => {
       .from('leads')
       .select(`
         id, name, phone, email, status, date_booked, booker_id,
-        is_confirmed, booking_status, has_sale,
+        is_confirmed, booking_status, has_sale, time_booked, booking_slot,
         created_at, postcode, notes, image_url
       `)
       .or('date_booked.not.is.null,status.eq.Booked')

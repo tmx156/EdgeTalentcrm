@@ -1,0 +1,194 @@
+import React from 'react';
+import { FiCheckCircle, FiClock } from 'react-icons/fi';
+
+const MonthlySlotCalendar = ({ currentDate, events, onDayClick, onEventClick }) => {
+  // Get days in month
+  const getDaysInMonth = () => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    
+    // First day of month
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    // Get day of week for first day (0 = Sunday, 1 = Monday, etc.)
+    const firstDayOfWeek = firstDay.getDay();
+    const adjustedFirstDay = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1; // Adjust so Monday = 0
+    
+    const daysInMonth = lastDay.getDate();
+    
+    // Create array of days
+    const days = [];
+    
+    // Add empty cells for days before month starts
+    for (let i = 0; i < adjustedFirstDay; i++) {
+      days.push(null);
+    }
+    
+    // Add days of month
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push(new Date(year, month, day));
+    }
+    
+    return days;
+  };
+
+  // Get bookings for a specific day
+  const getBookingsForDay = (day) => {
+    if (!day || !events) return { slot1: [], slot2: [] };
+    
+    const dayStr = day.toISOString().split('T')[0];
+    
+    const dayBookings = events.filter(event => {
+      if (!event.date_booked) return false;
+      const eventDateStr = new Date(event.date_booked).toISOString().split('T')[0];
+      return eventDateStr === dayStr;
+    });
+    
+    const slot1 = dayBookings.filter(e => e.booking_slot === 1);
+    const slot2 = dayBookings.filter(e => e.booking_slot === 2);
+    
+    return { slot1, slot2 };
+  };
+
+  // Get booking count summary for a day
+  const getBookingSummary = (day) => {
+    const { slot1, slot2 } = getBookingsForDay(day);
+    const total = slot1.length + slot2.length;
+    const confirmed = [...slot1, ...slot2].filter(e => e.is_confirmed).length;
+    
+    return { total, confirmed, slot1Count: slot1.length, slot2Count: slot2.length };
+  };
+
+  const days = getDaysInMonth();
+  const monthName = currentDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return (
+    <div className="monthly-slot-calendar-container">
+      {/* Header */}
+      <div className="mb-4">
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">{monthName}</h2>
+        <div className="flex flex-wrap gap-4 text-xs">
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-blue-500 rounded mr-2"></div>
+            <span>Slot 1</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-purple-500 rounded mr-2"></div>
+            <span>Slot 2</span>
+          </div>
+          <div className="flex items-center">
+            <FiCheckCircle className="w-3 h-3 text-green-600 mr-2" />
+            <span>Confirmed</span>
+          </div>
+          <div className="flex items-center">
+            <FiClock className="w-3 h-3 text-orange-500 mr-2" />
+            <span>Unconfirmed</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="bg-white border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+        {/* Day Headers */}
+        <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-300">
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+            <div key={day} className="p-2 text-center font-semibold text-sm text-gray-700 border-r border-gray-200 last:border-r-0">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Days Grid */}
+        <div className="grid grid-cols-7">
+          {days.map((day, index) => {
+            if (!day) {
+              // Empty cell for days before month starts
+              return (
+                <div
+                  key={`empty-${index}`}
+                  className="min-h-[100px] border-r border-b border-gray-200 bg-gray-50"
+                />
+              );
+            }
+
+            const { total, confirmed, slot1Count, slot2Count } = getBookingSummary(day);
+            const isToday = day.toDateString() === today.toDateString();
+            const isPast = day < today;
+            const { slot1, slot2 } = getBookingsForDay(day);
+
+            return (
+              <div
+                key={day.toISOString()}
+                className={`min-h-[100px] border-r border-b border-gray-200 p-2 cursor-pointer hover:bg-gray-50 transition-colors ${
+                  isToday ? 'bg-blue-50 border-2 border-blue-500' : ''
+                } ${isPast ? 'bg-gray-50' : ''}`}
+                onClick={() => onDayClick(day)}
+              >
+                {/* Day Number */}
+                <div className={`text-sm font-semibold mb-2 ${isToday ? 'text-blue-600' : isPast ? 'text-gray-400' : 'text-gray-700'}`}>
+                  {day.getDate()}
+                </div>
+
+                {/* Booking Summary */}
+                {total > 0 && (
+                  <div className="space-y-1">
+                    {/* Slot 1 Bookings */}
+                    {slot1Count > 0 && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span className="text-xs text-gray-600">S1: {slot1Count}</span>
+                      </div>
+                    )}
+                    
+                    {/* Slot 2 Bookings */}
+                    {slot2Count > 0 && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                        <span className="text-xs text-gray-600">S2: {slot2Count}</span>
+                      </div>
+                    )}
+
+                    {/* Confirmed Count */}
+                    {confirmed > 0 && (
+                      <div className="flex items-center gap-1">
+                        <FiCheckCircle className="w-3 h-3 text-green-600" />
+                        <span className="text-xs text-green-600">{confirmed}</span>
+                      </div>
+                    )}
+
+                    {/* Show first few booking names */}
+                    <div className="mt-1 space-y-0.5">
+                      {[...slot1, ...slot2].slice(0, 2).map((event, idx) => (
+                        <div
+                          key={event.id}
+                          className="text-xs truncate text-gray-700 hover:text-blue-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEventClick(event);
+                          }}
+                        >
+                          {event.name}
+                        </div>
+                      ))}
+                      {total > 2 && (
+                        <div className="text-xs text-gray-500">+{total - 2} more</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty day indicator - removed text */}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MonthlySlotCalendar;
+

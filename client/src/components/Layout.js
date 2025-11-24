@@ -20,13 +20,9 @@ import {
   FiChevronDown,
   FiChevronUp,
   FiMail,
-  FiBookOpen,
-  FiTarget,
   FiDollarSign,
   FiTrendingUp,
-  FiMessageSquare,
-  FiActivity,
-  FiCpu
+  FiMessageSquare
 } from 'react-icons/fi';
 
 const Layout = ({ children }) => {
@@ -34,7 +30,6 @@ const Layout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [leadsDropdownOpen, setLeadsDropdownOpen] = useState(false);
   const [templatesDropdownOpen, setTemplatesDropdownOpen] = useState(false);
-  const [retargetingDropdownOpen, setRetargetingDropdownOpen] = useState(false);
   const [messagesDropdownOpen, setMessagesDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [smsNotifications, setSmsNotifications] = useState([]);
@@ -53,13 +48,11 @@ const Layout = ({ children }) => {
   // Add unique refs for each dropdown
   const leadsDropdownRef = useRef(null);
   const templatesDropdownRef = useRef(null);
-  const retargetingDropdownRef = useRef(null);
   const notificationsDropdownRef = useRef(null);
   const messagesDropdownRef = useRef(null);
 
   const templateCategories = [
     { name: 'Diary Templates', key: 'Diary Templates' },
-    { name: 'Retargeting Templates', key: 'Retargeting Templates' },
     { name: 'Sale Templates', key: 'Sale Templates' },
     { name: 'Bookers Templates', key: 'Bookers Templates' },
   ];
@@ -70,11 +63,6 @@ const Layout = ({ children }) => {
     const handleClickOutsideTemplates = (event) => {
       if (templatesDropdownRef.current && !templatesDropdownRef.current.contains(event.target)) {
         setTemplatesDropdownOpen(false);
-      }
-    };
-    const handleClickOutsideRetargeting = (event) => {
-      if (retargetingDropdownRef.current && !retargetingDropdownRef.current.contains(event.target)) {
-        setRetargetingDropdownOpen(false);
       }
     };
     const handleClickOutsideNotifications = (event) => {
@@ -89,12 +77,10 @@ const Layout = ({ children }) => {
     };
     
     document.addEventListener('mousedown', handleClickOutsideTemplates);
-    document.addEventListener('mousedown', handleClickOutsideRetargeting);
     document.addEventListener('mousedown', handleClickOutsideNotifications);
     document.addEventListener('mousedown', handleClickOutsideMessages);
     return () => {
       document.removeEventListener('mousedown', handleClickOutsideTemplates);
-      document.removeEventListener('mousedown', handleClickOutsideRetargeting);
       document.removeEventListener('mousedown', handleClickOutsideNotifications);
       document.removeEventListener('mousedown', handleClickOutsideMessages);
     };
@@ -649,17 +635,12 @@ const Layout = ({ children }) => {
         { name: 'Cancelled', status: 'Cancelled', icon: '❌' }
       ]
     },
-    { name: 'Calendar', href: '/calendar', icon: FiCalendar },
+    { name: 'Diary', href: '/calendar', icon: FiCalendar },
     { name: 'Messages', href: '/messages', icon: FiMessageSquare },
-    { name: 'Daily Diary', href: '/daily-diary', icon: FiBookOpen, adminOnly: true },
     { name: 'Sales', href: '/sales', icon: FiTrendingUp, adminOnly: true },
     { name: 'Finance', href: '/finance', icon: FiDollarSign, adminOnly: true },
     { name: 'Reports', href: '/reports', icon: FiBarChart2 },
-    { name: 'Booker Analytics', href: '/booker-analytics', icon: FiActivity, adminOnly: true },
-    { name: 'AI Assistant', href: '/ai-assistant', icon: FiCpu, adminOnly: true },
-    { name: 'Retargeting', href: '/retargeting', icon: FiTarget, adminOnly: true },
     { name: 'Templates', href: '/templates', icon: FiMail, adminOnly: true },
-    { name: 'Legacy Data', href: '/legacy', icon: FiUsers, adminOnly: true },
     { name: 'Users', href: '/users', icon: FiUser, adminOnly: true },
   ];
 
@@ -873,47 +854,6 @@ const Layout = ({ children }) => {
                         </div>
                       )}
                     </div>
-                  ) : item.name === 'Retargeting' ? (
-                    <div className="relative" ref={retargetingDropdownRef}>
-                      <button
-                        onClick={() => {
-                          if (location.pathname !== '/retargeting') {
-                            navigate('/retargeting');
-                            setRetargetingDropdownOpen(true);
-                          } else {
-                            setRetargetingDropdownOpen(!retargetingDropdownOpen);
-                          }
-                        }}
-                        className={`group flex items-center justify-between w-full px-2 py-2 text-sm font-medium rounded-md ${
-                          isCurrentPath(item.href)
-                            ? 'bg-blue-100 text-blue-900'
-                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                        }`}
-                      >
-                        <div className="flex items-center">
-                          <item.icon className="mr-3 h-5 w-5" />
-                          {item.name}
-                        </div>
-                        {retargetingDropdownOpen ? (
-                          <FiChevronUp className="h-4 w-4" />
-                        ) : (
-                          <FiChevronDown className="h-4 w-4" />
-                        )}
-                      </button>
-                      {retargetingDropdownOpen && (
-                        <div className="mt-1 ml-6 space-y-1">
-                          <button
-                            onClick={() => {
-                              navigate('/retargeting-leads');
-                            }}
-                            className="group flex items-center w-full px-2 py-2 text-sm rounded-md transition-colors text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                          >
-                            <span className="mr-2">👥</span>
-                            Leads (Retargeted Signups)
-                          </button>
-                        </div>
-                      )}
-                    </div>
                   ) : (
                     // Regular navigation items
                     <Link
@@ -1090,47 +1030,6 @@ const Layout = ({ children }) => {
                               <span className="mr-2">{cat.name}</span>
                             </button>
                           ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : item.name === 'Retargeting' ? (
-                    <div className="relative" ref={retargetingDropdownRef}>
-                      <button
-                        onClick={() => {
-                          if (location.pathname !== '/retargeting') {
-                            navigate('/retargeting');
-                            setRetargetingDropdownOpen(true);
-                          } else {
-                            setRetargetingDropdownOpen(!retargetingDropdownOpen);
-                          }
-                        }}
-                        className={`group flex items-center justify-between w-full px-2 py-2 text-sm font-medium rounded-md ${
-                          isCurrentPath(item.href)
-                            ? 'bg-blue-100 text-blue-900'
-                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                        }`}
-                      >
-                        <div className="flex items-center">
-                          <item.icon className="mr-3 h-5 w-5" />
-                          {item.name}
-                        </div>
-                        {retargetingDropdownOpen ? (
-                          <FiChevronUp className="h-4 w-4" />
-                        ) : (
-                          <FiChevronDown className="h-4 w-4" />
-                        )}
-                      </button>
-                      {retargetingDropdownOpen && (
-                        <div className="mt-1 ml-6 space-y-1">
-                          <button
-                            onClick={() => {
-                              navigate('/retargeting-leads');
-                            }}
-                            className="group flex items-center w-full px-2 py-2 text-sm rounded-md transition-colors text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                          >
-                            <span className="mr-2">👥</span>
-                            Leads (Retargeted Signups)
-                          </button>
                         </div>
                       )}
                     </div>

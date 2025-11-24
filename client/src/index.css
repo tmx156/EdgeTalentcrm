@@ -586,3 +586,128 @@
     @apply p-1;
   }
 }
+
+/* Slot Calendar Styles */
+.slot-calendar-container {
+  @apply w-full;
+}
+
+.slot-calendar-grid {
+  @apply bg-white;
+}
+
+/* Slot Calendar Cell Hover Effects */
+.slot-calendar-grid > div > div:hover {
+  @apply opacity-90;
+}
+
+/* Mobile Responsive Slot Calendar */
+@media (max-width: 768px) {
+  .slot-calendar-grid {
+    @apply text-sm;
+  }
+  
+  .slot-calendar-grid > div {
+    @apply min-h-[60px];
+  }
+  
+  .slot-calendar-grid .p-4 {
+    @apply p-2;
+  }
+}
+
+/* Monthly Slot Calendar Styles */
+.monthly-slot-calendar-container {
+  @apply w-full;
+}
+
+.monthly-slot-calendar-container .grid {
+  @apply gap-0;
+}
+
+/* Weekly Slot Calendar Styles */
+.weekly-slot-calendar-container {
+  @apply w-full;
+}
+
+/* Compact cell styling for weekly view */
+.weekly-slot-calendar-container .compact-cell {
+  @apply transition-all duration-200 min-h-[32px];
+}
+
+.weekly-slot-calendar-container .compact-cell:hover {
+  @apply transform scale-105 shadow-sm;
+}
+
+/* Print Styles for Calendar */
+@media print {
+  .slot-calendar-container,
+  .weekly-slot-calendar-container {
+    @apply shadow-none;
+  }
+  
+  .slot-calendar-grid,
+  .weekly-slot-calendar-container > div {
+    @apply break-inside-avoid;
+  }
+  
+  /* Hide interactive elements when printing */
+  button,
+  .hover\:opacity-80 {
+    @apply pointer-events-none;
+  }
+  
+  /* Ensure colors print correctly */
+  .bg-blue-100 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .bg-pink-100 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  
+  .bg-yellow-100 {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* Slot Color Recommendations */
+.slot-type-male {
+  @apply bg-blue-100 border-blue-200;
+}
+
+.slot-type-female {
+  @apply bg-pink-100 border-pink-200;
+}
+
+.slot-type-family {
+  @apply bg-yellow-100 border-yellow-200;
+}
+
+.slot-type-available {
+  @apply bg-white border-gray-200;
+}
+
+/* Booking Status Colors */
+.booking-confirmed {
+  @apply bg-green-50 border-green-300;
+}
+
+.booking-unconfirmed {
+  @apply bg-orange-50 border-orange-300;
+}
+
+.booking-arrived {
+  @apply bg-red-50 border-red-300;
+}
+
+.booking-left {
+  @apply bg-gray-100 border-gray-300;
+}
+
+.booking-sale {
+  @apply bg-blue-200 border-blue-400;
+}

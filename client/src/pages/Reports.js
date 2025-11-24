@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { FiDownload, FiCalendar, FiUser, FiTrendingUp, FiDollarSign, FiBarChart2, FiRefreshCw, FiTarget, FiAward, FiCheck } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
+import { getCurrentUKTime, getTodayUK } from '../utils/timeUtils';
 import axios from 'axios';
 
 const Reports = () => {

@@ -34,17 +34,16 @@ const Templates = () => {
   // Utility to group templates by category
   const categorizeTemplates = (templates) => {
     if (!templates || !Array.isArray(templates)) {
-      return { 'Diary Templates': [], 'Retargeting Templates': [], 'Sale Templates': [], 'Lead Details Templates': [] };
+      return { 'Diary Templates': [], 'Sale Templates': [], 'Lead Details Templates': [] };
     }
 
     const categories = {
       'Diary Templates': ['booking_confirmation', 'appointment_reminder', 'no_show', 'reschedule', 'cancellation'],
-      'Retargeting Templates': ['retargeting_gentle', 'retargeting_urgent', 'retargeting_final', 'retargeting'],
       'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance'],
       'Receipts': ['receipt', 'sale_receipt', 'payment_receipt'],
       'Lead Details Templates': ['custom', 'booker']
     };
-    const grouped = { 'Diary Templates': [], 'Retargeting Templates': [], 'Sale Templates': [], 'Receipts': [], 'Lead Details Templates': [] };
+    const grouped = { 'Diary Templates': [], 'Sale Templates': [], 'Receipts': [], 'Lead Details Templates': [] };
     templates.forEach(t => {
       let found = false;
       for (const [cat, types] of Object.entries(categories)) {
@@ -381,7 +380,6 @@ const Templates = () => {
             const filteredTemplates = categoryFilter === 'All' ? (templates || []) : (templates || []).filter(t => {
               const cat = Object.entries({
                 'Diary Templates': ['booking_confirmation', 'appointment_reminder', 'no_show', 'reschedule', 'cancellation'],
-                'Retargeting Templates': ['retargeting_gentle', 'retargeting_urgent', 'retargeting_final', 'retargeting'],
                 'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance'],
                 'Lead Details Templates': ['custom', 'booker']
               }).find(([cat, types]) => types.includes(t.type));
@@ -580,9 +578,6 @@ const Templates = () => {
                             <option key="no_show" value="no_show">❌ No Show Follow-up</option>
                             <option key="reschedule" value="reschedule">🔄 Reschedule</option>
                             <option key="cancellation" value="cancellation">🚫 Cancellation</option>
-                            <option key="retargeting_gentle" value="retargeting_gentle">💌 Retargeting (Gentle)</option>
-                            <option key="retargeting_urgent" value="retargeting_urgent">⚡ Retargeting (Urgent)</option>
-                            <option key="retargeting_final" value="retargeting_final">🎯 Retargeting (Final)</option>
                             <option key="sale_confirmation" value="sale_confirmation">💰 Sale Confirmation</option>
                             <option key="sale_followup" value="sale_followup">📞 Sale Follow-up</option>
                             <option key="sale_paid_in_full" value="sale_paid_in_full">🎉 Paid in Full - Welcome</option>

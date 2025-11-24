@@ -1,0 +1,44 @@
+Subject: Webhook URL and Integration Details for EdgeTalent CRM
+
+Hi SalesApe Team,
+
+Please use the following webhook URL to send updates to our CRM:
+
+WEBHOOK URL:
+https://edgetalentcrm-production.up.railway.app/api/salesape-webhook/update
+
+---
+
+IMPORTANT: When a lead books an appointment through your calendar link, please include these fields in your webhook payload:
+
+{
+  "CRM_ID": "lead-uuid-from-our-system",
+  "SalesAPE_Status": "Booking Confirmed",
+  "SalesAPE_Goal_Hit": true,
+  "SalesAPE_Initial_Message_Sent": true,
+  "SalesAPE_User_Engaged": true,
+  "SalesAPE_Goal_Presented": true,
+  "Booking_Date": "2025-11-25",
+  "Booking_Time": "14:30",
+  "Event_Type": "Photoshoot Booking",
+  "Conversation_Summary": "Brief summary of conversation",
+  "Portal_Link": "https://salesape.ai/conversation/xxx"
+}
+
+REQUIRED FIELDS FOR BOOKINGS:
+- Booking_Date (format: YYYY-MM-DD)
+- Booking_Time (format: HH:MM in 24-hour time)
+- SalesAPE_Goal_Hit (must be true when booking is made)
+
+This will automatically update the lead status to "Booked" in our CRM and store the appointment details.
+
+---
+
+TESTING:
+You can test the webhook is working by sending a POST request to the URL above. You should receive a success response.
+
+Please confirm receipt and let us know if you need any clarification.
+
+Thanks,
+EdgeTalent Team
+

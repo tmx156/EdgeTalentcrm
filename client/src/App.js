@@ -18,15 +18,10 @@ import Users from './pages/Users';
 import Calendar from './pages/Calendar';
 import Reports from './pages/Reports';
 import Templates from './pages/Templates';
-import DailyDiary from './pages/DailyDiary';
-import Retargeting from './pages/Retargeting';
 import BookersTemplates from './pages/BookersTemplates';
 import Finance from './pages/Finance';
 import Sales from './pages/Sales';
 import Messages from './pages/Messages';
-import Legacy from './pages/Legacy';
-import BookerAnalytics from './pages/BookerAnalytics';
-import AIAssistant from './pages/AIAssistant';
 
 // Create browser history
 const history = createBrowserHistory();
@@ -86,15 +81,10 @@ function App() {
                           <Route path="/templates" element={<Templates />} />
                           <Route path="/calendar" element={<Calendar />} />
                           <Route path="/reports" element={<Reports />} />
-                          <Route path="/retargeting" element={<Retargeting />} />
-                          <Route path="/daily-diary" element={<DailyDiary />} />
                           <Route path="/bookers-templates" element={<BookersTemplates />} />
                           <Route path="/finance" element={<Finance />} />
                           <Route path="/sales" element={<Sales />} />
                           <Route path="/messages" element={<Messages />} />
-                          <Route path="/legacy" element={<Legacy />} />
-                          <Route path="/booker-analytics" element={<BookerAnalytics />} />
-                          <Route path="/ai-assistant" element={<AIAssistant />} />
                           <Route path="/" element={<Navigate to="/dashboard" />} />
                         </Routes>
                       </Layout>
