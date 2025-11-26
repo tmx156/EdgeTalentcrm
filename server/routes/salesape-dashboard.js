@@ -15,13 +15,16 @@ const dbManager = require('../database-connection-manager');
  */
 router.get('/status', auth, async (req, res) => {
   try {
-    // Get currently active lead (leads that are engaged but not yet booked)
-    const activeLeads = await dbManager.query('leads', {
-      select: 'id, name, phone, email, salesape_status, salesape_last_updated, salesape_user_engaged, salesape_goal_hit',
-      neq: { salesape_sent_at: null },
-      order: { salesape_last_updated: 'desc' },
-      limit: 10
+    // Get all recent leads and filter for SalesApe leads in JavaScript
+    // This avoids the timestamp null issue
+    const allLeads = await dbManager.query('leads', {
+      select: 'id, name, phone, email, salesape_status, salesape_last_updated, salesape_user_engaged, salesape_goal_hit, salesape_sent_at',
+      order: { created_at: 'desc' },
+      limit: 100
     });
+
+    // Filter for leads that have been sent to SalesApe (salesape_sent_at is not null)
+    const activeLeads = allLeads ? allLeads.filter(l => l.salesape_sent_at !== null && l.salesape_sent_at !== undefined) : [];
 
     // Find the most recently active lead that's engaged but not booked
     const currentLead = activeLeads && activeLeads.length > 0 
@@ -32,10 +35,13 @@ router.get('/status', auth, async (req, res) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const allLeads = await dbManager.query('leads', {
+    const todayLeads = await dbManager.query('leads', {
       select: 'id, salesape_initial_message_sent, salesape_user_engaged, salesape_goal_hit, salesape_sent_at',
-      gte: { salesape_sent_at: today.toISOString() }
+      gte: { created_at: today.toISOString() }
     });
+
+    // Filter for leads sent to SalesApe today
+    const allLeads = todayLeads ? todayLeads.filter(l => l.salesape_sent_at && l.salesape_sent_at >= today.toISOString()) : [];
 
     const messagesSent = allLeads ? allLeads.filter(l => l.salesape_initial_message_sent).length : 0;
     const leadsEngaged = allLeads ? allLeads.filter(l => l.salesape_user_engaged).length : 0;
