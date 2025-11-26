@@ -55,6 +55,7 @@ const salesapeRoutes = require('./routes/salesape');
 // TEMPORARILY DISABLED: const scheduler = require('./utils/scheduler');
 const { startEmailPoller } = require('./utils/emailPoller');
 const FinanceReminderService = require('./services/financeReminderServiceSupabase');
+const salesapeSyncService = require('./services/salesapeSync');
 // Removed legacy auto-sync import to avoid accidental background duplication
 let startUltraFastSMSPolling = () => {};
 try {
@@ -667,6 +668,17 @@ testDatabaseConnection().then(() => {
       console.log('✅ Finance reminder service started (Supabase)');
     } catch (e) {
       console.error('❌ Failed to start finance reminder service:', e?.message || e);
+    }
+
+    // SalesApe Status Sync Service
+    // Automatically syncs lead status from SalesApe's Airtable to CRM
+    // This runs until SalesApe webhook integration is properly configured
+    try {
+      console.log('🔄 Starting SalesApe sync service...');
+      salesapeSyncService.start();
+      console.log('✅ SalesApe sync service started');
+    } catch (e) {
+      console.error('❌ Failed to start SalesApe sync service:', e?.message || e);
     }
   });
 }).catch(() => {
