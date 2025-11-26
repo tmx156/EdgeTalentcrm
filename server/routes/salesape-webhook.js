@@ -35,6 +35,11 @@ const SALESAPE_CONFIG = {
  */
 async function sendLeadToSalesApe(lead) {
   try {
+    // Validate required fields
+    if (!lead.phone || lead.phone.trim() === '') {
+      throw new Error(`Lead ${lead.name} (ID: ${lead.id}) has no phone number. Phone is required for SalesApe.`);
+    }
+
     // Format lead data for SalesApe's requirements
     const payload = {
       fields: {
@@ -51,8 +56,11 @@ async function sendLeadToSalesApe(lead) {
     console.log('📤 Sending lead to SalesApe:', {
       name: lead.name,
       id: lead.id,
+      phone: lead.phone,
       email: lead.email
     });
+    
+    console.log('📋 Full payload:', JSON.stringify(payload, null, 2));
 
     const response = await axios.post(SALESAPE_CONFIG.AIRTABLE_URL, payload, {
       headers: {
@@ -265,7 +273,26 @@ router.post('/trigger/:leadId', auth, async (req, res) => {
       .single();
 
     if (error || !lead) {
+      console.error('❌ Lead not found:', req.params.leadId, error);
       return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    console.log('🔍 Lead fetched from database:', {
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      email: lead.email,
+      hasPhone: !!lead.phone,
+      phoneLength: lead.phone?.length || 0
+    });
+
+    // Validate phone number before sending
+    if (!lead.phone || lead.phone.trim() === '') {
+      console.error('❌ Cannot send to SalesApe: Lead has no phone number');
+      return res.status(400).json({ 
+        error: 'Phone number required',
+        message: 'This lead has no phone number. Please add a phone number before sending to SalesApe.'
+      });
     }
 
     // Send to SalesApe
