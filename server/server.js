@@ -434,6 +434,9 @@ app.use('/api/salesape', salesapeRoutes);
 // SalesApe Webhook Integration (for receiving updates from SalesApe)
 const { router: salesapeWebhookRouter } = require('./routes/salesape-webhook');
 app.use('/api/salesape-webhook', salesapeWebhookRouter);
+// SalesApe Dashboard API
+const salesapeDashboardRoutes = require('./routes/salesape-dashboard');
+app.use('/api/salesape-dashboard', salesapeDashboardRoutes);
 // TEMPORARILY DISABLED: app.use('/api/performance', require('./routes/performance'));
 
 // --- Lightweight short link storage for long booking confirmations ---

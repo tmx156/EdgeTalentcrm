@@ -22,6 +22,7 @@ import BookersTemplates from './pages/BookersTemplates';
 import Finance from './pages/Finance';
 import Sales from './pages/Sales';
 import Messages from './pages/Messages';
+import SalesApe from './pages/SalesApe';
 
 // Create browser history
 const history = createBrowserHistory();
@@ -85,6 +86,7 @@ function App() {
                           <Route path="/finance" element={<Finance />} />
                           <Route path="/sales" element={<Sales />} />
                           <Route path="/messages" element={<Messages />} />
+                          <Route path="/salesape" element={<SalesApe />} />
                           <Route path="/" element={<Navigate to="/dashboard" />} />
                         </Routes>
                       </Layout>

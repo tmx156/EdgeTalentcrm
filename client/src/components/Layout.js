@@ -24,6 +24,7 @@ import {
   FiTrendingUp,
   FiMessageSquare
 } from 'react-icons/fi';
+import { RiRobot2Line } from 'react-icons/ri';
 
 const Layout = ({ children }) => {
   const notificationsEnabled = String(process.env.REACT_APP_NOTIFICATIONS_ENABLED || 'true').toLowerCase() !== 'false';
@@ -636,6 +637,7 @@ const Layout = ({ children }) => {
       ]
     },
     { name: 'Diary', href: '/calendar', icon: FiCalendar },
+    { name: 'SalesApe AI', href: '/salesape', icon: RiRobot2Line, adminOnly: true },
     { name: 'Messages', href: '/messages', icon: FiMessageSquare },
     { name: 'Sales', href: '/sales', icon: FiTrendingUp, adminOnly: true },
     { name: 'Finance', href: '/finance', icon: FiDollarSign, adminOnly: true },
