@@ -1,0 +1,40 @@
+# Railway ignore file
+# Files and directories to ignore during Railway deployment
+
+# Development files
+*.md
+*.log
+.env.local
+.env.development
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Documentation
+docs/
+SALESAPE*.md
+check-*.js
+fix-*.js
+test-*.js
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp/
+temp/
+

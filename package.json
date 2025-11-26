@@ -8,7 +8,7 @@
     "server": "cd server && npm run dev",
     "client": "cd client && npm start",
     "build": "cd client && npm run build",
-    "install-deps": "npm install && cd server && npm install && cd ../client && npm install",
+    "install-deps": "npm install --omit=dev && cd server && npm install --omit=dev && cd ../client && npm install",
     "start": "cd server && npm start",
     "railway:build": "npm run install-deps && npm run build",
     "railway:start": "cd server && npm start"
@@ -28,8 +28,7 @@
   "devDependencies": {
     "@types/node": "^24.5.2",
     "concurrently": "^8.2.2",
-    "typescript": "^5.9.2",
-    "ngrok": "^5.0.0-beta.2"
+    "typescript": "^5.9.2"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
