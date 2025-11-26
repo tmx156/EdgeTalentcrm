@@ -81,20 +81,29 @@ router.get('/status', auth, async (req, res) => {
  */
 router.get('/queue', auth, async (req, res) => {
   try {
-    // Get all leads that have been sent to SalesApe or are in queue
-    const leads = await dbManager.query('leads', {
+    // Get all leads - we'll filter for SalesApe leads on the client side if needed
+    // For now, get recent leads that could be sent to SalesApe
+    const allLeads = await dbManager.query('leads', {
       select: '*',
-      neq: { salesape_sent_at: null },
-      order: { salesape_last_updated: 'desc' }
+      order: { created_at: 'desc' },
+      limit: 100
     });
 
-    // Add queue_status based on salesape status
-    const queueLeads = leads ? leads.map(lead => ({
-      ...lead,
-      queue_status: lead.salesape_goal_hit ? 'completed' :
-                    lead.salesape_user_engaged ? 'in_progress' :
-                    lead.salesape_initial_message_sent ? 'in_progress' : 'queued'
-    })) : [];
+    if (!allLeads || allLeads.length === 0) {
+      return res.json([]);
+    }
+
+    // Filter for leads that have SalesApe data OR could be sent to SalesApe
+    const queueLeads = allLeads
+      .filter(lead => lead.salesape_sent_at || lead.status === 'New' || lead.status === 'Assigned')
+      .map(lead => ({
+        ...lead,
+        // Calculate queue_status based on salesape fields
+        queue_status: lead.salesape_goal_hit ? 'completed' :
+                      lead.salesape_user_engaged ? 'in_progress' :
+                      lead.salesape_initial_message_sent ? 'in_progress' : 
+                      lead.salesape_sent_at ? 'queued' : 'available'
+      }));
 
     res.json(queueLeads);
   } catch (error) {
