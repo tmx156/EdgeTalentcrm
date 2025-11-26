@@ -41,11 +41,11 @@ router.get('/status', auth, async (req, res) => {
     });
 
     // Filter for leads sent to SalesApe today
-    const allLeads = todayLeads ? todayLeads.filter(l => l.salesape_sent_at && l.salesape_sent_at >= today.toISOString()) : [];
+    const todaysSalesApeLeads = todayLeads ? todayLeads.filter(l => l.salesape_sent_at && l.salesape_sent_at >= today.toISOString()) : [];
 
-    const messagesSent = allLeads ? allLeads.filter(l => l.salesape_initial_message_sent).length : 0;
-    const leadsEngaged = allLeads ? allLeads.filter(l => l.salesape_user_engaged).length : 0;
-    const bookingsMade = allLeads ? allLeads.filter(l => l.salesape_goal_hit).length : 0;
+    const messagesSent = todaysSalesApeLeads ? todaysSalesApeLeads.filter(l => l.salesape_initial_message_sent).length : 0;
+    const leadsEngaged = todaysSalesApeLeads ? todaysSalesApeLeads.filter(l => l.salesape_user_engaged).length : 0;
+    const bookingsMade = todaysSalesApeLeads ? todaysSalesApeLeads.filter(l => l.salesape_goal_hit).length : 0;
 
     const engagementRate = messagesSent > 0 ? Math.round((leadsEngaged / messagesSent) * 100) : 0;
     const conversionRate = messagesSent > 0 ? Math.round((bookingsMade / messagesSent) * 100) : 0;
