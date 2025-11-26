@@ -49,9 +49,9 @@ async function sendLeadToSalesApe(lead) {
         "Phone Number": lead.phone || '',
         "CRM ID": String(lead.id), // Must be a string
         "Context": lead.notes || `Lead from ${lead.source || 'CRM'}`,
-        "Base Details": [SALESAPE_CONFIG.BASE_DETAILS_ID],
-        "Priority": "High", // Request immediate processing
-        "Send Immediately": true // Flag for instant sending
+        "Base Details": [SALESAPE_CONFIG.BASE_DETAILS_ID]
+        // Note: Airtable auto-processes based on Base Details configuration
+        // No need for custom Priority or Send Immediately fields
       }
     };
 
