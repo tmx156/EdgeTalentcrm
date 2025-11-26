@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FiPlus, FiSearch, FiFilter, FiChevronRight, FiUserPlus, FiCalendar, FiWifi, FiUpload, FiTrash2, FiX, FiFileText, FiCheck } from 'react-icons/fi';
+import { RiRobot2Line } from 'react-icons/ri';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -677,6 +678,56 @@ const Leads = () => {
     }
   };
 
+  const handleBulkSendToSalesApe = async () => {
+    if (selectedLeads.length === 0) {
+      alert('Please select leads to send to SalesApe');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Send ${selectedLeads.length} lead${selectedLeads.length === 1 ? '' : 's'} to SalesApe AI for automated contact?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Send each lead to SalesApe
+      for (const leadId of selectedLeads) {
+        try {
+          await axios.post(
+            `/api/salesape-webhook/trigger/${leadId}`,
+            {},
+            {
+              headers: { 'x-auth-token': token }
+            }
+          );
+          successCount++;
+        } catch (error) {
+          console.error(`Failed to send lead ${leadId} to SalesApe:`, error);
+          errorCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        alert(`✅ Successfully sent ${successCount} lead${successCount === 1 ? '' : 's'} to SalesApe AI!${errorCount > 0 ? `\n⚠️ ${errorCount} failed` : ''}`);
+        setSelectedLeads([]);
+        // Refresh leads to show updated salesape_sent_at
+        setCurrentPage(prev => prev);
+      } else {
+        alert('❌ Failed to send leads to SalesApe. Please check server logs.');
+      }
+    } catch (error) {
+      console.error('Error sending to SalesApe:', error);
+      alert('Failed to send leads to SalesApe. Please try again.');
+    }
+  };
+
   const handleBulkAssign = () => {
     if (selectedLeads.length === 0) {
       alert('Please select leads to assign');
@@ -1273,6 +1324,14 @@ const Leads = () => {
                   >
                     <FiUserPlus className="h-4 w-4" />
                     <span>Assign Selected</span>
+                  </button>
+                  <button
+                    onClick={handleBulkSendToSalesApe}
+                    className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-md hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 flex items-center space-x-2 shadow-lg"
+                    title="Send selected leads to SalesApe AI for automated contact"
+                  >
+                    <RiRobot2Line className="h-4 w-4" />
+                    <span>Send to SalesApe AI</span>
                   </button>
                   <button
                     onClick={handleBulkDelete}

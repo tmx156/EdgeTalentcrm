@@ -37,3 +37,4 @@ COMMENT ON COLUMN leads.salesape_conversation_summary IS 'Brief summary of the c
 COMMENT ON COLUMN leads.salesape_full_transcript IS 'Complete conversation transcript';
 COMMENT ON COLUMN leads.salesape_portal_link IS 'Link to view conversation in SalesApe portal';
 
+

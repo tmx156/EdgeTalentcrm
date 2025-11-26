@@ -11,6 +11,7 @@ const router = express.Router();
 const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
+const { auth } = require('../middleware/auth');
 
 // Initialize Supabase
 const supabase = createClient(
@@ -244,8 +245,9 @@ router.post('/update', async (req, res) => {
 /**
  * Endpoint to manually trigger SalesApe for a lead
  * POST /api/salesape-webhook/trigger/:leadId
+ * @access Protected - requires authentication
  */
-router.post('/trigger/:leadId', async (req, res) => {
+router.post('/trigger/:leadId', auth, async (req, res) => {
   try {
     // Check if SalesApe is configured
     if (!SALESAPE_CONFIG.PAT_CODE) {
@@ -287,8 +289,9 @@ router.post('/trigger/:leadId', async (req, res) => {
 /**
  * Notify SalesApe when a meeting is booked
  * POST /api/salesape-webhook/meeting-booked/:leadId
+ * @access Protected - requires authentication
  */
-router.post('/meeting-booked/:leadId', async (req, res) => {
+router.post('/meeting-booked/:leadId', auth, async (req, res) => {
   try {
     if (!SALESAPE_CONFIG.PAT_CODE) {
       return res.status(503).json({

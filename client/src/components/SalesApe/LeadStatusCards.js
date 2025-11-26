@@ -129,3 +129,4 @@ const LeadStatusCards = ({ leads, onLeadSelect, onRemoveFromQueue }) => {
 
 export default LeadStatusCards;
 
+
