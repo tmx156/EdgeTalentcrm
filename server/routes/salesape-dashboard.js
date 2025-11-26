@@ -15,15 +15,18 @@ const dbManager = require('../database-connection-manager');
  */
 router.get('/status', auth, async (req, res) => {
   try {
-    // Get currently active lead (in_progress status)
+    // Get currently active lead (leads that are engaged but not yet booked)
     const activeLeads = await dbManager.query('leads', {
-      select: 'id, name, phone, email, salesape_status, salesape_last_updated',
-      eq: { queue_status: 'in_progress' },
+      select: 'id, name, phone, email, salesape_status, salesape_last_updated, salesape_user_engaged, salesape_goal_hit',
+      neq: { salesape_sent_at: null },
       order: { salesape_last_updated: 'desc' },
-      limit: 1
+      limit: 10
     });
 
-    const currentLead = activeLeads && activeLeads.length > 0 ? activeLeads[0] : null;
+    // Find the most recently active lead that's engaged but not booked
+    const currentLead = activeLeads && activeLeads.length > 0 
+      ? activeLeads.find(l => l.salesape_user_engaged && !l.salesape_goal_hit) || activeLeads[0]
+      : null;
 
     // Get today's stats
     const today = new Date();

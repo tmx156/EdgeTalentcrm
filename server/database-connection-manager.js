@@ -99,6 +99,12 @@ class DatabaseConnectionManager {
         });
       }
 
+      if (options.is) {
+        Object.entries(options.is).forEach(([column, value]) => {
+          query = query.is(column, value);
+        });
+      }
+
       // Apply ordering
       if (options.order) {
         Object.entries(options.order).forEach(([column, direction]) => {
