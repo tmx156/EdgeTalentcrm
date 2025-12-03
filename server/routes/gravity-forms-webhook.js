@@ -42,9 +42,10 @@ router.post('/submit', async (req, res) => {
     const formData = req.body;
 
     // Map Gravity Forms field names to CRM database fields
-    // Handle both exact label matches and common variations
+    // Handle both field IDs (numbers) and field labels
     const getName = () => {
-      return formData['Name'] ||
+      return formData['1'] ||           // Field ID 1 = Name
+             formData['Name'] ||
              formData['name'] ||
              formData['Full Name'] ||
              (formData['First Name'] && formData['Last Name']
@@ -53,11 +54,15 @@ router.post('/submit', async (req, res) => {
     };
 
     const getEmail = () => {
-      return formData['Email'] || formData['email'] || null;
+      return formData['7'] ||           // Field ID 7 = Email
+             formData['Email'] ||
+             formData['email'] ||
+             null;
     };
 
     const getPhone = () => {
-      return formData['Telephone Number'] ||
+      return formData['15'] ||          // Field ID 15 = Phone
+             formData['Telephone Number'] ||
              formData['Phone'] ||
              formData['phone'] ||
              formData['telephone_number'] ||
@@ -65,12 +70,15 @@ router.post('/submit', async (req, res) => {
     };
 
     const getAge = () => {
-      const ageValue = formData['Age'] || formData['age'];
+      const ageValue = formData['11'] || // Field ID 11 = Age
+                       formData['Age'] ||
+                       formData['age'];
       return ageValue ? parseInt(ageValue) : null;
     };
 
     const getPostcode = () => {
-      return formData['Post Code'] ||
+      return formData['5'] ||           // Field ID 5 = Postcode
+             formData['Post Code'] ||
              formData['Postcode'] ||
              formData['postcode'] ||
              formData['post_code'] ||
@@ -78,7 +86,8 @@ router.post('/submit', async (req, res) => {
     };
 
     const getParentPhone = () => {
-      return formData["Parent's Number"] ||
+      return formData['14'] ||          // Field ID 14 = Parent's Number
+             formData["Parent's Number"] ||
              formData['Parent Number'] ||
              formData['parent_phone'] ||
              formData['parents_number'] ||
@@ -86,7 +95,8 @@ router.post('/submit', async (req, res) => {
     };
 
     const getPhotoUrl = () => {
-      return formData['Upload Photo'] ||
+      return formData['6'] ||           // Field ID 6 = Photo
+             formData['Upload Photo'] ||
              formData['Photo'] ||
              formData['photo'] ||
              formData['image_url'] ||
@@ -107,13 +117,20 @@ router.post('/submit', async (req, res) => {
 
     // Store any unprocessed fields in custom_fields
     const processedKeys = [
+      '1', '5', '6', '7', '11', '14', '15',  // Field IDs
       'Name', 'name', 'Full Name', 'First Name', 'Last Name',
       'Email', 'email',
       'Telephone Number', 'Phone', 'phone', 'telephone_number',
       'Age', 'age',
       'Post Code', 'Postcode', 'postcode', 'post_code',
       "Parent's Number", 'Parent Number', 'parent_phone', 'parents_number',
-      'Upload Photo', 'Photo', 'photo', 'image_url'
+      'Upload Photo', 'Photo', 'photo', 'image_url',
+      // Gravity Forms metadata fields
+      'id', 'form_id', 'post_id', 'date_created', 'date_updated',
+      'is_starred', 'is_read', 'ip', 'source_url', 'user_agent',
+      'currency', 'payment_status', 'payment_date', 'payment_amount',
+      'payment_method', 'transaction_id', 'is_fulfilled', 'created_by',
+      'transaction_type', 'status', 'source_id', 'submission_speeds'
     ];
 
     const customFields = {};
@@ -124,6 +141,10 @@ router.post('/submit', async (req, res) => {
     });
 
     // Prepare lead data for database
+    const submissionId = formData.id || '';
+    const sourceUrl = formData.source_url || '';
+    const notes = `Lead imported from Gravity Forms${submissionId ? ` (ID: ${submissionId})` : ''}${sourceUrl ? ` from ${sourceUrl}` : ''} on ${new Date().toLocaleString('en-GB')}`;
+
     const leadData = {
       id: uuidv4(),
       name: fullName,
@@ -133,7 +154,7 @@ router.post('/submit', async (req, res) => {
       postcode: getPostcode(),
       parent_phone: getParentPhone(),
       image_url: getPhotoUrl(),
-      notes: `Lead imported from Gravity Forms on ${new Date().toISOString()}`,
+      notes: notes,
       status: 'New', // Default status for new leads
       is_confirmed: false,
       has_sale: 0,
@@ -209,26 +230,37 @@ router.get('/test', (req, res) => {
     method: 'POST',
     format: 'JSON',
     requiredFields: [
-      'Name (Required)'
+      'Name (Required) - Field ID: 1'
     ],
     optionalFields: [
-      'Age',
-      "Parent's Number",
-      'Email',
-      'Telephone Number',
-      'Post Code',
-      'Upload Photo (URL)'
+      'Age - Field ID: 11',
+      "Parent's Number - Field ID: 14",
+      'Email - Field ID: 7',
+      'Telephone Number - Field ID: 15',
+      'Post Code - Field ID: 5',
+      'Upload Photo - Field ID: 6'
     ],
     formFieldMapping: {
-      'Name': 'Lead full name',
-      'Age': 'Lead age',
-      "Parent's Number": 'Parent/guardian phone number',
-      'Email': 'Lead email address',
-      'Telephone Number': 'Lead phone number',
-      'Post Code': 'Lead postal code',
-      'Upload Photo': 'Photo URL or file upload'
+      '1 or Name': 'Lead full name (REQUIRED)',
+      '7 or Email': 'Lead email address',
+      '15 or Telephone Number': 'Lead phone number',
+      '11 or Age': 'Lead age',
+      '5 or Post Code': 'Lead postal code',
+      '14 or Parent\'s Number': 'Parent/guardian phone number',
+      '6 or Upload Photo': 'Photo URL or file upload'
     },
-    example: {
+    exampleWithFieldIDs: {
+      '1': 'John Doe',
+      '7': 'john@example.com',
+      '15': '07700900000',
+      '11': '25',
+      '5': 'SW1A 1AA',
+      '14': '07700900001',
+      '6': 'https://example.com/photo.jpg',
+      'id': '12345',
+      'source_url': 'https://edgetalent.co.uk/contact/'
+    },
+    exampleWithFieldLabels: {
       'Name': 'John Doe',
       'Age': 25,
       "Parent's Number": '07700900001',
