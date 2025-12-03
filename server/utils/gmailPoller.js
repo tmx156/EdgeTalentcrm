@@ -527,7 +527,6 @@ class GmailPoller {
           name: name,
           email: email.toLowerCase().trim(),
           status: 'New',
-          source: 'email',
           created_at: now,
           updated_at: now,
           booking_history: JSON.stringify([])
