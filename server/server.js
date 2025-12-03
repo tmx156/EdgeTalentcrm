@@ -675,6 +675,14 @@ let isDbConnected = true; // Supabase connection status
 // Test database connection
 const testDatabaseConnection = async () => {
   try {
+    // Check if dbManager.client was initialized
+    if (!dbManager.client) {
+      console.error('❌ Database client not initialized - SUPABASE_SERVICE_ROLE_KEY is missing or invalid');
+      console.error('⚠️  Server will start in LIMITED MODE');
+      isDbConnected = false;
+      return false;
+    }
+
     // Test using dbManager (service role key) instead of anon key
     // This ensures we're testing with the correct permissions
     const { data, error } = await dbManager.client.from('users').select('id').limit(1);
@@ -687,18 +695,18 @@ const testDatabaseConnection = async () => {
         details: error.details,
         hint: error.hint
       });
-      
+
       // Check if it's an API key issue
       if (error.message && error.message.includes('Invalid API key')) {
-        const keyPreview = config.supabase.serviceRoleKey 
-          ? `${config.supabase.serviceRoleKey.substring(0, 20)}...` 
+        const keyPreview = config.supabase.serviceRoleKey
+          ? `${config.supabase.serviceRoleKey.substring(0, 20)}...`
           : 'NOT SET';
         console.error('❌ SUPABASE_SERVICE_ROLE_KEY appears invalid or missing');
         console.error('   Key preview:', keyPreview);
         console.error('   Please verify SUPABASE_SERVICE_ROLE_KEY in Railway environment variables');
         console.error('   Get it from: Supabase Dashboard → Settings → API → service_role key');
       }
-      
+
       throw error;
     }
 
