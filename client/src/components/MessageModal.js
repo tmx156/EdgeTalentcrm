@@ -112,7 +112,7 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
             if (uuidRegex.test(uuidPart)) {
               messageIdentifier = uuidPart;
               console.log('📱 MessageModal: Extracted UUID from composite ID:', messageIdentifier);
-            } else {
+          } else {
               console.warn('📱 MessageModal: Invalid message ID format, may fail:', messageIdentifier);
             }
           }
@@ -409,7 +409,7 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
               <div className={`px-4 py-3 border-b ${
                 notification.direction === 'sent' ? 'border-blue-500' : 'border-gray-300'
               }`}>
-                <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center space-x-2">
                     <span className={`text-sm font-semibold ${
                       notification.direction === 'sent' ? 'text-blue-100' : 'text-gray-900'
@@ -421,22 +421,22 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
                         notification.direction === 'sent' ? 'text-blue-200' : 'text-gray-600'
                       }`}>
                         {notification.subject}
-                      </span>
-                    )}
+                    </span>
+                  )}
                   </div>
                   <span className={`text-xs ${
                     notification.direction === 'sent' ? 'text-blue-200' : 'text-gray-500'
                   }`}>
-                    {formatTime(notification.timestamp)}
-                  </span>
+                  {formatTime(notification.timestamp)}
+                </span>
                 </div>
               </div>
               <div className="px-4 py-3">
                 <p className={`text-sm whitespace-pre-wrap break-words ${
                   notification.direction === 'sent' ? 'text-white' : 'text-gray-900'
                 }`}>
-                  {decodeEmailContent(notification.content)}
-                </p>
+                {decodeEmailContent(notification.content)}
+              </p>
                 {isEmailContentEncoded(notification.content) && (
                   <span className={`mt-2 inline-block px-2 py-0.5 text-xs rounded ${
                     notification.direction === 'sent' 
@@ -532,21 +532,21 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
                   const isFailed = message.action === 'SMS_FAILED';
                   
                   return (
-                    <div 
-                      key={`${message.timestamp}-${index}`}
+                <div 
+                  key={`${message.timestamp}-${index}`}
                       className={`flex ${isSent ? 'justify-end' : 'justify-start'} mb-3`}
-                    >
+                >
                       <div className={`max-w-[85%] rounded-lg shadow-sm ${
                         isSent
                           ? 'bg-blue-600 text-white' 
                           : isFailed
-                            ? 'bg-red-50 border border-red-300 text-red-800'
+                        ? 'bg-red-50 border border-red-300 text-red-800'
                             : 'bg-gray-100 text-gray-900'
                       }`}>
                         {/* Message Header */}
                         <div className={`px-4 py-2 border-b ${
                           isSent ? 'border-blue-500' : isFailed ? 'border-red-300' : 'border-gray-300'
-                        }`}>
+                  }`}>
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-2">
                               <span className={`text-sm font-semibold ${
@@ -565,8 +565,8 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
                             <div className="flex items-center space-x-2">
                               <span className={`text-xs ${
                                 isSent ? 'text-blue-200' : isFailed ? 'text-red-700' : 'text-gray-500'
-                              }`}>
-                                {formatTime(message.timestamp)}
+                      }`}>
+                        {formatTime(message.timestamp)}
                               </span>
                               {isSent && (
                                 <FiCheck className={`h-3 w-3 ${
@@ -590,7 +590,7 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
                             {decodeEmailContent(message.details?.body || message.details?.message || message.details?.subject || 'No content')}
                           </p>
                         </div>
-                      </div>
+                        </div>
                     </div>
                   );
                 })}
