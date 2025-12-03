@@ -700,9 +700,10 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
-// Start server
+// Start server with better error handling
 const PORT = process.env.PORT || 5000;
 
+// Wrap startup in try-catch to prevent crashes
 testDatabaseConnection().then(() => {
   server.listen(PORT, '0.0.0.0', async () => {
     console.log(`🚀 Server running on port ${PORT}`);
@@ -726,46 +727,54 @@ testDatabaseConnection().then(() => {
     }
 
     // GMAIL API: Start Gmail monitoring (Push Notifications or Polling)
-    const GMAIL_PUSH_ENABLED = process.env.GMAIL_PUSH_ENABLED === 'true';
+    // Wrap in try-catch to prevent server crash if Gmail setup fails
+    try {
+      const GMAIL_PUSH_ENABLED = process.env.GMAIL_PUSH_ENABLED === 'true';
 
-    if (GMAIL_PUSH_ENABLED) {
-      // Use Gmail Push Notifications (Real-time, event-driven)
-      try {
-        console.log('📧 Starting Gmail Push Notification System...');
-
-        // Set up Socket.IO for message processor
-        const gmailMessageProcessor = require('./services/gmailMessageProcessor');
-        gmailMessageProcessor.setSocketIO(io);
-
-        // Start watching both Gmail accounts
-        const gmailWatcherService = require('./services/gmailWatcherService');
-        await gmailWatcherService.startWatching();
-
-        console.log('✅ Gmail Push Notification System started successfully');
-        console.log('📊 Monitoring both hello@ and diary@ accounts');
-      } catch (e) {
-        console.error('❌ Failed to start Gmail Push Notification System:', e?.message || e);
-        console.error('💡 Falling back to polling mode...');
-
-        // Fallback to polling
+      if (GMAIL_PUSH_ENABLED) {
+        // Use Gmail Push Notifications (Real-time, event-driven)
         try {
+          console.log('📧 Starting Gmail Push Notification System...');
+
+          // Set up Socket.IO for message processor
+          const gmailMessageProcessor = require('./services/gmailMessageProcessor');
+          gmailMessageProcessor.setSocketIO(io);
+
+          // Start watching both Gmail accounts
+          const gmailWatcherService = require('./services/gmailWatcherService');
+          await gmailWatcherService.startWatching();
+
+          console.log('✅ Gmail Push Notification System started successfully');
+          console.log('📊 Monitoring both hello@ and diary@ accounts');
+        } catch (e) {
+          console.error('❌ Failed to start Gmail Push Notification System:', e?.message || e);
+          console.error('💡 Falling back to polling mode...');
+
+          // Fallback to polling
+          try {
+            startGmailPoller(io);
+            console.log('✅ Gmail API poller started (fallback mode)');
+          } catch (fallbackError) {
+            console.error('❌ Both push and polling failed:', fallbackError?.message || fallbackError);
+            console.error('⚠️  Server will continue without Gmail polling');
+          }
+        }
+      } else {
+        // Use traditional polling (Backward compatibility)
+        try {
+          console.log('📧 Starting Gmail API Poller (Polling Mode)...');
           startGmailPoller(io);
-          console.log('✅ Gmail API poller started (fallback mode)');
-        } catch (fallbackError) {
-          console.error('❌ Both push and polling failed:', fallbackError?.message || fallbackError);
+          console.log('✅ Gmail API poller started successfully');
+          console.log('💡 To enable push notifications, set GMAIL_PUSH_ENABLED=true');
+        } catch (e) {
+          console.error('❌ Failed to start Gmail API poller:', e?.message || e);
+          console.error('💡 Run /api/gmail/auth to set up Gmail API authentication');
+          console.error('⚠️  Server will continue without Gmail polling');
         }
       }
-    } else {
-      // Use traditional polling (Backward compatibility)
-      try {
-        console.log('📧 Starting Gmail API Poller (Polling Mode)...');
-        startGmailPoller(io);
-        console.log('✅ Gmail API poller started successfully');
-        console.log('💡 To enable push notifications, set GMAIL_PUSH_ENABLED=true');
-      } catch (e) {
-        console.error('❌ Failed to start Gmail API poller:', e?.message || e);
-        console.error('💡 Run /api/gmail/auth to set up Gmail API authentication');
-      }
+    } catch (gmailError) {
+      console.error('❌ Critical error in Gmail setup:', gmailError?.message || gmailError);
+      console.error('⚠️  Server will continue without Gmail features');
     }
 
     // ENABLED: Finance Reminder Service (now converted to Supabase)
@@ -787,13 +796,29 @@ testDatabaseConnection().then(() => {
       console.error('❌ Failed to start callback reminder service:', e?.message || e);
     }
   });
-}).catch(() => {
+}).catch((error) => {
   // Start server even if Supabase connection fails
+  console.error('❌ Database connection test failed:', error?.message || error);
+  console.log('⚠️  Starting server in limited mode - database features may not work');
+  
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT} (demo mode)`);
+    console.log(`🚀 Server running on port ${PORT} (limited mode)`);
     console.log(`🔌 WebSocket server ready for real-time sync`);
     console.log('⚠️  Database features will not work until Supabase is connected');
   });
+});
+
+// Handle unhandled promise rejections to prevent crashes
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit - let the server continue running
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  // Don't exit immediately - log and continue
+  console.error('⚠️  Server will attempt to continue running');
 });
 
 module.exports = { app, io };

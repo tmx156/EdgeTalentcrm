@@ -7,9 +7,13 @@ const path = require('path');
 const config = require('../config');
 
 // --- Configuration ---
-// Use centralized Supabase credentials - no more hardcoded old URLs
+// Use SERVICE ROLE KEY for backend operations to bypass RLS policies
 const SUPABASE_URL = process.env.SUPABASE_URL || config.supabase.url;
-const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || config.supabase.serviceRoleKey || config.supabase.anonKey;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || config.supabase.serviceRoleKey;
+
+if (!SUPABASE_KEY) {
+  console.error('❌ SUPABASE_SERVICE_ROLE_KEY is not set! Email poller will not work.');
+}
 
 // Email account configurations
 const EMAIL_ACCOUNTS = {
@@ -140,9 +144,18 @@ class EmailPoller {
 
     getSupabase() {
         if (!SUPABASE_KEY) {
-            throw new Error('❌ Supabase Key is not set in environment variables!');
+            console.error('❌ SUPABASE_SERVICE_ROLE_KEY is not set in environment variables!');
+            console.error('⚠️  Email poller will not be able to access the database');
+            // Return a dummy client to prevent crashes - operations will fail gracefully
+            return createClient(SUPABASE_URL || 'https://invalid.supabase.co', 'invalid-key');
         }
-        return createClient(SUPABASE_URL, SUPABASE_KEY);
+        if (!SUPABASE_URL) {
+            console.error('❌ SUPABASE_URL is not set in environment variables!');
+            return createClient('https://invalid.supabase.co', SUPABASE_KEY || 'invalid-key');
+        }
+        const client = createClient(SUPABASE_URL, SUPABASE_KEY);
+        console.log(`✅ [${this.accountConfig?.name || 'EmailPoller'}] Supabase client initialized with SERVICE ROLE KEY`);
+        return client;
     }
 
     async connect() {

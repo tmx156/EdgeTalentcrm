@@ -1,0 +1,50 @@
+================================================================================
+GMAIL API - REDIRECT URLs FOR GOOGLE CLOUD CONSOLE
+================================================================================
+
+Copy these redirect URLs and add them to your OAuth2 credentials in Google Cloud Console:
+
+📍 AUTHORIZED REDIRECT URIs:
+================================================================================
+
+1. LOCAL DEVELOPMENT (for testing):
+   http://localhost:5000/api/gmail/oauth2callback
+
+2. PRODUCTION (Railway - update with your actual domain):
+   https://your-railway-app.up.railway.app/api/gmail/oauth2callback
+
+================================================================================
+
+HOW TO ADD THESE:
+
+1. Go to: https://console.cloud.google.com
+2. Navigate to: APIs & Services > Credentials
+3. Click on your OAuth 2.0 Client ID
+4. Under "Authorized redirect URIs", click "+ ADD URI"
+5. Paste each URL above (one at a time)
+6. Click "SAVE"
+
+================================================================================
+
+SCOPES TO ADD (for OAuth consent screen):
+
+- https://www.googleapis.com/auth/gmail.readonly
+- https://www.googleapis.com/auth/gmail.send
+- https://www.googleapis.com/auth/gmail.modify
+
+================================================================================
+
+EMAIL ACCOUNT:
+hello@edgetalent.co.uk
+
+================================================================================
+
+NEXT STEPS:
+
+1. Add the redirect URLs above to Google Cloud Console
+2. Get your Client ID and Client Secret
+3. Add them to your .env file
+4. Run: http://localhost:5000/api/gmail/auth (to get refresh token)
+5. Follow the complete setup guide in: GMAIL_API_SETUP.md
+
+================================================================================

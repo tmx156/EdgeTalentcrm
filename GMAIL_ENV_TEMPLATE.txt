@@ -1,0 +1,73 @@
+================================================================================
+GMAIL API - ENVIRONMENT VARIABLES TEMPLATE
+================================================================================
+
+Copy these values from Google Cloud Console and the OAuth flow:
+
+================================================================================
+# Gmail API Configuration
+================================================================================
+
+GMAIL_EMAIL=hello@edgetalent.co.uk
+
+# From Google Cloud Console > APIs & Services > Credentials
+GMAIL_CLIENT_ID=123456789-abcdefghijklmnopqrstuvwxyz.apps.googleusercontent.com
+GMAIL_CLIENT_SECRET=GOCSPX-abcdefghijklmnopqrstuvwxyz
+
+# Get this by running: http://localhost:5000/api/gmail/auth
+GMAIL_REFRESH_TOKEN=1//abcdefghijklmnopqrstuvwxyz-1234567890
+
+# For local development
+GMAIL_REDIRECT_URI=http://localhost:5000/api/gmail/oauth2callback
+
+# Optional: How often to check for new emails (in milliseconds)
+GMAIL_POLL_INTERVAL_MS=60000
+
+================================================================================
+SETUP STEPS:
+================================================================================
+
+1. ✅ Google Cloud Console Setup
+   - Go to: https://console.cloud.google.com
+   - Enable Gmail API
+   - Create OAuth2 credentials
+   - Add redirect URIs (see GMAIL_REDIRECT_URLS.txt)
+
+2. ✅ Get Client ID & Secret
+   - Copy GMAIL_CLIENT_ID from Google Cloud Console
+   - Copy GMAIL_CLIENT_SECRET from Google Cloud Console
+   - Paste them into your .env file (already added above)
+
+3. ✅ Get Refresh Token
+   - Make sure .env has GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET
+   - Start your server: npm start
+   - Visit: http://localhost:5000/api/gmail/auth
+   - Sign in with: hello@edgetalent.co.uk
+   - Grant all permissions
+   - Copy the GMAIL_REFRESH_TOKEN from the success page
+   - Paste it into your .env file
+
+4. ✅ Run Database Migration
+   - Go to Supabase SQL Editor
+   - Run the SQL in: add-gmail-message-id.sql
+
+5. ✅ Restart Server
+   - Stop server (Ctrl+C)
+   - Start server: npm start
+   - Check status: http://localhost:5000/api/gmail/status
+
+6. ✅ Deploy to Railway
+   - Add all variables above to Railway environment variables
+   - Update GMAIL_REDIRECT_URI to your Railway URL
+   - Deploy!
+
+================================================================================
+VERIFICATION:
+================================================================================
+
+Check if everything is working:
+- Visit: http://localhost:5000/api/gmail/status
+
+You should see all credentials marked as "✅ Set"
+
+================================================================================

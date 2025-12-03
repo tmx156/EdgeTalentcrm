@@ -1,0 +1,36 @@
+Subject: Urgent: Messages Not Sending to New Leads + Webhook Setup
+
+Hi SalesApe Team,
+
+We need urgent help with our integration:
+
+## Issue: Messages Not Being Sent
+Most of our recent leads are not receiving WhatsApp/email messages from your AI, even though they're successfully created in Airtable with all validations passing.
+
+Working: Sandra Poon (recm2dNzUzXRSbcej)
+Not Working: Tinashe Mamire (recoTX4GU2hNUkkY4), Alan Rutherford (recb3oXTX6IxFEzr5)
+
+All have identical setup - same Base Details, validation passed, +44 phone format.
+
+Can you please investigate why your automation isn't triggering for newer records?
+
+## Webhook Configuration Needed
+Please configure this webhook URL in our Base Details (recThsoXqOHJCdgZY):
+https://edgetalentcrm-production.up.railway.app/api/salesape-webhook/update
+
+We need real-time status updates for our CRM dashboard.
+
+## Calendar Integration
+1. Do you provide a booking link for leads?
+2. What calendar system do you require (Calendly/Cal.com/Custom)?
+3. What webhook payload format do you send when a booking is made?
+
+Our Integration:
+- Base: appoT1TexUksGanE8
+- Table: tblTJGg187Ub84aXf
+- Base Details: recThsoXqOHJCdgZY
+
+Appreciate your quick response as clients are waiting.
+
+Thanks,
+EdgeTalent Team

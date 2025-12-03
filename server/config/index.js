@@ -75,6 +75,23 @@ config.validate = function() {
     console.warn('⚠️ Using fallback Supabase credentials - set SUPABASE_URL and SUPABASE_ANON_KEY in .env for production');
   }
 
+  // Critical: Validate SERVICE_ROLE_KEY is set (required for backend operations)
+  // Only warn, don't throw - allow server to start even if key is missing
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.warn('⚠️  WARNING: SUPABASE_SERVICE_ROLE_KEY is not set in environment variables!');
+    console.warn('⚠️  Backend operations (email processing, lead creation) will fail!');
+    console.warn('⚠️  Please set SUPABASE_SERVICE_ROLE_KEY in Railway environment variables.');
+  } else {
+    // Validate key format (should start with eyJ)
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!key || !key.startsWith('eyJ')) {
+      console.warn('⚠️  WARNING: SUPABASE_SERVICE_ROLE_KEY does not appear to be a valid JWT token!');
+      console.warn('⚠️  Key should start with "eyJ" and be a long string.');
+    } else {
+      console.log('✅ SUPABASE_SERVICE_ROLE_KEY is set and appears valid');
+    }
+  }
+
   return missing.length === 0;
 };
 

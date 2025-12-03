@@ -14,8 +14,13 @@ const supabaseStorage = require('./supabaseStorage');
  */
 
 // --- Configuration ---
+// Use SERVICE ROLE KEY for backend operations to bypass RLS policies
 const SUPABASE_URL = process.env.SUPABASE_URL || config.supabase.url;
-const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || config.supabase.serviceRoleKey || config.supabase.anonKey;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || config.supabase.serviceRoleKey;
+
+if (!SUPABASE_KEY) {
+  console.error('❌ SUPABASE_SERVICE_ROLE_KEY is not set! Gmail poller will not work.');
+}
 
 const POLL_INTERVAL_MS = parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 60000; // 1 minute
 
@@ -137,9 +142,20 @@ class GmailPoller {
 
   getSupabase() {
     if (!SUPABASE_KEY) {
-      throw new Error('❌ Supabase Key is not set in environment variables!');
+      const error = new Error('❌ SUPABASE_SERVICE_ROLE_KEY is not set in environment variables!');
+      console.error(error.message);
+      console.error('⚠️  Gmail poller will not be able to access the database');
+      // Return a dummy client to prevent crashes - operations will fail gracefully
+      return createClient(SUPABASE_URL || 'https://invalid.supabase.co', 'invalid-key');
     }
-    return createClient(SUPABASE_URL, SUPABASE_KEY);
+    if (!SUPABASE_URL) {
+      const error = new Error('❌ SUPABASE_URL is not set in environment variables!');
+      console.error(error.message);
+      return createClient('https://invalid.supabase.co', SUPABASE_KEY || 'invalid-key');
+    }
+    const client = createClient(SUPABASE_URL, SUPABASE_KEY);
+    console.log(`✅ [${this.accountConfig?.displayName || 'GmailPoller'}] Supabase client initialized with SERVICE ROLE KEY`);
+    return client;
   }
 
   /**
@@ -922,7 +938,8 @@ class GmailPoller {
  */
 function startGmailPoller(socketIoInstance) {
   if (!SUPABASE_KEY) {
-    console.error('CRITICAL: Cannot start Gmail poller. Missing SUPABASE_KEY environment variable.');
+    console.error('❌ CRITICAL: Cannot start Gmail poller. Missing SUPABASE_SERVICE_ROLE_KEY environment variable.');
+    console.error('⚠️  Gmail polling will be disabled until SUPABASE_SERVICE_ROLE_KEY is set in Railway.');
     return [];
   }
 

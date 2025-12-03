@@ -29,7 +29,9 @@
       "Bash(npm install:*)",
       "Bash(npm run build:*)",
       "Bash(ping:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(cmd /c \"taskkill /F /IM node.exe\")",
+      "Bash(powershell -Command \"Stop-Process -Name node -Force\")"
     ],
     "deny": [],
     "ask": []

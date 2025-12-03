@@ -133,3 +133,9 @@ setup-*
 create-*
 fix-*
 .vercel
+
+# Secret files and tokens
+server/config/gmail-token.json
+server/data/processed_*.json
+server.log
+*.log
