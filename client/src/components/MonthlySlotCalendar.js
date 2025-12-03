@@ -1,7 +1,7 @@
 import React from 'react';
 import { FiCheckCircle, FiClock } from 'react-icons/fi';
 
-const MonthlySlotCalendar = ({ currentDate, events, onDayClick, onEventClick }) => {
+const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClick, onEventClick }) => {
   // Get days in month
   const getDaysInMonth = () => {
     const year = currentDate.getFullYear();
@@ -58,6 +58,20 @@ const MonthlySlotCalendar = ({ currentDate, events, onDayClick, onEventClick }) 
     const confirmed = [...slot1, ...slot2].filter(e => e.is_confirmed).length;
     
     return { total, confirmed, slot1Count: slot1.length, slot2Count: slot2.length };
+  };
+
+  // Check if a day is fully blocked (entire day blocked, not just specific time slots)
+  const isDayFullyBlocked = (day) => {
+    if (!day || !blockedSlots || blockedSlots.length === 0) return false;
+    
+    const dateStr = day.toISOString().split('T')[0];
+    
+    // Check if there's a full day block (no time_slot specified)
+    return blockedSlots.some(block => {
+      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+      // Full day block: date matches AND no time_slot AND no slot_number (blocks both slots for entire day)
+      return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
+    });
   };
 
   const days = getDaysInMonth();
@@ -118,18 +132,32 @@ const MonthlySlotCalendar = ({ currentDate, events, onDayClick, onEventClick }) 
             const isToday = day.toDateString() === today.toDateString();
             const isPast = day < today;
             const { slot1, slot2 } = getBookingsForDay(day);
+            const isBlocked = isDayFullyBlocked(day);
 
             return (
               <div
                 key={day.toISOString()}
-                className={`min-h-[100px] border-r border-b border-gray-200 p-2 cursor-pointer hover:bg-gray-50 transition-colors ${
-                  isToday ? 'bg-blue-50 border-2 border-blue-500' : ''
-                } ${isPast ? 'bg-gray-50' : ''}`}
-                onClick={() => onDayClick(day)}
+                className={`min-h-[100px] border-r border-b border-gray-200 p-2 ${
+                  isBlocked 
+                    ? 'bg-gray-300 opacity-60 cursor-not-allowed' 
+                    : 'cursor-pointer hover:bg-gray-50'
+                } transition-colors ${
+                  isToday && !isBlocked ? 'bg-blue-50 border-2 border-blue-500' : ''
+                } ${isPast && !isBlocked ? 'bg-gray-50' : ''}`}
+                onClick={() => {
+                  if (isBlocked) {
+                    alert('This day is blocked and cannot be viewed');
+                    return;
+                  }
+                  onDayClick(day);
+                }}
               >
                 {/* Day Number */}
-                <div className={`text-sm font-semibold mb-2 ${isToday ? 'text-blue-600' : isPast ? 'text-gray-400' : 'text-gray-700'}`}>
-                  {day.getDate()}
+                <div className={`text-sm font-semibold mb-2 flex items-center justify-between ${
+                  isBlocked ? 'text-gray-600' : isToday ? 'text-blue-600' : isPast ? 'text-gray-400' : 'text-gray-700'
+                }`}>
+                  <span>{day.getDate()}</span>
+                  {isBlocked && <span className="text-xs">🔒</span>}
                 </div>
 
                 {/* Booking Summary */}

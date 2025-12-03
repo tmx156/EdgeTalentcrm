@@ -13,18 +13,19 @@ class DatabaseConnectionManager {
 
   initializeClient() {
     try {
-      // Use centralized configuration instead of hardcoded credentials
-      this.client = createClient(config.supabase.url, config.supabase.anonKey);
+      // Use SERVICE ROLE KEY for backend operations to bypass RLS policies
+      // This is critical for admin operations like deleting leads
+      this.client = createClient(config.supabase.url, config.supabase.serviceRoleKey);
 
-      console.log('✅ Supabase client initialized using centralized config');
+      console.log('✅ Supabase client initialized with SERVICE ROLE KEY (RLS bypassed)');
     } catch (error) {
       console.error('❌ Failed to initialize Supabase client:', error);
       // Fallback to direct initialization if config fails
       try {
         const fallbackUrl = process.env.SUPABASE_URL || config.supabase.url;
-        const fallbackKey = process.env.SUPABASE_ANON_KEY || config.supabase.anonKey;
+        const fallbackKey = process.env.SUPABASE_SERVICE_ROLE_KEY || config.supabase.serviceRoleKey;
         this.client = createClient(fallbackUrl, fallbackKey);
-        console.log('✅ Supabase client initialized with fallback credentials');
+        console.log('✅ Supabase client initialized with fallback SERVICE ROLE credentials');
       } catch (fallbackError) {
         console.error('❌ Fallback initialization also failed:', fallbackError);
       }

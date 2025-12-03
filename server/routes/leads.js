@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const dbManager = require('../database-connection-manager');
 const { auth, adminAuth } = require('../middleware/auth');
-const { analyseLeads, fetchLegacyLeads } = require('../utils/leadAnalysis');
+const { analyseLeads } = require('../utils/leadAnalysis');
 const MessagingService = require('../utils/messagingService');
 const { sendSMS, sendAppointmentReminder, sendStatusUpdate, sendCustomMessage } = require('../utils/smsService');
 const { v4: uuidv4 } = require('uuid'); // Added for UUID generation
@@ -976,11 +976,9 @@ router.get('/calendar/export-csv', auth, async (req, res) => {
           }
           if (entry.details.body || entry.lead_snapshot?.email_body) {
             const emailBody = entry.details.body || entry.lead_snapshot?.email_body || '';
-            if (emailBody.includes('Camry Models')) {
-              emailAccount = 'Camry Models';
-              break;
-            } else if (emailBody.includes('Avensis Models')) {
-              emailAccount = 'Avensis Models';
+            // Legacy: Check for old company names, but now always use Edge Talent
+            if (emailBody.includes('Camry Models') || emailBody.includes('Avensis Models') || emailBody.includes('Edge Talent')) {
+              emailAccount = 'Edge Talent';
               break;
             }
           }
@@ -1132,43 +1130,15 @@ router.get('/:id([0-9a-fA-F-]{36})/history', auth, async (req, res) => {
   }
 });
 
+// Legacy endpoint removed - legacy database connection no longer used
 // @route   GET /api/leads/legacy
-// @desc    Get legacy leads (for admins only)
+// @desc    Get legacy leads (DISABLED - legacy database removed)
 // @access  Private
 router.get('/legacy', auth, async (req, res) => {
-  try {
-    // Only admins can access legacy data
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied. Only admins can view legacy data.' });
-    }
-
-    console.log(`📋 GET /api/leads/legacy - Requested by user ${req.user.name} (${req.user.role})`);
-
-    // Get legacy leads using Supabase - disabled since is_legacy column doesn't exist in Supabase
-    const leads = [];
-
-    console.log('⚠️ Legacy endpoint disabled - is_legacy column not available in Supabase');
-
-    // Transform leads to include booker object
-    const transformedLeads = leads.map(lead => ({
-      ...lead,
-      booker: lead.booker_name ? {
-        id: lead.booker,
-        name: lead.booker_name,
-        email: lead.booker_email
-      } : null
-    }));
-
-    console.log(`📋 Legacy leads returned: ${transformedLeads.length} leads`);
-
-    res.json({
-      leads: transformedLeads,
-      total: transformedLeads.length
-    });
-  } catch (error) {
-    console.error('Legacy leads error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
+  return res.status(410).json({ 
+    message: 'Legacy database connection has been removed. This endpoint is no longer available.',
+    deprecated: true
+  });
 });
 
 // @route   POST /api/leads/:id/history
@@ -1272,10 +1242,24 @@ router.get('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       }
     }
 
-    // Transform lead to include booker object
+    // Extract call_status from custom_fields for easier access
+    let callStatus = null;
+    if (lead.custom_fields) {
+      try {
+        const customFields = typeof lead.custom_fields === 'string' 
+          ? JSON.parse(lead.custom_fields) 
+          : lead.custom_fields;
+        callStatus = customFields?.call_status || null;
+      } catch (e) {
+        console.warn('Error parsing custom_fields for call_status:', e);
+      }
+    }
+
+    // Transform lead to include booker object and call_status
     const transformedLead = {
       ...lead,
-      booker: bookerInfo
+      booker: bookerInfo,
+      call_status: callStatus // Add call_status for easy access
     };
 
     res.json(transformedLead);
@@ -1394,7 +1378,7 @@ router.post('/', auth, async (req, res) => {
                   sms: result?.smsSent
                 },
                 emailAccount: result?.emailAccount,
-                emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+                emailAccountName: 'Edge Talent',
                 smsProvider: result?.smsProvider || 'BulkSMS',
                 message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
                 timestamp: new Date()
@@ -1563,7 +1547,7 @@ router.post('/', auth, async (req, res) => {
                     sms: result?.smsSent
                   },
                   emailAccount: result?.emailAccount,
-                  emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+                  emailAccountName: 'Edge Talent',
                   smsProvider: result?.smsProvider || 'BulkSMS',
                   message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
                   timestamp: new Date()
@@ -1812,7 +1796,7 @@ router.post('/', auth, async (req, res) => {
                 sms: result?.smsSent
               },
               emailAccount: result?.emailAccount,
-              emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+              emailAccountName: 'Edge Talent',
               smsProvider: result?.smsProvider || 'BulkSMS',
               message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
               timestamp: new Date()
@@ -1981,7 +1965,53 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
     const isNewBooking = (oldStatus === 'New' || !oldDateBooked) && req.body.date_booked && req.body.status === 'Booked';
     // Handle cancellation - set to Cancelled and clear booking date
     const isCancellation = req.body.status === 'Cancelled' || (req.body.status === 'New' && oldStatus === 'Booked' && !req.body.date_booked);
-    
+
+    // ✅ BLOCKED SLOTS CHECK: Prevent booking on blocked days/times
+    if (req.body.date_booked) {
+      const bookingDate = req.body.date_booked.split('T')[0]; // Extract YYYY-MM-DD
+      const bookingTime = req.body.time_booked;
+      const bookingSlot = req.body.booking_slot;
+
+      // Check if this slot is blocked
+      let blockedQuery = supabase
+        .from('blocked_slots')
+        .select('*')
+        .eq('date', bookingDate);
+
+      const { data: blockedSlots, error: blockedError } = await blockedQuery;
+
+      if (!blockedError && blockedSlots && blockedSlots.length > 0) {
+        const isBlocked = blockedSlots.some(block => {
+          // Full day block
+          if (!block.time_slot) {
+            if (block.slot_number && bookingSlot) {
+              return parseInt(block.slot_number) === parseInt(bookingSlot);
+            }
+            return true;
+          }
+
+          // Specific time slot block
+          if (bookingTime && block.time_slot === bookingTime) {
+            if (block.slot_number && bookingSlot) {
+              return parseInt(block.slot_number) === parseInt(bookingSlot);
+            }
+            return true;
+          }
+
+          return false;
+        });
+
+        if (isBlocked) {
+          const blockReason = blockedSlots.find(b => !b.time_slot || (bookingTime && b.time_slot === bookingTime))?.reason || 'Unavailable';
+          return res.status(409).json({
+            message: 'This time slot is blocked',
+            error: `Cannot book appointment: ${blockReason}`,
+            blockedSlots: blockedSlots.filter(b => !b.time_slot || (bookingTime && b.time_slot === bookingTime))
+          });
+        }
+      }
+    }
+
     // ✅ DAILY ACTIVITY FIX: Set booked_at timestamp when status changes to Booked
     if (oldStatus !== 'Booked' && req.body.status === 'Booked') {
       req.body.booked_at = new Date().toISOString();
@@ -2202,7 +2232,7 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
                   sms: result?.smsSent
                 },
                 emailAccount: result?.emailAccount,
-                emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+                emailAccountName: 'Edge Talent',
                 smsProvider: result?.smsProvider || 'BulkSMS',
                 message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
                 timestamp: new Date()
@@ -2295,7 +2325,7 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
                   sms: result?.smsSent
                 },
                 emailAccount: result?.emailAccount,
-                emailAccountName: result?.emailAccount === 'secondary' ? 'Camry Models' : 'Avensis Models',
+                emailAccountName: 'Edge Talent',
                 smsProvider: result?.smsProvider || 'BulkSMS',
                 message: `Reschedule confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
                 timestamp: new Date()
@@ -2797,21 +2827,32 @@ router.delete('/bulk', auth, adminAuth, async (req, res) => {
 
     leadIds.forEach((id, index) => {
       // Handle various ID types and convert to string
-      let idString = id;
+      let idString = String(id || '').trim();
       if (typeof id === 'object' && id !== null) {
         // If it's an ObjectId or has toString()
-        idString = id.toString();
+        idString = String(id.toString()).trim();
       }
       
       // Debug the ID format
       console.log(`🔍 ID #${index}: '${idString}' (type: ${typeof id}, length: ${idString?.length || 0})`);
       
-      // Validate ID format for SQLite UUID
-      if (idString && typeof idString === 'string' && idString.length === 36) {
-        validatedIds.push(idString);
+      // More lenient UUID validation - accept UUIDs (36 chars with dashes) or any non-empty string
+      // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      
+      if (idString && idString.length > 0) {
+        // Accept if it's a valid UUID format OR if it's 36 characters (might be UUID without dashes or different format)
+        if (uuidRegex.test(idString) || idString.length === 36) {
+          validatedIds.push(idString);
+        } else {
+          // Still accept it if it's a reasonable length (might be a different ID format)
+          // But log a warning
+          console.log(`   ⚠️ ID format unusual but accepting: '${idString}' (length: ${idString.length})`);
+          validatedIds.push(idString);
+        }
       } else {
         invalidIds.push(id);
-        console.log(`   ❌ Invalid ID: '${idString}' - fails validation`);
+        console.log(`   ❌ Invalid ID: '${idString}' - empty or null`);
       }
     });
 
@@ -3555,14 +3596,12 @@ router.post('/upload-process', auth, adminAuth, async (req, res) => {
       return res.status(500).json({ message: 'Server error' });
     }
 
-    // Fetch legacy leads for duplicate checking
-    console.log('📜 Fetching legacy leads for duplicate checking...');
-    const legacyLeads = await fetchLegacyLeads();
+    // Legacy database connection removed - using only current database
+    const legacyLeads = []; // Empty array - legacy database no longer used
 
     // Analyze leads for duplicates and distance
     console.log('🔍 Analyzing leads for duplicates and distance...');
     console.log(`📊 Found ${existingLeads.length} existing leads for duplicate detection`);
-    console.log(`📜 Found ${legacyLeads.length} legacy leads for duplicate detection`);
     console.log(`📤 Processing ${processedLeads.length} uploaded leads`);
 
     // Debug: show sample of existing leads structure
@@ -3826,14 +3865,13 @@ router.post('/upload', auth, adminAuth, (req, res, next) => {
         return res.status(500).json({ message: 'Server error' });
       }
 
-      // Fetch legacy leads for duplicate checking
-      console.log('📜 Fetching legacy leads for duplicate checking...');
-      const legacyLeads = await fetchLegacyLeads();
+      // Legacy database connection removed - using only current database
+      const legacyLeads = []; // Empty array - legacy database no longer used
 
       // Analyze leads for duplicates and distance
       console.log('🔍 Analyzing leads for duplicates and distance...');
       console.log(`📊 Found ${existingLeads.length} existing leads for duplicate detection`);
-      console.log(`📜 Found ${legacyLeads.length} legacy leads for duplicate detection`);
+      console.log('ℹ️ Legacy leads checking disabled - using only current database');
       console.log(`📤 Processing ${processedLeads.length} uploaded leads`);
 
       // Debug: show sample of existing leads structure
@@ -5037,6 +5075,416 @@ router.patch('/:id/quick-status', auth, async (req, res) => {
 
   } catch (error) {
     console.error('Quick status update error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   PATCH /api/leads/:id/call-status
+// @desc    Update call status and trigger workflows
+// @access  Private
+router.patch('/:id/call-status', auth, async (req, res) => {
+  try {
+    const { callStatus } = req.body;
+    const leadId = req.params.id;
+
+    if (!callStatus) {
+      return res.status(400).json({ message: 'Call status is required' });
+    }
+
+    // Valid status options
+    const validStatuses = [
+      'No answer',
+      'Left Message',
+      'Not interested',
+      'Call back',
+      'Wrong number',
+      'Sales/converted - purchased',
+      'Not Qualified'
+    ];
+
+    if (!validStatuses.includes(callStatus)) {
+      return res.status(400).json({ message: 'Invalid call status' });
+    }
+
+    // Get the lead
+    const leads = await dbManager.query('leads', {
+      select: '*',
+      eq: { id: leadId }
+    });
+
+    if (!leads || leads.length === 0) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    const lead = leads[0];
+
+    // ROLE-BASED ACCESS CONTROL
+    if (req.user.role !== 'admin' && lead.booker_id !== req.user.id) {
+      return res.status(403).json({ 
+        message: 'Access denied. You can only update leads assigned to you.' 
+      });
+    }
+
+    // Update custom_fields to store call_status
+    let customFields = {};
+    try {
+      if (lead.custom_fields) {
+        customFields = typeof lead.custom_fields === 'string' 
+          ? JSON.parse(lead.custom_fields) 
+          : lead.custom_fields;
+      }
+    } catch (e) {
+      console.warn('Error parsing custom_fields:', e);
+      customFields = {};
+    }
+
+    customFields.call_status = callStatus;
+
+    // Prepare update data
+    const updateData = {
+      custom_fields: JSON.stringify(customFields),
+      updated_at: new Date().toISOString()
+    };
+
+    // Get callback time and note if provided
+    const { callbackTime, callbackNote } = req.body;
+
+    // Determine workflow actions based on status
+    const emailTriggers = ['Left Message', 'No answer'];
+    const closeTriggers = ['Not interested', 'Not Qualified', 'Wrong number'];
+    const callbackTriggers = ['Call back', 'Sales/converted - purchased'];
+
+    // If status triggers closing, update lead status
+    if (closeTriggers.includes(callStatus)) {
+      updateData.status = 'Rejected';
+      updateData.reject_reason = `Call status: ${callStatus}`;
+    }
+
+    // Update the lead
+    const updateResult = await dbManager.update('leads', updateData, { id: leadId });
+
+    if (!updateResult || updateResult.length === 0) {
+      return res.status(500).json({ message: 'Failed to update call status' });
+    }
+
+    const updatedLead = updateResult[0];
+
+    // Add to booking history
+    await addBookingHistoryEntry(
+      leadId,
+      'CALL_STATUS_UPDATE',
+      req.user.id,
+      req.user.name,
+      {
+        callStatus: callStatus,
+        workflowTrigger: emailTriggers.includes(callStatus) ? 'email' 
+          : closeTriggers.includes(callStatus) ? 'close' 
+          : 'callback',
+        updatedBy: req.user.name,
+        timestamp: new Date()
+      },
+      createLeadSnapshot(updatedLead)
+    );
+
+    // Trigger workflows
+    let workflowResult = {};
+
+    // Email workflow: Send automatic email for "Left Message" or "No answer"
+    if (emailTriggers.includes(callStatus) && lead.email) {
+      try {
+        // Find appropriate email template - look for templates with type/category related to contact attempts
+        const { data: templates, error: templateError } = await supabase
+          .from('templates')
+          .select('*')
+          .or('type.ilike.%contact%,type.ilike.%message%,type.ilike.%attempt%,category.ilike.%contact%,category.ilike.%message%')
+          .eq('is_active', true)
+          .eq('user_id', req.user.id)
+          .limit(1);
+
+        let template = null;
+        if (!templateError && templates && templates.length > 0) {
+          template = templates[0];
+        } else {
+          // Fallback: try to find any active email template for the user
+          const { data: fallbackTemplates } = await supabase
+            .from('templates')
+            .select('*')
+            .eq('is_active', true)
+            .eq('user_id', req.user.id)
+            .not('email_body', 'is', null)
+            .limit(1);
+          
+          if (fallbackTemplates && fallbackTemplates.length > 0) {
+            template = fallbackTemplates[0];
+          }
+        }
+
+        if (template && template.email_body) {
+          // Process template with lead data
+          const processedTemplate = MessagingService.processTemplate(
+            template,
+            lead,
+            req.user,
+            null,
+            null
+          );
+
+          // Send email
+          const messageData = {
+            id: uuidv4(),
+            lead_id: lead.id,
+            template_id: template.id,
+            type: 'email',
+            subject: processedTemplate.subject || 'We\'ve been trying to contact you',
+            email_body: processedTemplate.email_body,
+            recipient_email: lead.email,
+            recipient_phone: lead.phone,
+            sent_by: req.user.id,
+            status: 'pending',
+            created_at: new Date().toISOString()
+          };
+
+          await dbManager.insert('messages', messageData);
+
+          // Send email using MessagingService
+          const emailResult = await MessagingService.sendEmail(
+            {
+              ...messageData,
+              recipient_name: lead.name,
+              sent_by_name: req.user.name
+            },
+            template.email_account || 'primary'
+          );
+
+          workflowResult.emailSent = emailResult.success;
+          workflowResult.emailMessage = emailResult.success 
+            ? 'Automatic email sent to client' 
+            : 'Failed to send email: ' + (emailResult.error || 'Unknown error');
+
+          console.log(`📧 Automatic email sent for call status "${callStatus}" to ${lead.email}`);
+        } else {
+          workflowResult.emailSent = false;
+          workflowResult.emailMessage = 'No email template found for automatic sending';
+          console.warn(`⚠️ No email template found for call status "${callStatus}"`);
+        }
+      } catch (emailError) {
+        console.error('Error sending automatic email:', emailError);
+        workflowResult.emailSent = false;
+        workflowResult.emailMessage = 'Error sending email: ' + emailError.message;
+      }
+    }
+
+    // Callback workflow: Create scheduled reminder for "Call back" status
+    if (callbackTriggers.includes(callStatus) && callbackTime) {
+      try {
+        // Parse callback time (format: HH:MM in UK time)
+        const [hours, minutes] = callbackTime.split(':');
+        const callbackHour = parseInt(hours, 10);
+        const callbackMinute = parseInt(minutes, 10);
+
+        if (isNaN(callbackHour) || isNaN(callbackMinute)) {
+          throw new Error('Invalid callback time format');
+        }
+
+        // Use the same CRM time logic as the dashboard
+        // Get current UK date and time (matching dashboard approach)
+        const now = new Date();
+        const ukDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+        const ukTimeStr = now.toLocaleTimeString('en-US', { 
+          timeZone: 'Europe/London',
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        // Check if the time has already passed today in UK time
+        const currentUKHour = parseInt(ukTimeStr.split(':')[0], 10);
+        const currentUKMinute = parseInt(ukTimeStr.split(':')[1], 10);
+        const currentUKTimeMinutes = currentUKHour * 60 + currentUKMinute;
+        const callbackTimeMinutes = callbackHour * 60 + callbackMinute;
+        
+        // Determine which date to use (today or tomorrow)
+        let targetDateStr = ukDateStr;
+        if (callbackTimeMinutes <= currentUKTimeMinutes) {
+          // Time has passed, schedule for tomorrow
+          const tomorrow = new Date(now);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          targetDateStr = tomorrow.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+        }
+        
+        // Convert UK time to UTC using the same method as dashboard
+        // Create date string in UK timezone format
+        const ukDateTimeStr = `${targetDateStr}T${callbackTime}:00`;
+        
+        // Use the same conversion method as dashboard (matching getDateRange logic)
+        const startOfDayUK = new Date(ukDateTimeStr);
+        const offsetMinutes = -startOfDayUK.getTimezoneOffset();
+        let callbackDateTimeUTC = new Date(startOfDayUK.getTime() + (offsetMinutes * 60000));
+        
+        // Verify the conversion matches expected UK time
+        const verifyUK = callbackDateTimeUTC.toLocaleString('en-US', {
+          timeZone: 'Europe/London',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+        
+        if (verifyUK !== callbackTime) {
+          // Fine-tune if needed (shouldn't be necessary with proper conversion)
+          const verifyParts = verifyUK.split(':');
+          const expectedParts = callbackTime.split(':');
+          const verifyMins = parseInt(verifyParts[0]) * 60 + parseInt(verifyParts[1]);
+          const expectedMins = parseInt(expectedParts[0]) * 60 + parseInt(expectedParts[1]);
+          const diffMins = expectedMins - verifyMins;
+          callbackDateTimeUTC = new Date(callbackDateTimeUTC.getTime() + (diffMins * 60 * 1000));
+          
+          console.log(`📞 Timezone fine-tuning: ${verifyUK} → ${callbackTime} (${diffMins} minutes)`);
+        }
+
+        // Create callback reminder record
+        const reminderData = {
+          id: uuidv4(),
+          lead_id: leadId,
+          user_id: req.user.id,
+          callback_time: callbackDateTimeUTC.toISOString(),
+          callback_note: callbackNote || null,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        await dbManager.insert('callback_reminders', reminderData);
+
+        workflowResult.callbackScheduled = true;
+        workflowResult.callbackTime = callbackTime;
+        workflowResult.callbackNote = callbackNote;
+
+        console.log(`📞 Callback reminder scheduled for ${callbackTime} UK time (${callbackDateTimeUTC.toISOString()} UTC)`);
+      } catch (callbackError) {
+        console.error('Error creating callback reminder:', callbackError);
+        workflowResult.callbackScheduled = false;
+        workflowResult.callbackError = callbackError.message;
+      }
+    }
+
+    // Emit real-time update
+    if (global.io) {
+      global.io.emit('lead_updated', {
+        leadId: leadId,
+        action: 'call_status_updated',
+        callStatus: callStatus,
+        updatedBy: req.user.name,
+        workflowResult: workflowResult,
+        timestamp: new Date()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Call status updated successfully',
+      callStatus: callStatus,
+      workflowResult: workflowResult,
+      lead: updatedLead
+    });
+
+  } catch (error) {
+    console.error('Update call status error:', error);
+    res.status(500).json({ message: 'Server error: ' + error.message });
+  }
+});
+
+// @route   GET /api/leads/:id/callbacks
+// @desc    Get upcoming callback reminders for a specific lead
+// @access  Private
+router.get('/:id/callbacks', auth, async (req, res) => {
+  try {
+    const leadId = req.params.id;
+    const now = new Date();
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+    const { data: reminders, error } = await supabase
+      .from('callback_reminders')
+      .select('*')
+      .eq('lead_id', leadId)
+      .in('status', ['pending', 'notified'])
+      .gte('callback_time', now.toISOString())
+      .lte('callback_time', sevenDaysFromNow.toISOString())
+      .order('callback_time', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching callback reminders for lead:', error);
+      return res.status(500).json({ message: 'Failed to fetch callbacks' });
+    }
+
+    res.json(reminders || []);
+  } catch (error) {
+    console.error('Error fetching callback reminders for lead:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/leads/callback-reminders/upcoming
+// @desc    Get upcoming callback reminders for the current user
+// @access  Private
+router.get('/callback-reminders/upcoming', auth, async (req, res) => {
+  try {
+    const now = new Date();
+    const futureDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // Next 7 days
+
+    // Get upcoming callback reminders for the current user
+    const { data: reminders, error } = await supabase
+      .from('callback_reminders')
+      .select(`
+        *,
+        leads:lead_id (
+          id,
+          name,
+          phone,
+          email
+        )
+      `)
+      .eq('user_id', req.user.id)
+      .eq('status', 'pending')
+      .gte('callback_time', now.toISOString())
+      .lte('callback_time', futureDate.toISOString())
+      .order('callback_time', { ascending: true })
+      .limit(20);
+
+    if (error) {
+      console.error('Error fetching callback reminders:', error);
+      return res.status(500).json({ message: 'Server error' });
+    }
+
+    // Format reminders for frontend
+    const formattedReminders = (reminders || []).map(reminder => {
+      const callbackTime = new Date(reminder.callback_time);
+      const callbackTimeUK = callbackTime.toLocaleString('en-GB', {
+        timeZone: 'Europe/London',
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: 'short'
+      });
+
+      return {
+        id: reminder.id,
+        type: 'callback_reminder',
+        leadId: reminder.lead_id,
+        leadName: reminder.leads?.name || 'Unknown Lead',
+        leadPhone: reminder.leads?.phone || '',
+        callbackTime: reminder.callback_time,
+        callbackTimeDisplay: callbackTimeUK,
+        callbackNote: reminder.callback_note || '',
+        message: `Call back ${reminder.leads?.name || 'lead'} at ${callbackTimeUK}${reminder.callback_note ? ` - ${reminder.callback_note}` : ''}`,
+        timestamp: reminder.callback_time,
+        created_at: reminder.created_at
+      };
+    });
+
+    res.json({ reminders: formattedReminders });
+  } catch (error) {
+    console.error('Error fetching upcoming callback reminders:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -543,12 +543,12 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
                   >
                     {receiptTemplates.map(template => (
                       <option key={template._id} value={template._id}>
-                        {template.name} {template.email_account === 'secondary' ? '(Camry)' : '(Avensis)'}
+                        {template.name} {template.email_account === 'secondary' ? '(Secondary)' : '(Primary)'}
                       </option>
                     ))}
                   </select>
                   <p className="text-xs text-gray-500 mt-2">
-                    Selected template determines the sender account and message format.
+                    Emails sent via Gmail API from the template's configured account.
                   </p>
                 </div>
               ) : (

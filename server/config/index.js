@@ -31,12 +31,22 @@ const config = {
     pollInterval: parseInt(process.env.BULKSMS_POLL_INTERVAL_MS) || 60000 // 60s (1 min) - optimized for egress (was 30s)
   },
 
-  // Email Configuration
+  // Email Configuration (Legacy SMTP - being phased out)
   email: {
     user: process.env.EMAIL_USER || null,
     password: process.env.EMAIL_PASSWORD || null,
     gmailUser: process.env.GMAIL_USER || null,
     gmailPass: process.env.GMAIL_PASS || null
+  },
+
+  // Gmail API Configuration (New - recommended)
+  gmailApi: {
+    email: process.env.GMAIL_EMAIL || 'hello@edgetalent.co.uk',
+    clientId: process.env.GMAIL_CLIENT_ID || null,
+    clientSecret: process.env.GMAIL_CLIENT_SECRET || null,
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN || null,
+    redirectUri: process.env.GMAIL_REDIRECT_URI || 'http://localhost:5000/api/gmail/oauth2callback',
+    pollInterval: parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 60000 // 1 minute
   },
 
   // Client Configuration

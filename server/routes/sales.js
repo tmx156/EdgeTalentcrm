@@ -739,8 +739,7 @@ router.post('/:saleId/send-receipt/email', auth, async (req, res) => {
     console.log(`📧 Email account selection:`, {
       templateEmailAccount: emailAccount,
       accountToUse,
-      willUseCamry: accountToUse === 'secondary',
-      willUseAvensis: accountToUse === 'primary'
+      emailAddress: 'hello@edgetalent.co.uk'
     });
 
     // Use the emailService which handles multiple accounts correctly
@@ -759,7 +758,7 @@ router.post('/:saleId/send-receipt/email', auth, async (req, res) => {
 
     console.log(`📤 Sending receipt email:`, {
       to: email,
-      from: accountToUse === 'secondary' ? 'CAMRY (secondary)' : 'AVENSIS (primary)',
+      from: 'Edge Talent (hello@edgetalent.co.uk)',
       subject: emailSubject?.substring(0, 50) + '...'
     });
 

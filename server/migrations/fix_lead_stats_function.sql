@@ -1,12 +1,31 @@
--- Performance Optimization: Database function for lead statistics aggregation
--- This replaces the inefficient batch-fetching approach with native SQL aggregation
--- Expected performance improvement: 95% faster (10s → 0.5s)
+-- Fix get_lead_stats function to exclude ghost bookings and ensure it works correctly
 
--- Drop existing function if it exists
-DROP FUNCTION IF EXISTS get_lead_stats(timestamptz, timestamptz, uuid);
-DROP FUNCTION IF EXISTS get_lead_stats(timestamptz, timestamptz, text);
+-- First, drop all existing variants of the function
+-- We need to specify the exact signature for each variant
+DO $$ 
+DECLARE
+  func_record RECORD;
+BEGIN
+  -- Find all get_lead_stats functions and drop them
+  FOR func_record IN 
+    SELECT 
+      p.proname as func_name,
+      pg_get_function_identity_arguments(p.oid) as func_args
+    FROM pg_proc p
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public' 
+      AND p.proname = 'get_lead_stats'
+  LOOP
+    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I(%s) CASCADE', 
+      'public', 
+      func_record.func_name, 
+      func_record.func_args
+    );
+    RAISE NOTICE 'Dropped function: get_lead_stats(%)', func_record.func_args;
+  END LOOP;
+END $$;
 
--- Create optimized function for lead statistics
+-- Create optimized function for lead statistics with ghost booking exclusion
 CREATE OR REPLACE FUNCTION get_lead_stats(
   start_date timestamptz DEFAULT NULL,
   end_date timestamptz DEFAULT NULL,
@@ -31,19 +50,18 @@ BEGIN
   RETURN QUERY
   WITH filtered_leads AS (
     SELECT
-      status,
-      ever_booked
+      status
     FROM leads
     WHERE
       (start_date IS NULL OR created_at >= start_date)
       AND (end_date IS NULL OR created_at <= end_date)
       AND (booker_user_id IS NULL OR booker_id::text = booker_user_id)
-      AND postcode != 'ZZGHOST'  -- Exclude ghost bookings
+      AND (postcode IS NULL OR postcode != 'ZZGHOST')  -- Exclude ghost bookings
   )
   SELECT
     COUNT(*)::bigint as total,
     COUNT(*) FILTER (WHERE status = 'New')::bigint as new_count,
-    COUNT(*) FILTER (WHERE ever_booked = true)::bigint as booked_count,
+    COUNT(*) FILTER (WHERE status = 'Booked')::bigint as booked_count,  -- Fixed: Use status, not ever_booked
     COUNT(*) FILTER (WHERE status = 'Attended')::bigint as attended_count,
     COUNT(*) FILTER (WHERE status = 'Cancelled')::bigint as cancelled_count,
     COUNT(*) FILTER (WHERE status = 'Assigned')::bigint as assigned_count,
@@ -56,18 +74,8 @@ BEGIN
 END;
 $$;
 
--- Grant execute permission to authenticated users
-GRANT EXECUTE ON FUNCTION get_lead_stats TO authenticated;
-GRANT EXECUTE ON FUNCTION get_lead_stats TO anon;
+-- Grant execute permission
+GRANT EXECUTE ON FUNCTION get_lead_stats(timestamptz, timestamptz, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_lead_stats(timestamptz, timestamptz, text) TO anon;
 
--- Create indexes if they don't exist (for optimal query performance)
-CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
-CREATE INDEX IF NOT EXISTS idx_leads_ever_booked ON leads(ever_booked);
-CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at);
-CREATE INDEX IF NOT EXISTS idx_leads_booker_id ON leads(booker_id);
-
--- Composite indexes for common query patterns
-CREATE INDEX IF NOT EXISTS idx_leads_created_at_status ON leads(created_at, status);
-CREATE INDEX IF NOT EXISTS idx_leads_booker_created ON leads(booker_id, created_at);
-
-COMMENT ON FUNCTION get_lead_stats IS 'Optimized aggregation function for lead statistics - returns counts by status in a single query';
+COMMENT ON FUNCTION get_lead_stats(timestamptz, timestamptz, text) IS 'Optimized aggregation function for lead statistics - returns counts by status in a single query, excludes ghost bookings';

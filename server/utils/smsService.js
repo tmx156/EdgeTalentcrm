@@ -162,7 +162,7 @@ const processTemplate = (template, lead, bookingDate = null) => {
     '{leadPhone}': lead.phone || '',
     '{bookingDate}': bookingDateStr,
     '{bookingTime}': bookingTimeStr,
-    '{companyName}': 'Avensis Models',
+    '{companyName}': 'Edge Talent',
     '{currentDate}': new Date().toLocaleDateString(),
     '{currentTime}': new Date().toLocaleTimeString()
   };

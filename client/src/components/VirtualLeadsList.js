@@ -33,7 +33,7 @@ const VirtualLeadsList = ({
 
   // Memoize the row renderer for better performance
   const LeadRow = useCallback(({ lead, index, style }) => {
-    const isSelected = selectedLeads.includes(lead.id);
+    const isSelected = selectedLeads.includes(String(lead.id));
     const isHovered = hoveredIndex === index;
 
     return (

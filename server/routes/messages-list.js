@@ -94,7 +94,7 @@ router.get('/', auth, async (req, res) => {
       // First get messages (bounded by time window and limit, trimmed columns)
       const { data: messageRows, error: messageError } = await supabase
         .from('messages')
-        .select('id, lead_id, type, content, sms_body, subject, sent_by, sent_by_name, status, email_status, read_status, delivery_status, provider_message_id, delivery_provider, delivery_attempts, sent_at, created_at')
+        .select('id, lead_id, type, content, sms_body, subject, sent_by, sent_by_name, status, email_status, read_status, delivery_status, provider_message_id, delivery_provider, delivery_attempts, sent_at, created_at, attachments')
         .gte('created_at', createdAfter)
         .order('created_at', { ascending: false })
         .limit(validatedLimit);
@@ -174,6 +174,22 @@ router.get('/', auth, async (req, res) => {
 
           const action = direction === 'received' ? `${row.type.toUpperCase()}_RECEIVED` : `${row.type.toUpperCase()}_SENT`;
 
+          // Parse attachments if they exist
+          let attachments = [];
+          if (row.attachments) {
+            try {
+              attachments = typeof row.attachments === 'string' 
+                ? JSON.parse(row.attachments) 
+                : row.attachments;
+              if (!Array.isArray(attachments)) {
+                attachments = [];
+              }
+            } catch (e) {
+              console.warn('Error parsing attachments:', e);
+              attachments = [];
+            }
+          }
+
           messagesData.push({
             id: row.id, // Use actual message UUID as primary ID (simplified format)
             messageId: row.id, // Include the actual message UUID for proper read status handling
@@ -192,6 +208,7 @@ router.get('/', auth, async (req, res) => {
             content,
             details: { body: content, subject: row.subject },
             isRead: row.read_status === true || direction === 'sent', // Use messages table read_status as source of truth
+            attachments: attachments, // Include attachments
             // Add delivery status tracking fields
             delivery_status: row.delivery_status,
             error_message: row.error_message,
@@ -375,7 +392,6 @@ const handleDirectMessageUpdate = async (messageId, res, req = null) => {
       .from('messages')
       .update({
         read_status: true,
-        read_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
       .eq('id', actualMessageId);
@@ -673,7 +689,6 @@ router.put('/:messageId/read', auth, async (req, res) => {
             .from('messages')
             .update({
               read_status: true,
-              read_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             })
             .eq('id', messageId);
@@ -724,7 +739,6 @@ router.put('/:messageId/read', auth, async (req, res) => {
           .from('messages')
           .update({
             read_status: true,
-            read_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
           .eq('id', messageId);

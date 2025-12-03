@@ -30,41 +30,6 @@ const SALESAPE_CONFIG = {
 };
 
 /**
- * Normalize UK phone number to international format
- * @param {string} phone - Phone number in any format
- * @returns {string} - Phone number in +44 format
- */
-function normalizePhoneNumber(phone) {
-  if (!phone) return '';
-
-  // Remove all spaces, dashes, parentheses
-  let cleaned = phone.replace(/[\s\-\(\)]/g, '');
-
-  // If already starts with +44, return as-is
-  if (cleaned.startsWith('+44')) {
-    return cleaned;
-  }
-
-  // If starts with 44, add +
-  if (cleaned.startsWith('44')) {
-    return '+' + cleaned;
-  }
-
-  // If starts with 0, replace with +44
-  if (cleaned.startsWith('0')) {
-    return '+44' + cleaned.substring(1);
-  }
-
-  // If starts with 7, 8, or 9 (UK mobile), add +44
-  if (cleaned.match(/^[789]/)) {
-    return '+44' + cleaned;
-  }
-
-  // Otherwise, assume it needs +44
-  return '+44' + cleaned;
-}
-
-/**
  * Send a lead to SalesApe's Airtable (Trigger their AI)
  * This should be called when you want SalesApe to contact a lead
  */
@@ -75,16 +40,13 @@ async function sendLeadToSalesApe(lead) {
       throw new Error(`Lead ${lead.name} (ID: ${lead.id}) has no phone number. Phone is required for SalesApe.`);
     }
 
-    // Normalize phone number to international format
-    const formattedPhone = normalizePhoneNumber(lead.phone);
-
     // Format lead data for SalesApe's requirements
     const payload = {
       fields: {
         "First Name": lead.name?.split(' ')[0] || '',
         "Last Name": lead.name?.split(' ').slice(1).join(' ') || '',
         "Email": lead.email || '',
-        "Phone Number": formattedPhone,
+        "Phone Number": lead.phone || '',
         "CRM ID": String(lead.id), // Must be a string
         "Context": lead.notes || `Lead from ${lead.source || 'CRM'}`,
         "Base Details": [SALESAPE_CONFIG.BASE_DETAILS_ID]

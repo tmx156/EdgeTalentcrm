@@ -74,99 +74,59 @@ router.get('/leads-public', async (req, res) => {
 });
 
 // @route   GET /api/stats/leads
-// @desc    Get lead status counts using OPTIMIZED database aggregation
+// @desc    Get lead status counts - SIMPLE DIRECT COUNT
 // @access  Private
 router.get('/leads', auth, async (req, res) => {
   try {
-    const startTime = Date.now();
+    const { created_at_start, created_at_end } = req.query;
 
-    // Parse filters from query - support both old and new parameter names
-    const { startDate, endDate, userId, created_at_start, created_at_end, assigned_at_start, assigned_at_end } = req.query;
+    // Simple: Just count leads directly
+    let query = dbManager.client
+      .from('leads')
+      .select('status', { count: 'exact', head: false })
+      .neq('postcode', 'ZZGHOST'); // Exclude ghost bookings
 
-    // ROLE-BASED ACCESS CONTROL - Counters show global stats, not filtered by user
-    console.log(`👑 Lead counters show global stats for user ${req.user.name} (${req.user.role})`);
-
-    // Apply date filters - support both created_at and assigned_at
-    // Prioritize new parameter names over old ones
-    const useCreatedAt = created_at_start && created_at_end;
-    const useAssignedAt = assigned_at_start && assigned_at_end;
-    const useLegacy = !useCreatedAt && !useAssignedAt && startDate && endDate;
-
-    let filterStartDate = null;
-    let filterEndDate = null;
-
-    if (useCreatedAt) {
-      filterStartDate = created_at_start;
-      filterEndDate = created_at_end;
-      console.log(`📅 Stats filtering by creation date: ${created_at_start} to ${created_at_end}`);
-    } else if (useLegacy) {
-      filterStartDate = startDate;
-      filterEndDate = endDate;
-      console.log(`📅 Stats filtering by creation date (legacy): ${startDate} to ${endDate}`);
+    // Apply date filter if provided
+    if (created_at_start) {
+      query = query.gte('created_at', created_at_start);
+    }
+    if (created_at_end) {
+      query = query.lte('created_at', created_at_end);
     }
 
-    // Note: assigned_at filtering not supported by the database function yet
-    // If needed, we can add a second function variant
-    if (useAssignedAt) {
-      console.warn('⚠️ assigned_at filtering not yet optimized - falling back to basic filter');
+    // ROLE-BASED: Non-admins only see their assigned leads
+    if (req.user.role !== 'admin') {
+      query = query.eq('booker_id', req.user.id);
     }
 
-    // Apply user filter (booker) - only for admins
-    const bookerFilter = (userId && userId !== 'all' && req.user.role === 'admin') ? userId : null;
-
-    // 🚀 PERFORMANCE OPTIMIZATION: Use database function instead of fetching all records
-    const { data, error } = await dbManager.client.rpc('get_lead_stats', {
-      start_date: filterStartDate || null,
-      end_date: filterEndDate || null,
-      booker_user_id: bookerFilter
-    });
+    const { data: leads, error, count } = await query;
 
     if (error) {
-      console.error('❌ Database function error:', error);
+      console.error('❌ Error counting leads:', error);
       throw error;
     }
 
-    // Database function returns a single row with all counts
-    const stats = data && data.length > 0 ? data[0] : null;
-
-    if (!stats) {
-      console.warn('⚠️ No stats returned from database function');
-      return res.json({
-        total: 0,
-        new: 0,
-        booked: 0,
-        attended: 0,
-        cancelled: 0,
-        assigned: 0,
-        rejected: 0,
-        callback: 0,
-        noAnswer: 0,
-        notInterested: 0,
-        wantsEmail: 0
-      });
-    }
-
+    // Simple count by status
     const result = {
-      total: parseInt(stats.total) || 0,
-      new: parseInt(stats.new_count) || 0,
-      booked: parseInt(stats.booked_count) || 0,
-      attended: parseInt(stats.attended_count) || 0,
-      cancelled: parseInt(stats.cancelled_count) || 0,
-      assigned: parseInt(stats.assigned_count) || 0,
-      rejected: parseInt(stats.rejected_count) || 0,
-      callback: parseInt(stats.callback_count) || 0,
-      noAnswer: parseInt(stats.no_answer_count) || 0,
-      notInterested: parseInt(stats.not_interested_count) || 0,
-      wantsEmail: parseInt(stats.wants_email_count) || 0
+      total: count || 0,
+      new: leads?.filter(l => l.status === 'New').length || 0,
+      booked: leads?.filter(l => l.status === 'Booked').length || 0,
+      attended: leads?.filter(l => l.status === 'Attended').length || 0,
+      cancelled: leads?.filter(l => l.status === 'Cancelled').length || 0,
+      assigned: leads?.filter(l => l.status === 'Assigned').length || 0,
+      rejected: leads?.filter(l => l.status === 'Rejected').length || 0,
+      callback: leads?.filter(l => l.status === 'Call Back').length || 0,
+      noAnswer: leads?.filter(l => l.status === 'No Answer').length || 0,
+      notInterested: leads?.filter(l => l.status === 'Not Interested').length || 0,
+      wantsEmail: leads?.filter(l => l.status === 'Wants Email').length || 0
     };
 
-    const duration = Date.now() - startTime;
-    console.log(`✅ Lead stats for user ${req.user.name} (${req.user.role}): ${result.total} leads in ${duration}ms`);
+    console.log(`✅ Lead counts: Total=${result.total}, New=${result.new}, Booked=${result.booked}`);
 
     res.json(result);
   } catch (error) {
     console.error('Lead stats error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 

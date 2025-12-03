@@ -651,6 +651,37 @@ router.post('/leads/:id/book-appointment', salesapeAuth, async (req, res) => {
       }
     }
 
+    // ✅ BLOCKED SLOTS CHECK: Prevent booking on blocked days/times
+    const { data: blockedSlots, error: blockedError } = await supabase
+      .from('blocked_slots')
+      .select('*')
+      .eq('date', date);
+
+    if (!blockedError && blockedSlots && blockedSlots.length > 0) {
+      const isBlocked = blockedSlots.some(block => {
+        // Full day block
+        if (!block.time_slot) {
+          return true; // Entire day is blocked
+        }
+
+        // Specific time slot block
+        if (time && block.time_slot === time) {
+          return true;
+        }
+
+        return false;
+      });
+
+      if (isBlocked) {
+        const blockReason = blockedSlots.find(b => !b.time_slot || b.time_slot === time)?.reason || 'Unavailable';
+        return res.status(409).json({
+          message: 'This time slot is blocked',
+          error: `Cannot book appointment: ${blockReason}`,
+          blockedSlots: blockedSlots.filter(b => !b.time_slot || b.time_slot === time)
+        });
+      }
+    }
+
     // Get the lead first
     const { data: lead, error: leadError } = await supabase
       .from('leads')

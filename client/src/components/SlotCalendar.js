@@ -19,7 +19,44 @@ const TIME_SLOTS = [
   { time: '16:30', type: 'available', color: 'bg-white', borderColor: 'border-gray-200', label: 'Available' }
 ];
 
-const SlotCalendar = ({ selectedDate, events, onSlotClick, onEventClick }) => {
+const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, onEventClick }) => {
+  // Check if a slot is blocked
+  const isSlotBlocked = (timeSlot = null, slotNumber = null) => {
+    if (!blockedSlots || blockedSlots.length === 0) return false;
+    
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    
+    return blockedSlots.some(block => {
+      // Check if the block is for this date
+      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+      if (blockDateStr !== dateStr) return false;
+      
+      // Full day block
+      if (!block.time_slot) {
+        // If checking a specific slot number
+        if (slotNumber && block.slot_number) {
+          return parseInt(block.slot_number) === parseInt(slotNumber);
+        }
+        // If block has no slot_number, both slots are blocked
+        if (!block.slot_number) {
+          return true;
+        }
+      }
+      
+      // Specific time slot block
+      if (timeSlot && block.time_slot === timeSlot) {
+        if (slotNumber && block.slot_number) {
+          return parseInt(block.slot_number) === parseInt(slotNumber);
+        }
+        if (!block.slot_number) {
+          return true;
+        }
+      }
+      
+      return false;
+    });
+  };
+
   // Group events by time and slot
   const getEventForSlot = (time, slot) => {
     if (!events || events.length === 0) return null;
@@ -50,8 +87,13 @@ const SlotCalendar = ({ selectedDate, events, onSlotClick, onEventClick }) => {
     return <FiClock className="inline-block w-4 h-4 text-orange-500 mr-1" />;
   };
 
-  // Get cell background based on booking status
-  const getCellBackground = (slotConfig, event) => {
+  // Get cell background based on booking status and blocked state
+  const getCellBackground = (slotConfig, event, time, slot) => {
+    // Check if slot is blocked first - blocked slots are always grey
+    if (isSlotBlocked(time, slot)) {
+      return 'bg-gray-300 opacity-60'; // Greyed out for blocked slots
+    }
+    
     if (!event) return slotConfig.color;
     
     // Booked slots get a slightly darker shade
@@ -127,10 +169,19 @@ const SlotCalendar = ({ selectedDate, events, onSlotClick, onEventClick }) => {
 
               {/* Slot 1 */}
               <div
-                className={`p-4 border-r border-gray-300 ${getCellBackground(slotConfig, slot1Event)} ${slotConfig.borderColor} cursor-pointer hover:opacity-80 transition-opacity min-h-[80px] flex items-center justify-center`}
-                onClick={() => slot1Event ? onEventClick(slot1Event) : onSlotClick(slotConfig.time, 1, slotConfig)}
+                className={`p-4 border-r border-gray-300 ${getCellBackground(slotConfig, slot1Event, slotConfig.time, 1)} ${slotConfig.borderColor} ${isSlotBlocked(slotConfig.time, 1) ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center`}
+                onClick={() => {
+                  if (isSlotBlocked(slotConfig.time, 1)) return; // Don't allow clicks on blocked slots
+                  slot1Event ? onEventClick(slot1Event) : onSlotClick(slotConfig.time, 1, slotConfig);
+                }}
               >
-                {slot1Event ? (
+                {isSlotBlocked(slotConfig.time, 1) ? (
+                  <div className="text-center w-full">
+                    <div className="font-semibold text-gray-600 flex items-center justify-center">
+                      <span className="text-xs">🔒 Blocked</span>
+                    </div>
+                  </div>
+                ) : slot1Event ? (
                   <div className="text-center w-full">
                     <div className="font-semibold text-gray-800 flex items-center justify-center">
                       {getStatusIndicator(slot1Event)}
@@ -149,10 +200,19 @@ const SlotCalendar = ({ selectedDate, events, onSlotClick, onEventClick }) => {
 
               {/* Slot 2 */}
               <div
-                className={`p-4 ${getCellBackground(slotConfig, slot2Event)} ${slotConfig.borderColor} cursor-pointer hover:opacity-80 transition-opacity min-h-[80px] flex items-center justify-center`}
-                onClick={() => slot2Event ? onEventClick(slot2Event) : onSlotClick(slotConfig.time, 2, slotConfig)}
+                className={`p-4 ${getCellBackground(slotConfig, slot2Event, slotConfig.time, 2)} ${slotConfig.borderColor} ${isSlotBlocked(slotConfig.time, 2) ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center`}
+                onClick={() => {
+                  if (isSlotBlocked(slotConfig.time, 2)) return; // Don't allow clicks on blocked slots
+                  slot2Event ? onEventClick(slot2Event) : onSlotClick(slotConfig.time, 2, slotConfig);
+                }}
               >
-                {slot2Event ? (
+                {isSlotBlocked(slotConfig.time, 2) ? (
+                  <div className="text-center w-full">
+                    <div className="font-semibold text-gray-600 flex items-center justify-center">
+                      <span className="text-xs">🔒 Blocked</span>
+                    </div>
+                  </div>
+                ) : slot2Event ? (
                   <div className="text-center w-full">
                     <div className="font-semibold text-gray-800 flex items-center justify-center">
                       {getStatusIndicator(slot2Event)}

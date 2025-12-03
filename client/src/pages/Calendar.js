@@ -71,6 +71,7 @@ const Calendar = () => {
   const [currentDate, setCurrentDate] = useState(getCurrentUKTime());
   const [selectedSlot, setSelectedSlot] = useState(1); // Track selected slot for booking
   const [selectedTime, setSelectedTime] = useState(''); // Track selected time for booking
+  const [blockedSlots, setBlockedSlots] = useState([]); // Track blocked slots for calendar display
 
   // Reject lead modal state
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -137,6 +138,51 @@ const Calendar = () => {
         return '#6b7280'; // gray for unknown statuses
     }
   }, []); // Empty dependency array since this function is pure
+  
+  // Fetch blocked slots for the current date range
+  const fetchBlockedSlots = useCallback(async () => {
+    try {
+      // Calculate date range based on current view
+      let startDate, endDate;
+      
+      if (currentView === 'daily') {
+        // For daily view, fetch blocked slots for the current date
+        const dateStr = currentDate.toISOString().split('T')[0];
+        startDate = dateStr;
+        endDate = dateStr;
+      } else if (currentView === 'weekly') {
+        // For weekly view, fetch blocked slots for the week
+        const weekStart = new Date(currentDate);
+        const day = weekStart.getDay();
+        const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
+        weekStart.setDate(diff);
+        startDate = weekStart.toISOString().split('T')[0];
+        
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        endDate = weekEnd.toISOString().split('T')[0];
+      } else {
+        // For monthly view, fetch blocked slots for the current month
+        const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+        const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+        startDate = monthStart.toISOString().split('T')[0];
+        endDate = monthEnd.toISOString().split('T')[0];
+      }
+      
+      const response = await axios.get('/api/blocked-slots', {
+        params: {
+          start_date: startDate,
+          end_date: endDate
+        }
+      });
+      
+      setBlockedSlots(response.data || []);
+      console.log(`🔒 Fetched ${response.data?.length || 0} blocked slots for ${startDate} to ${endDate}`);
+    } catch (error) {
+      console.error('Error fetching blocked slots:', error);
+      setBlockedSlots([]);
+    }
+  }, [currentDate, currentView]);
   
   // Memoize fetchEvents to prevent recreating it on every render
   const fetchEvents = useCallback(async (force = false) => {
@@ -552,6 +598,28 @@ const Calendar = () => {
     };
   }, []); // Empty dependency array - only run once on mount
 
+  // Fetch blocked slots when date or view changes
+  useEffect(() => {
+    fetchBlockedSlots();
+  }, [currentDate, currentView, fetchBlockedSlots]);
+
+  // Prevent viewing blocked days in daily view
+  useEffect(() => {
+    if (currentView === 'daily' && blockedSlots.length > 0) {
+      const dateStr = currentDate.toISOString().split('T')[0];
+      const isDayBlocked = blockedSlots.some(block => {
+        const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+        // Full day block: date matches AND no time_slot AND no slot_number
+        return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
+      });
+      
+      if (isDayBlocked) {
+        alert('This day is blocked and cannot be viewed');
+        setCurrentView('monthly'); // Switch back to monthly view
+      }
+    }
+  }, [currentView, currentDate, blockedSlots]);
+
   // Consolidated real-time updates with proper debouncing
   useEffect(() => {
     console.log('📅 Calendar: Setting up real-time updates and polling...');
@@ -575,7 +643,68 @@ const Calendar = () => {
       unsubscribeCalendar = subscribeToCalendarUpdates((update) => {
         console.log('📅 Calendar: Real-time calendar update received', update);
         setLastUpdated(new Date());
-        debouncedFetch(); // Use debounced fetch
+        
+        // Handle status changes instantly without full fetch
+        if (update.data?.type === 'status_changed' && update.data?.event) {
+          const updatedEventData = update.data.event;
+          const updatedLead = update.data.lead;
+          
+          // Update the specific event immediately
+          setEvents(prevEvents => {
+            return prevEvents.map(event => {
+              if (event.id === updatedEventData.id || (updatedLead && event.extendedProps?.lead?.id === updatedLead.id)) {
+                // Merge the updated event data
+                return {
+                  ...event,
+                  ...updatedEventData,
+                  extendedProps: {
+                    ...event.extendedProps,
+                    ...updatedEventData.extendedProps,
+                    lead: updatedLead || event.extendedProps.lead
+                  }
+                };
+              }
+              return event;
+            });
+          });
+          
+          // Update selectedEvent if it's the one being changed
+          setSelectedEvent(prev => {
+            if (prev && (prev.id === updatedEventData.id || (updatedLead && prev.extendedProps?.lead?.id === updatedLead.id))) {
+              return {
+                ...prev,
+                ...updatedEventData,
+                extendedProps: {
+                  ...prev.extendedProps,
+                  ...updatedEventData.extendedProps,
+                  lead: updatedLead || prev.extendedProps.lead
+                }
+              };
+            }
+            return prev;
+          });
+          
+          console.log('📅 Calendar: Status updated in real-time');
+        } else if (update.data?.type === 'status_changed' && update.data?.event === null) {
+          // Handle cancellation - remove event
+          const cancelledLead = update.data.lead;
+          if (cancelledLead) {
+            setEvents(prevEvents => prevEvents.filter(event => 
+              event.id !== cancelledLead.id && event.extendedProps?.lead?.id !== cancelledLead.id
+            ));
+            setSelectedEvent(prev => {
+              if (prev && (prev.id === cancelledLead.id || prev.extendedProps?.lead?.id === cancelledLead.id)) {
+                setShowEventModal(false);
+                return null;
+              }
+              return prev;
+            });
+            console.log('📅 Calendar: Event cancelled in real-time');
+          }
+        } else {
+          // For other updates, use debounced fetch
+          debouncedFetch();
+        }
       });
     }
 
@@ -1293,191 +1422,229 @@ const Calendar = () => {
       }
     }
 
-    try {
-      // Prepare update data
-      let updateData = {
-        ...selectedEvent.extendedProps.lead
+    // Store previous state for rollback if API call fails
+    const previousEvent = { ...selectedEvent };
+    const previousEvents = [...events];
+
+    // Prepare update data
+    let updateData = {
+      ...selectedEvent.extendedProps.lead
+    };
+
+    // For cancellation, set status to Cancelled but preserve the original booking date
+    if (newStatus === 'Cancelled') {
+      updateData = {
+        ...updateData,
+        status: 'Cancelled',
+        cancellation_reason: 'Appointment cancelled via calendar'
+      };
+    } else if (newStatus === 'Confirmed') {
+      updateData = {
+        ...updateData,
+        status: 'Booked',
+        is_confirmed: 1,
+        booking_status: null
+      };
+    } else if (newStatus === 'Unconfirmed') {
+      updateData = {
+        ...updateData,
+        status: 'Booked',
+        is_confirmed: 0,
+        booking_status: null
+      };
+    } else if (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') {
+      updateData = {
+        ...updateData,
+        status: 'Booked',
+        booking_status: newStatus,
+        is_confirmed: newStatus === 'Reschedule' ? 0 : null
+      };
+    } else {
+      updateData = {
+        ...updateData,
+        status: newStatus,
+        booking_status: null
+      };
+    }
+
+    // OPTIMISTIC UPDATE: Update UI immediately
+    if (newStatus === 'Cancelled') {
+      // Remove the event from calendar immediately
+      setEvents(prevEvents => prevEvents.filter(event => event.id !== selectedEvent.id));
+      setShowEventModal(false);
+      
+      // Emit real-time update IMMEDIATELY
+      emitCalendarUpdate({
+        type: 'status_changed',
+        lead: { ...selectedEvent.extendedProps.lead, ...updateData },
+        event: null,
+        oldStatus: oldStatus,
+        newStatus: 'Cancelled',
+        timestamp: new Date()
+      });
+    } else {
+      // Create updated event for optimistic update
+      const eventTitle = newStatus === 'Confirmed'
+        ? `${leadName} - Booked (Confirmed)`
+        : newStatus === 'Unconfirmed'
+          ? `${leadName} - Booked (Unconfirmed)`
+          : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale')
+            ? `${leadName} - ${newStatus}`
+            : `${leadName} - ${newStatus}`;
+      
+      // Create optimistic lead update
+      const optimisticLead = {
+        ...selectedEvent.extendedProps.lead,
+        ...updateData
       };
 
-      // For cancellation, set status to Cancelled but preserve the original booking date
-      if (newStatus === 'Cancelled') {
-        updateData = {
-          ...updateData,
-          status: 'Cancelled', // Set to Cancelled status
-          // Keep date_booked preserved for tracking history in daily activities
-          cancellation_reason: 'Appointment cancelled via calendar'
-        };
-      } else if (newStatus === 'Confirmed') {
-        // For confirmation, keep the status as 'Booked' but add a confirmed flag
-        updateData = {
-          ...updateData,
-          status: 'Booked', // Keep as Booked
-          is_confirmed: 1, // Add confirmation flag
-          booking_status: null // Clear any previous booking status (like 'Arrived')
-        };
-      } else if (newStatus === 'Unconfirmed') {
-        // For unconfirmed, keep as Booked but ensure confirmed flag is false
-        updateData = {
-          ...updateData,
-          status: 'Booked',
-          is_confirmed: 0,
-          booking_status: null // Clear any previous booking status (like 'Arrived')
-        };
-      } else if (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') {
-        // For these statuses, keep as Booked but store the actual status in a custom field
-        updateData = {
-          ...updateData,
-          status: 'Booked',
-          booking_status: newStatus, // Store the actual status here
-          is_confirmed: newStatus === 'Reschedule' ? 0 : null // Reset to unconfirmed for Reschedule, null for others
-        };
-      } else {
-        // For other status changes, update the status normally and clear booking_status
-        updateData = {
-          ...updateData,
-          status: newStatus,
-          booking_status: null // Clear any previous booking status
-        };
-      }
-
-      const response = await axios.put(`/api/leads/${selectedEvent.id}`, updateData);
-
-      if (response.data.success || response.data.lead) {
-        const updatedLead = response.data.lead || response.data;
-        
-        // Update the event in the calendar
-        if (newStatus === 'Cancelled') {
-          // Remove the event from calendar completely
-          setEvents(prevEvents => prevEvents.filter(event => event.id !== selectedEvent.id));
-          setShowEventModal(false);
-          
-          alert(`❌ Successfully cancelled ${leadName}'s appointment. The lead has been moved to "Cancelled" status.`);
-        } else {
-          // For confirmed bookings, show a special title
-          const eventTitle = newStatus === 'Confirmed'
-            ? `${leadName} - Booked (Confirmed)`
-            : newStatus === 'Unconfirmed'
-              ? `${leadName} - Booked (Unconfirmed)`
-              : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale')
-                ? `${leadName} - ${newStatus}`
-                : `${leadName} - ${newStatus}`;
-          
-          const updatedEvent = {
-            ...selectedEvent,
-            title: eventTitle,
-            backgroundColor: getEventColor(
-              newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
-              updatedLead.hasSale,
-              newStatus === 'Confirmed'
-            ),
-            borderColor: getEventColor(
-              newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
-              updatedLead.hasSale,
-              newStatus === 'Confirmed'
-            ),
-            extendedProps: {
-              ...selectedEvent.extendedProps,
-              status: (newStatus === 'Confirmed' || newStatus === 'Unconfirmed' || newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? 'Booked' : newStatus,
-              displayStatus: newStatus, // Store what status to display
-              isConfirmed: newStatus === 'Confirmed' ? true : (newStatus === 'Unconfirmed' ? false : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? (newStatus === 'Reschedule' ? 0 : null) : selectedEvent.extendedProps?.isConfirmed || false),
-              bookingStatus: (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? newStatus : undefined,
-              lead: updatedLead
-            }
-          };
-          setEvents(prevEvents => {
-            const newEvents = prevEvents.map(event => 
-              event.id === selectedEvent.id ? updatedEvent : event
-            );
-            console.log(`📅 Calendar: Updated event ${selectedEvent.id} status to ${newStatus}. Events count: ${newEvents.length}`);
-            return newEvents;
-          });
-          setSelectedEvent(updatedEvent);
-          
-          // Force a delayed refresh to ensure server sync, but don't remove the local update
-          setTimeout(() => {
-            console.log(`📅 Calendar: Delayed refresh after ${newStatus} status change`);
-            // Use debounced fetch to prevent race conditions
-            debouncedFetchEvents();
-          }, 1500);
-          
-          // Show success message with visual feedback
-          const statusEmoji = {
-            'Confirmed': '✅',
-            'Unconfirmed': '🔄',
-            'Reschedule': '📅',
-            'Arrived': '🚗',
-            'Left': '🚪',
-            'No Sale': '❌',
-            'Attended': '✅', 
-            'Complete': '✅',
-            'Cancelled': '❌',
-            'No Show': '⏰',
-            'New': '🆕'
-          };
-          
-          const successMessage = newStatus === 'Confirmed' 
-            ? `✅ Successfully confirmed ${leadName}'s appointment`
-            : `${statusEmoji[newStatus] || '✅'} Successfully updated ${leadName}'s status to "${newStatus}"`;
-          
-          alert(successMessage);
+      const updatedEvent = {
+        ...selectedEvent,
+        title: eventTitle,
+        backgroundColor: getEventColor(
+          newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
+          optimisticLead.hasSale,
+          newStatus === 'Confirmed'
+        ),
+        borderColor: getEventColor(
+          newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
+          optimisticLead.hasSale,
+          newStatus === 'Confirmed'
+        ),
+        extendedProps: {
+          ...selectedEvent.extendedProps,
+          status: (newStatus === 'Confirmed' || newStatus === 'Unconfirmed' || newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? 'Booked' : newStatus,
+          displayStatus: newStatus,
+          isConfirmed: newStatus === 'Confirmed' ? true : (newStatus === 'Unconfirmed' ? false : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? (newStatus === 'Reschedule' ? 0 : null) : selectedEvent.extendedProps?.isConfirmed || false),
+          bookingStatus: (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? newStatus : undefined,
+          lead: optimisticLead
         }
-        
-        // Emit diary update for synchronization
-        try {
-          if (newStatus === 'Confirmed' || oldStatus === 'Confirmed' ||
-              newStatus === 'Booked' || oldStatus === 'Booked' || 
-              newStatus === 'Attended' || oldStatus === 'Attended' ||
-              newStatus === 'Complete' || oldStatus === 'Complete' ||
-              newStatus === 'Cancelled' || oldStatus === 'Cancelled' ||
-              newStatus === 'No Show' || oldStatus === 'No Show' ||
-              newStatus === 'Unconfirmed' || oldStatus === 'Unconfirmed' ||
-              newStatus === 'Reschedule' || oldStatus === 'Reschedule' ||
-              newStatus === 'Arrived' || oldStatus === 'Arrived' ||
-              newStatus === 'Left' || oldStatus === 'Left' ||
-              newStatus === 'On Show' || oldStatus === 'On Show' ||
-              newStatus === 'No Sale' || oldStatus === 'No Sale') {
-            
-            await axios.post('/api/stats/diary-update', {
-              leadId: selectedEvent.id,
-              leadName: leadName,
-              oldStatus: oldStatus,
-              newStatus: newStatus === 'Cancelled' ? 'Cancelled' : (newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Booked' : newStatus)),
-              dateBooked: selectedEvent.start,
-              timestamp: new Date().toISOString()
-            });
-          }
-        } catch (diaryError) {
-          console.warn('Diary update failed:', diaryError);
-        }
-        
-        // Emit real-time calendar update
-        emitCalendarUpdate({
-          type: 'status_changed',
-          lead: updatedLead,
-          event: newStatus === 'Cancelled' ? null : selectedEvent,
-          oldStatus: oldStatus,
-          newStatus: newStatus === 'Cancelled' ? 'Cancelled' : (newStatus === 'Confirmed' ? 'Booked' : newStatus),
-          timestamp: new Date()
-        });
-      }
-    } catch (error) {
-      console.error('Error updating event status:', error);
+      };
+
+      // Update UI immediately (optimistic update)
+      setEvents(prevEvents => {
+        const newEvents = prevEvents.map(event => 
+          event.id === selectedEvent.id ? updatedEvent : event
+        );
+        return newEvents;
+      });
+      setSelectedEvent(updatedEvent);
       
-      // More detailed error reporting
-      let errorMessage = 'Failed to update status. Please try again.';
-      if (error.response) {
-        // Server responded with error status
-        errorMessage = `Server error: ${error.response.data?.message || error.response.statusText}`;
-      } else if (error.request) {
-        // Request was made but no response received
-        errorMessage = 'Network error: Could not reach server. Please check your connection.';
-      } else {
-        // Something else happened
-        errorMessage = `Error: ${error.message}`;
-      }
-      
-      alert(errorMessage);
+      // Emit real-time update IMMEDIATELY (before API call)
+      emitCalendarUpdate({
+        type: 'status_changed',
+        lead: optimisticLead,
+        event: updatedEvent,
+        oldStatus: oldStatus,
+        newStatus: newStatus === 'Cancelled' ? 'Cancelled' : (newStatus === 'Confirmed' ? 'Booked' : newStatus),
+        timestamp: new Date()
+      });
     }
+
+    // Make API call in background (non-blocking)
+    (async () => {
+      try {
+        const response = await axios.put(`/api/leads/${selectedEvent.id}`, updateData);
+
+        if (response.data.success || response.data.lead) {
+          const updatedLead = response.data.lead || response.data;
+          
+          // Update with server response (in case server made additional changes)
+          if (newStatus !== 'Cancelled') {
+            const eventTitle = newStatus === 'Confirmed'
+              ? `${leadName} - Booked (Confirmed)`
+              : newStatus === 'Unconfirmed'
+                ? `${leadName} - Booked (Unconfirmed)`
+                : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale')
+                  ? `${leadName} - ${newStatus}`
+                  : `${leadName} - ${newStatus}`;
+            
+            const finalEvent = {
+              ...selectedEvent,
+              title: eventTitle,
+              backgroundColor: getEventColor(
+                newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
+                updatedLead.hasSale,
+                newStatus === 'Confirmed'
+              ),
+              borderColor: getEventColor(
+                newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
+                updatedLead.hasSale,
+                newStatus === 'Confirmed'
+              ),
+              extendedProps: {
+                ...selectedEvent.extendedProps,
+                status: (newStatus === 'Confirmed' || newStatus === 'Unconfirmed' || newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? 'Booked' : newStatus,
+                displayStatus: newStatus,
+                isConfirmed: newStatus === 'Confirmed' ? true : (newStatus === 'Unconfirmed' ? false : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? (newStatus === 'Reschedule' ? 0 : null) : selectedEvent.extendedProps?.isConfirmed || false),
+                bookingStatus: (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? newStatus : undefined,
+                lead: updatedLead
+              }
+            };
+            
+            setEvents(prevEvents => {
+              const newEvents = prevEvents.map(event => 
+                event.id === selectedEvent.id ? finalEvent : event
+              );
+              return newEvents;
+            });
+            setSelectedEvent(finalEvent);
+          }
+
+          // Emit diary update for synchronization
+          try {
+            if (newStatus === 'Confirmed' || oldStatus === 'Confirmed' ||
+                newStatus === 'Booked' || oldStatus === 'Booked' || 
+                newStatus === 'Attended' || oldStatus === 'Attended' ||
+                newStatus === 'Complete' || oldStatus === 'Complete' ||
+                newStatus === 'Cancelled' || oldStatus === 'Cancelled' ||
+                newStatus === 'No Show' || oldStatus === 'No Show' ||
+                newStatus === 'Unconfirmed' || oldStatus === 'Unconfirmed' ||
+                newStatus === 'Reschedule' || oldStatus === 'Reschedule' ||
+                newStatus === 'Arrived' || oldStatus === 'Arrived' ||
+                newStatus === 'Left' || oldStatus === 'Left' ||
+                newStatus === 'On Show' || oldStatus === 'On Show' ||
+                newStatus === 'No Sale' || oldStatus === 'No Sale') {
+              
+              await axios.post('/api/stats/diary-update', {
+                leadId: selectedEvent.id,
+                leadName: leadName,
+                oldStatus: oldStatus,
+                newStatus: newStatus === 'Cancelled' ? 'Cancelled' : (newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Booked' : newStatus)),
+                dateBooked: selectedEvent.start,
+                timestamp: new Date().toISOString()
+              });
+            }
+          } catch (diaryError) {
+            console.warn('Diary update failed:', diaryError);
+          }
+          
+          // Real-time update already emitted above, just sync with server response
+          // Background refresh to ensure sync (but don't override optimistic update)
+          setTimeout(() => {
+            debouncedFetchEvents();
+          }, 2000);
+        }
+      } catch (error) {
+        console.error('Error updating event status:', error);
+        
+        // ROLLBACK: Revert optimistic update on error
+        setEvents(previousEvents);
+        setSelectedEvent(previousEvent);
+        
+        // More detailed error reporting
+        let errorMessage = 'Failed to update status. Changes have been reverted. Please try again.';
+        if (error.response) {
+          errorMessage = `Server error: ${error.response.data?.message || error.response.statusText}. Changes have been reverted.`;
+        } else if (error.request) {
+          errorMessage = 'Network error: Could not reach server. Changes have been reverted.';
+        } else {
+          errorMessage = `Error: ${error.message}. Changes have been reverted.`;
+        }
+        
+        alert(errorMessage);
+      }
+    })();
   };
 
   const handleRejectLead = () => {
@@ -2007,6 +2174,19 @@ const Calendar = () => {
                 const newDate = new Date(currentDate);
                 if (currentView === 'daily') {
                   newDate.setDate(newDate.getDate() - 1);
+                  // Skip blocked days when navigating
+                  const maxAttempts = 30; // Prevent infinite loop
+                  let attempts = 0;
+                  while (attempts < maxAttempts) {
+                    const dateStr = newDate.toISOString().split('T')[0];
+                    const isDayBlocked = blockedSlots.some(block => {
+                      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                      return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
+                    });
+                    if (!isDayBlocked) break;
+                    newDate.setDate(newDate.getDate() - 1);
+                    attempts++;
+                  }
                 } else if (currentView === 'weekly') {
                   newDate.setDate(newDate.getDate() - 7);
                 } else {
@@ -2035,6 +2215,19 @@ const Calendar = () => {
                 const newDate = new Date(currentDate);
                 if (currentView === 'daily') {
                   newDate.setDate(newDate.getDate() + 1);
+                  // Skip blocked days when navigating
+                  const maxAttempts = 30; // Prevent infinite loop
+                  let attempts = 0;
+                  while (attempts < maxAttempts) {
+                    const dateStr = newDate.toISOString().split('T')[0];
+                    const isDayBlocked = blockedSlots.some(block => {
+                      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                      return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
+                    });
+                    if (!isDayBlocked) break;
+                    newDate.setDate(newDate.getDate() + 1);
+                    attempts++;
+                  }
                 } else if (currentView === 'weekly') {
                   newDate.setDate(newDate.getDate() + 7);
                 } else {
@@ -2056,6 +2249,7 @@ const Calendar = () => {
         {currentView === 'monthly' ? (
           <MonthlySlotCalendar
             currentDate={currentDate}
+            blockedSlots={blockedSlots}
             events={events.filter(event => {
               if (!event.date_booked) return false;
               
@@ -2075,6 +2269,19 @@ const Calendar = () => {
               return true;
             })}
             onDayClick={(day) => {
+              // Check if the day is fully blocked before switching to daily view
+              const dateStr = day.toISOString().split('T')[0];
+              const isDayBlocked = blockedSlots.some(block => {
+                const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                // Full day block: date matches AND no time_slot AND no slot_number
+                return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
+              });
+              
+              if (isDayBlocked) {
+                alert('This day is blocked and cannot be viewed');
+                return;
+              }
+              
               console.log('Day clicked:', day);
               // Switch to daily view for selected day
               setCurrentDate(day);
@@ -2095,6 +2302,7 @@ const Calendar = () => {
         ) : currentView === 'daily' ? (
           <SlotCalendar
             selectedDate={currentDate}
+            blockedSlots={blockedSlots}
             events={events.filter(event => {
               if (!event.date_booked) return false;
               
@@ -2155,6 +2363,7 @@ const Calendar = () => {
               const diff = date.getDate() - day + (day === 0 ? -6 : 1); // Adjust when day is Sunday
               return new Date(date.setDate(diff));
             })()}
+            blockedSlots={blockedSlots}
             events={events.filter(event => {
               if (!event.date_booked) return false;
               
@@ -2192,7 +2401,20 @@ const Calendar = () => {
                 });
                 setShowLeadFormModal(true);
               } else {
-                // Clicked on day header - switch to daily view
+                // Clicked on day header - check if day is blocked before switching to daily view
+                const dateStr = day.toISOString().split('T')[0];
+                const isDayBlocked = blockedSlots.some(block => {
+                  const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                  // Full day block: date matches AND no time_slot AND no slot_number
+                  return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
+                });
+                
+                if (isDayBlocked) {
+                  alert('This day is blocked and cannot be viewed');
+                  return;
+                }
+                
+                // Switch to daily view
                 setCurrentDate(day);
                 setCurrentView('daily');
               }
@@ -2384,12 +2606,12 @@ const Calendar = () => {
                           >
                             {bookingTemplates.map((template) => (
                               <option key={template._id} value={template._id}>
-                                {template.name} {(template.email_account || template.emailAccount) === 'secondary' ? '(Camry)' : '(Avensis)'}
+                                {template.name} {template.emailAccount === 'secondary' ? '(Secondary)' : '(Primary)'}
                               </option>
                             ))}
                           </select>
                           <p className="text-xs text-gray-500 mt-1">
-                            Template determines which email account to use
+                            Emails sent via Gmail API
                           </p>
                         </>
                       ) : (
@@ -2835,12 +3057,12 @@ const Calendar = () => {
                               >
                                 {bookingTemplates.map((template) => (
                                   <option key={template._id} value={template._id}>
-                                    {template.name} {(template.email_account || template.emailAccount) === 'secondary' ? '(Camry)' : '(Avensis)'}
+                                    {template.name} {template.emailAccount === 'secondary' ? '(Secondary)' : '(Primary)'}
                                   </option>
                                 ))}
                               </select>
                               <p className="text-xs text-gray-500 mt-1">
-                                Template determines which email account to use
+                                Emails sent via Gmail API
                               </p>
                             </>
                           ) : (

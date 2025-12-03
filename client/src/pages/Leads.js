@@ -77,6 +77,11 @@ const Leads = () => {
   const [quickNotesText, setQuickNotesText] = useState('');
   const [updatingQuickNotes, setUpdatingQuickNotes] = useState(false);
 
+  // Debug: Log selectedLeads changes
+  useEffect(() => {
+    console.log('🔍 selectedLeads state changed:', selectedLeads);
+  }, [selectedLeads]);
+
 
   const [newLead, setNewLead] = useState({
     name: '',
@@ -301,7 +306,40 @@ const Leads = () => {
 
       const response = await axios.get('/api/stats/leads', { params });
       console.log('📊 Fetched lead counts with date filter:', response.data);
-      setLeadCounts(response.data);
+      console.log('📊 Response status:', response.status);
+      console.log('📊 Full response:', JSON.stringify(response.data, null, 2));
+      
+      // Ensure we have valid data
+      if (response.data && typeof response.data === 'object') {
+        setLeadCounts({
+          total: response.data.total || 0,
+          new: response.data.new || 0,
+          booked: response.data.booked || 0,
+          attended: response.data.attended || 0,
+          cancelled: response.data.cancelled || 0,
+          assigned: response.data.assigned || 0,
+          rejected: response.data.rejected || 0,
+          callback: response.data.callback || 0,
+          notInterested: response.data.notInterested || 0,
+          wantsEmail: response.data.wantsEmail || 0,
+          noAnswer: response.data.noAnswer || 0
+        });
+      } else {
+        console.error('❌ Invalid response data format:', response.data);
+        setLeadCounts({
+          total: 0,
+          new: 0,
+          booked: 0,
+          attended: 0,
+          cancelled: 0,
+          assigned: 0,
+          rejected: 0,
+          callback: 0,
+          notInterested: 0,
+          wantsEmail: 0,
+          noAnswer: 0
+        });
+      }
     } catch (error) {
       console.error('❌ Error fetching lead counts:', error);
       // Set default values to indicate an error occurred
@@ -570,12 +608,28 @@ const Leads = () => {
   };
 
   const handleSelectLead = (leadId, isSelected) => {
+    console.log('🔍 handleSelectLead called:', { leadId, isSelected, leadIdType: typeof leadId });
     // Toggle lead selection when checkbox is clicked
+    // Ensure ID is converted to string for consistency
+    const idString = String(leadId);
+    console.log('🔍 Converted ID to string:', idString);
+    
     setSelectedLeads(prevSelected => {
+      console.log('🔍 Current selectedLeads before update:', prevSelected);
+      let newSelected;
       if (isSelected) {
-        return [...prevSelected, leadId];
+        // Check if already selected to avoid duplicates
+        if (prevSelected.includes(idString)) {
+          console.log('🔍 ID already selected, returning unchanged');
+          return prevSelected;
+        }
+        newSelected = [...prevSelected, idString];
+        console.log('🔍 Adding ID, new selectedLeads:', newSelected);
+        return newSelected;
       } else {
-        return prevSelected.filter(id => id !== leadId);
+        newSelected = prevSelected.filter(id => String(id) !== idString);
+        console.log('🔍 Removing ID, new selectedLeads:', newSelected);
+        return newSelected;
       }
     });
   };
@@ -611,14 +665,19 @@ const Leads = () => {
     const leadIdsToDelete = selectedLeads
       .map(id => {
         // Handle various ID types and convert to string
-        let idString = id;
+        let idString = String(id || '').trim();
         if (typeof id === 'object' && id !== null) {
           // If it's an ObjectId or has toString()
-          idString = id.toString();
+          idString = String(id.toString()).trim();
         }
         return idString;
       })
-      .filter(id => id && id.length === 36); // Validate SQLite UUID format
+      .filter(id => {
+        // More lenient validation - accept UUIDs (36 chars) or any non-empty string
+        // UUIDs are 36 characters with dashes: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        return id && (id.length === 36 || uuidRegex.test(id));
+      });
     
     console.log('🗑️ Attempting to delete leads:', leadIdsToDelete);
     console.log('🔍 Number of leads selected:', selectedLeads.length);
@@ -648,33 +707,59 @@ const Leads = () => {
     }
 
     try {
-      console.log('🔍 DELETE DEBUG - Sending request with:', { leadIds: leadIdsToDelete });
+      console.log('🔍 DELETE DEBUG - Sending request with:', { 
+        leadIds: leadIdsToDelete,
+        count: leadIdsToDelete.length,
+        sampleIds: leadIdsToDelete.slice(0, 3)
+      });
       
       const token = localStorage.getItem('token');
       const response = await axios.delete('/api/leads/bulk', {
         data: { leadIds: leadIdsToDelete },
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'Content-Type': 'application/json'
+        }
       });
 
       console.log('✅ Delete response:', response.data);
-      alert(`Successfully deleted ${response.data.deletedCount || leadIdsToDelete.length} leads`);
+
+      if (response.data && response.data.deletedCount !== undefined) {
+        alert(`Successfully deleted ${response.data.deletedCount} lead${response.data.deletedCount !== 1 ? 's' : ''}`);
+      } else {
+        alert(`Successfully deleted ${leadIdsToDelete.length} lead${leadIdsToDelete.length !== 1 ? 's' : ''}`);
+      }
+
+      // Immediately remove deleted leads from state for instant UI feedback
+      setLeads(prevLeads => prevLeads.filter(lead => !leadIdsToDelete.includes(lead.id)));
       setSelectedLeads([]);
-      // Trigger a re-fetch by updating a dependency
-      setCurrentPage(prev => prev);
-      fetchLeadCounts(); // Also refresh counts
+      setTotalLeads(prev => Math.max(0, prev - leadIdsToDelete.length));
+
+      // Refresh counts from server
+      fetchLeadCounts();
     } catch (error) {
       console.error('❌ Error deleting leads:', error);
       console.error('❌ Error details:', {
         message: error.message,
         response: error.response?.data,
-        status: error.response?.status
+        status: error.response?.status,
+        requestData: { leadIds: leadIdsToDelete }
       });
       
+      let errorMessage = 'Failed to delete leads. Please try again.';
       if (error.response?.data?.message) {
-        alert(`Delete failed: ${error.response.data.message}`);
-      } else {
-        alert('Failed to delete leads. Please try again.');
+        errorMessage = `Delete failed: ${error.response.data.message}`;
+        if (error.response.data.details) {
+          errorMessage += `\n\nDetails: ${error.response.data.details}`;
+        }
+        if (error.response.data.invalidIds && error.response.data.invalidIds.length > 0) {
+          errorMessage += `\n\nInvalid IDs: ${error.response.data.invalidIds.slice(0, 5).join(', ')}`;
+        }
+      } else if (error.message) {
+        errorMessage = `Delete failed: ${error.message}`;
       }
+      
+      alert(errorMessage);
     }
   };
 
@@ -1235,7 +1320,7 @@ const Leads = () => {
     }
 
     // Get the selected lead objects
-    const selectedLeadObjects = leads.filter(lead => selectedLeads.includes(lead.id));
+    const selectedLeadObjects = leads.filter(lead => selectedLeads.includes(String(lead.id)));
     
     // Create CSV content for selected leads
     const headers = ['Name', 'Phone', 'Email', 'Postcode', 'Status', 'Notes', 'Booker', 'Date Booked', 'Image URL'];
@@ -1334,7 +1419,15 @@ const Leads = () => {
                     <span>Send to SalesApe AI</span>
                   </button>
                   <button
-                    onClick={handleBulkDelete}
+                    onClick={(e) => {
+                      console.log('🔍 Delete button clicked!', {
+                        selectedLeads,
+                        count: selectedLeads.length,
+                        event: e
+                      });
+                      e.stopPropagation();
+                      handleBulkDelete();
+                    }}
                     className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors duration-200 flex items-center space-x-2"
                     title="Permanently delete selected leads"
                   >
@@ -1859,30 +1952,49 @@ const Leads = () => {
                   </td>
                 </tr>
               ) : (
-                leads.filter(shouldIncludeLead).map((lead, index) => {
-                  const LeadRow = React.memo(() => (
+                leads.filter(lead => lead && lead.id && shouldIncludeLead(lead)).map((lead, index) => {
+                  const leadIdString = String(lead.id);
+                  const isSelected = selectedLeads.includes(leadIdString);
+                  
+                  return (
                   <tr
                     key={lead.id}
                     onClick={(e) => {
                       // Prevent checkbox click from triggering row click
-                      if (e.target.type !== 'checkbox') {
+                      if (e.target.type !== 'checkbox' && e.target.tagName !== 'INPUT') {
                         handleRowClick(lead, e);
                       }
                     }}
                     className={`cursor-pointer hover:bg-gray-50 transition-colors duration-200 ${
-                      selectedLeads.includes(lead.id) ? 'bg-blue-50 selected' : ''
+                      isSelected ? 'bg-blue-50 selected' : ''
                     }`}
                   >
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <input
                       type="checkbox"
-                      checked={selectedLeads.includes(lead.id)}
+                      checked={isSelected}
                       onChange={(e) => {
+                        console.log('🔍 Checkbox onChange triggered:', {
+                          leadId: lead.id,
+                          leadIdString,
+                          checked: e.target.checked,
+                          currentSelected: selectedLeads,
+                          isInSelected: isSelected
+                        });
                         // Stop propagation to prevent row click
                         e.stopPropagation();
-                        handleSelectLead(lead.id, e.target.checked);
+                        if (lead.id) {
+                          handleSelectLead(lead.id, e.target.checked);
+                        } else {
+                          console.error('❌ Cannot select lead - missing ID:', lead);
+                        }
+                      }}
+                      onClick={(e) => {
+                        console.log('🔍 Checkbox onClick triggered');
+                        e.stopPropagation();
                       }}
                       className="cursor-pointer"
+                      disabled={!lead.id}
                     />
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -1973,8 +2085,7 @@ const Leads = () => {
                     </div>
                   </td>
                   </tr>
-                  ));
-                  return <LeadRow />;
+                  );
                 })
               )}
             </tbody>

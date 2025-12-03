@@ -9,7 +9,10 @@ import {
   FiClock,
   FiArrowRight,
   FiCheck,
-  FiAlertCircle
+  FiAlertCircle,
+  FiPaperclip,
+  FiDownload,
+  FiFile
 } from 'react-icons/fi';
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
@@ -84,13 +87,12 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
       setReadError(null);
       fetchConversationHistory();
       
-      // Mark the message as read when modal opens (only if not already read)
+      // Mark the message as read when modal opens (always try, even if marked as read)
+      // This ensures the database is updated even if UI state is stale
       const markMessageAsRead = async () => {
-        // Skip if already marked as read
-        if (notification.read) {
-          console.log('📱 MessageModal: Message already read, skipping mark as read');
-          return;
-        }
+        // Always try to mark as read, even if notification.read is true
+        // This handles cases where UI state is stale but database isn't updated
+        console.log('📱 MessageModal: Marking message as read (always attempt for consistency)');
 
         try {
           setMarkingAsRead(true);
@@ -98,24 +100,21 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
           console.log('📱 MessageModal: Attempting to mark message as read:', notification.id);
           console.log('📱 MessageModal: Notification object:', notification);
           
-          // Use the stored messageId if available, otherwise construct leadId_timestamp
-          let messageIdentifier = notification.id;
+          // Use the stored messageId if available, otherwise use notification.id
+          // Priority: messageId > id (both should be UUIDs from messages table)
+          let messageIdentifier = notification.messageId || notification.id;
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-          // If we have a stored messageId (from real-time updates), use it directly
-          if (notification.messageId) {
-            messageIdentifier = notification.messageId;
-            console.log('📱 MessageModal: Using stored messageId:', messageIdentifier);
-          } else if (notification.leadId && uuidRegex.test(notification.leadId)) {
-            // If leadId is a UUID, it might be the actual message ID
-            messageIdentifier = notification.leadId;
-            console.log('📱 MessageModal: Using leadId as direct message ID (UUID):', messageIdentifier);
-          } else if (notification.leadId && notification.timestamp) {
-            // Construct leadId_timestamp format for non-UUID leadIds
-            messageIdentifier = `${notification.leadId}_${notification.timestamp}`;
-            console.log('📱 MessageModal: Using leadId_timestamp format:', messageIdentifier);
-          } else {
-            console.log('📱 MessageModal: Using notification.id as fallback:', messageIdentifier);
+          // Validate it's a UUID
+          if (!uuidRegex.test(messageIdentifier)) {
+            // If not a UUID, try to extract UUID part if composite
+            const uuidPart = messageIdentifier.includes('_') ? messageIdentifier.split('_')[0] : messageIdentifier;
+            if (uuidRegex.test(uuidPart)) {
+              messageIdentifier = uuidPart;
+              console.log('📱 MessageModal: Extracted UUID from composite ID:', messageIdentifier);
+            } else {
+              console.warn('📱 MessageModal: Invalid message ID format, may fail:', messageIdentifier);
+            }
           }
 
           console.log('📱 MessageModal: Final message identifier:', messageIdentifier);
@@ -398,27 +397,94 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
           </button>
         </div>
 
-        {/* Conversation History */}
-        <div className="p-4 max-h-80 overflow-y-auto conversation-scroll bg-gray-50">
+        {/* Conversation History - Gmail Style */}
+        <div className="p-4 max-h-96 overflow-y-auto conversation-scroll bg-white">
           {/* Display the current message if available */}
           {notification?.content && (
-            <div className="mb-4 p-3 bg-white border border-gray-200 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-gray-500">
-                  {notification.direction === 'received' ? 'Received Message' : 'Sent Message'}
-                  {isEmailContentEncoded(notification.content) && (
-                    <span className="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded">
-                      Auto-decoded
+            <div className={`mb-4 rounded-lg shadow-sm ${
+              notification.direction === 'sent' 
+                ? 'bg-blue-600 text-white ml-auto max-w-[85%]' 
+                : 'bg-gray-100 text-gray-900 mr-auto max-w-[85%]'
+            }`}>
+              <div className={`px-4 py-3 border-b ${
+                notification.direction === 'sent' ? 'border-blue-500' : 'border-gray-300'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-sm font-semibold ${
+                      notification.direction === 'sent' ? 'text-blue-100' : 'text-gray-900'
+                    }`}>
+                      {notification.direction === 'sent' ? 'You' : (notification.leadName || 'Unknown')}
                     </span>
-                  )}
-                </span>
-                <span className="text-xs text-gray-400">
-                  {formatTime(notification.timestamp)}
-                </span>
+                    {notification.subject && (
+                      <span className={`text-xs ${
+                        notification.direction === 'sent' ? 'text-blue-200' : 'text-gray-600'
+                      }`}>
+                        {notification.subject}
+                      </span>
+                    )}
+                  </div>
+                  <span className={`text-xs ${
+                    notification.direction === 'sent' ? 'text-blue-200' : 'text-gray-500'
+                  }`}>
+                    {formatTime(notification.timestamp)}
+                  </span>
+                </div>
               </div>
-              <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">
-                {decodeEmailContent(notification.content)}
-              </p>
+              <div className="px-4 py-3">
+                <p className={`text-sm whitespace-pre-wrap break-words ${
+                  notification.direction === 'sent' ? 'text-white' : 'text-gray-900'
+                }`}>
+                  {decodeEmailContent(notification.content)}
+                </p>
+                {isEmailContentEncoded(notification.content) && (
+                  <span className={`mt-2 inline-block px-2 py-0.5 text-xs rounded ${
+                    notification.direction === 'sent' 
+                      ? 'bg-blue-500 text-blue-100' 
+                      : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    Auto-decoded
+                  </span>
+                )}
+              </div>
+              {/* Display attachments if available */}
+              {notification.attachments && Array.isArray(notification.attachments) && notification.attachments.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <div className="flex items-center mb-2">
+                    <FiPaperclip className="h-4 w-4 text-gray-500 mr-2" />
+                    <span className="text-xs font-medium text-gray-700">
+                      {notification.attachments.length} Attachment{notification.attachments.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {notification.attachments.map((attachment, idx) => (
+                      <a
+                        key={idx}
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-2 bg-gray-50 hover:bg-gray-100 rounded-md border border-gray-200 transition-colors group"
+                      >
+                        <div className="flex items-center space-x-2 flex-1 min-w-0">
+                          <FiFile className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {attachment.filename}
+                            </p>
+                            {attachment.size && (
+                              <p className="text-xs text-gray-500">
+                                {(attachment.size / 1024).toFixed(2)} KB
+                                {attachment.mimetype && ` • ${attachment.mimetype}`}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <FiDownload className="h-4 w-4 text-gray-400 group-hover:text-blue-600 transition-colors flex-shrink-0 ml-2" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           
@@ -461,57 +527,73 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
                   
                   return true;
                 })
-                .map((message, index) => (
-                <div 
-                  key={`${message.timestamp}-${index}`}
-                  className={`flex ${(['SMS_SENT','EMAIL_SENT'].includes(message.action)) ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow-sm ${
-                    (message.action === 'SMS_SENT' || message.action === 'EMAIL_SENT')
-                      ? 'bg-blue-500 text-white' 
-                      : message.action === 'SMS_FAILED' 
-                        ? 'bg-red-50 border border-red-300 text-red-800'
-                        : 'bg-gray-100 border text-gray-900'
-                  }`}>
-                    <p className="text-sm whitespace-pre-wrap break-words">
-                      {decodeEmailContent(message.details?.body || message.details?.message || message.details?.subject || 'No content')}
-                    </p>
-                    <div className="flex items-center justify-between mt-1">
-                      <p className={`text-xs ${
-                        (message.action === 'SMS_SENT' || message.action === 'EMAIL_SENT') ? 'text-blue-100' : (message.action === 'SMS_FAILED' ? 'text-red-700' : 'text-gray-600')
+                .map((message, index) => {
+                  const isSent = ['SMS_SENT', 'EMAIL_SENT'].includes(message.action);
+                  const isFailed = message.action === 'SMS_FAILED';
+                  
+                  return (
+                    <div 
+                      key={`${message.timestamp}-${index}`}
+                      className={`flex ${isSent ? 'justify-end' : 'justify-start'} mb-3`}
+                    >
+                      <div className={`max-w-[85%] rounded-lg shadow-sm ${
+                        isSent
+                          ? 'bg-blue-600 text-white' 
+                          : isFailed
+                            ? 'bg-red-50 border border-red-300 text-red-800'
+                            : 'bg-gray-100 text-gray-900'
                       }`}>
-                        {formatTime(message.timestamp)}
-                        {(message.action === 'SMS_SENT' || message.action === 'EMAIL_SENT') && (
-                          <span className="ml-1">• Sent</span>
-                        )}
-                        {(message.action === 'SMS_RECEIVED' || message.action === 'EMAIL_RECEIVED') && (
-                          <span className="ml-1">• Received</span>
-                        )}
-                        {message.action === 'SMS_FAILED' && (
-                          <span className="ml-1">• Failed</span>
-                        )}
-                      </p>
-                      {/* Delivery ticks */}
-                      {(message.action === 'SMS_SENT' || message.action === 'EMAIL_SENT') && (
-                        <div className="flex items-center space-x-1">
-                          <FiCheck className="h-3 w-3 text-blue-100" />
-                          <FiCheck className="h-3 w-3 text-blue-100" />
+                        {/* Message Header */}
+                        <div className={`px-4 py-2 border-b ${
+                          isSent ? 'border-blue-500' : isFailed ? 'border-red-300' : 'border-gray-300'
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <span className={`text-sm font-semibold ${
+                                isSent ? 'text-blue-100' : isFailed ? 'text-red-900' : 'text-gray-900'
+                              }`}>
+                                {isSent ? 'You' : (notification.leadName || 'Unknown')}
+                              </span>
+                              {message.details?.subject && (
+                                <span className={`text-xs ${
+                                  isSent ? 'text-blue-200' : isFailed ? 'text-red-700' : 'text-gray-600'
+                                }`}>
+                                  {message.details.subject}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className={`text-xs ${
+                                isSent ? 'text-blue-200' : isFailed ? 'text-red-700' : 'text-gray-500'
+                              }`}>
+                                {formatTime(message.timestamp)}
+                              </span>
+                              {isSent && (
+                                <FiCheck className={`h-3 w-3 ${
+                                  message.delivery_status === 'delivered' 
+                                    ? 'text-blue-200' 
+                                    : 'text-blue-300'
+                                }`} />
+                              )}
+                              {isFailed && (
+                                <FiAlertCircle className="h-3 w-3 text-red-600" title={message.details?.error_message || 'Failed'} />
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      )}
-                      {(message.action === 'SMS_RECEIVED' || message.action === 'EMAIL_RECEIVED') && (
-                        <div className="flex items-center">
-                          <FiCheck className="h-3 w-3 text-gray-500" />
+                        
+                        {/* Message Body */}
+                        <div className="px-4 py-3">
+                          <p className={`text-sm whitespace-pre-wrap break-words ${
+                            isSent ? 'text-white' : isFailed ? 'text-red-900' : 'text-gray-900'
+                          }`}>
+                            {decodeEmailContent(message.details?.body || message.details?.message || message.details?.subject || 'No content')}
+                          </p>
                         </div>
-                      )}
-                      {message.action === 'SMS_FAILED' && (
-                        <div className="flex items-center text-red-600" title={message.details?.error_message || 'SMS send failed'}>
-                          <FiAlertCircle className="h-4 w-4" />
-                        </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
             </div>
           )}
         </div>

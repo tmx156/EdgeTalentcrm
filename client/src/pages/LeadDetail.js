@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { FiArrowLeft, FiEdit, FiSave, FiPhone, FiMail, FiMapPin, FiCalendar, FiMessageSquare, FiSend, FiChevronLeft, FiChevronRight, FiChevronUp, FiChevronDown, FiActivity, FiCheckCircle, FiX, FiRefreshCw, FiClock, FiUser, FiCheck, FiSettings } from 'react-icons/fi';
 import axios from 'axios';
 import TagSystem from '../components/TagSystem';
+import LeadStatusDropdown from '../components/LeadStatusDropdown';
 import PhotoModal from '../components/PhotoModal';
 import LazyImage from '../components/LazyImage';
 import { getOptimizedImageUrl, preloadImages } from '../utils/imageUtils';
@@ -57,6 +58,8 @@ const LeadDetail = () => {
 
   // Booking history state
   const [bookingHistory, setBookingHistory] = useState([]);
+  // Upcoming callbacks state
+  const [upcomingCallbacks, setUpcomingCallbacks] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   // Messages conversation state
@@ -220,6 +223,7 @@ const LeadDetail = () => {
       fetchTemplates();
       fetchSale();
       fetchBookingHistory();
+      fetchUpcomingCallbacks();
     }
   }, [id]);
 
@@ -238,6 +242,7 @@ const LeadDetail = () => {
       fetchTemplates();
       fetchSale();
       fetchBookingHistory();
+      fetchUpcomingCallbacks();
     }
   }, [id, allLeads]);
 
@@ -379,6 +384,16 @@ const LeadDetail = () => {
       setBookingHistory([]);
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const fetchUpcomingCallbacks = async () => {
+    try {
+      const response = await axios.get(`/api/leads/${id}/callbacks`);
+      setUpcomingCallbacks(response.data || []);
+    } catch (error) {
+      console.error('Error fetching upcoming callbacks:', error);
+      setUpcomingCallbacks([]);
     }
   };
 
@@ -1154,13 +1169,36 @@ const LeadDetail = () => {
 
 
 
-              {/* Tag System */}
+              {/* Lead Status Dropdown */}
               {!editing && (
-                <TagSystem 
-                  leadId={lead.id} 
-                  onTagsUpdate={(tags) => {
-                    // Update the lead state with new tags
-                    setLead({ ...lead, tags: tags });
+                <LeadStatusDropdown 
+                  leadId={lead.id}
+                  lead={lead}
+                  onStatusUpdate={(status, result) => {
+                    // Update the lead state with new call status
+                    let customFields = {};
+                    try {
+                      if (lead.custom_fields) {
+                        customFields = typeof lead.custom_fields === 'string' 
+                          ? JSON.parse(lead.custom_fields) 
+                          : lead.custom_fields;
+                      }
+                    } catch (e) {
+                      customFields = {};
+                    }
+                    customFields.call_status = status;
+                    setLead({ 
+                      ...lead, 
+                      custom_fields: JSON.stringify(customFields),
+                      call_status: status // Also set for easy access
+                    });
+                    
+                    // Show notification if email was sent
+                    if (result?.workflowResult?.emailSent) {
+                      alert(`Status updated to "${status}". ${result.workflowResult.emailMessage || 'Automatic email sent to client.'}`);
+                    } else if (result?.workflowResult?.emailMessage && !result.workflowResult.emailSent) {
+                      console.warn('Email workflow:', result.workflowResult.emailMessage);
+                    }
                   }}
                 />
               )}
@@ -1486,6 +1524,77 @@ const LeadDetail = () => {
                 </div>
               )}
 
+              {/* Upcoming Callbacks */}
+              {upcomingCallbacks.length > 0 && (
+                <div className="card border-l-4 border-purple-500">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-medium text-gray-900 flex items-center space-x-2">
+                      <FiClock className="h-5 w-5 text-purple-600" />
+                      <span>⏰ Upcoming Callbacks</span>
+                    </h3>
+                  </div>
+                  <div className="space-y-3">
+                    {upcomingCallbacks.map((callback) => {
+                      const callbackTime = new Date(callback.callback_time);
+                      const now = new Date();
+                      const isPast = callbackTime < now;
+                      const isToday = callbackTime.toDateString() === now.toDateString();
+                      
+                      return (
+                        <div 
+                          key={callback.id} 
+                          className={`p-4 rounded-lg border-2 ${
+                            isPast 
+                              ? 'bg-red-50 border-red-200' 
+                              : isToday 
+                              ? 'bg-yellow-50 border-yellow-200' 
+                              : 'bg-purple-50 border-purple-200'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <FiClock className={`h-4 w-4 ${
+                                  isPast ? 'text-red-600' : isToday ? 'text-yellow-600' : 'text-purple-600'
+                                }`} />
+                                <span className="font-semibold text-gray-900">
+                                  {callbackTime.toLocaleString('en-GB', {
+                                    weekday: 'short',
+                                    day: 'numeric',
+                                    month: 'short',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    timeZone: 'Europe/London'
+                                  })}
+                                </span>
+                                {isPast && (
+                                  <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">
+                                    Overdue
+                                  </span>
+                                )}
+                                {isToday && !isPast && (
+                                  <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">
+                                    Today
+                                  </span>
+                                )}
+                              </div>
+                              {callback.callback_note && (
+                                <p className="text-sm text-gray-700 mb-2">
+                                  📝 {callback.callback_note}
+                                </p>
+                              )}
+                              <div className="text-xs text-gray-500">
+                                Status: <span className="font-medium capitalize">{callback.status}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Booking History */}
               <div className="card">
                 <div className="flex items-center justify-between mb-4">
@@ -1495,31 +1604,84 @@ const LeadDetail = () => {
                   )}
                 </div>
 
-                {bookingHistory.length > 0 ? (
+                {(bookingHistory.length > 0 || upcomingCallbacks.length > 0) ? (
                   <div className="space-y-4">
-                    {bookingHistory
-                      // Filter out empty entries with no action, name, or timestamp
-                      .filter(entry =>
-                        entry.action &&
-                        entry.action.trim() !== '' &&
-                        (entry.performedByName || entry.timestamp)
+                    {/* Add upcoming callbacks to history */}
+                    {upcomingCallbacks
+                      .filter(callback => callback.status === 'pending')
+                      .map((callback) => {
+                        const callbackTime = new Date(callback.callback_time);
+                        return {
+                          action: 'CALLBACK_SCHEDULED',
+                          performedByName: 'System',
+                          timestamp: callback.created_at,
+                          details: {
+                            callbackTime: callbackTime.toLocaleString('en-GB', {
+                              weekday: 'long',
+                              day: 'numeric',
+                              month: 'long',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              timeZone: 'Europe/London'
+                            }),
+                            note: callback.callback_note || 'No note',
+                            status: callback.status
+                          },
+                          isCallback: true
+                        };
+                      })
+                      .concat(bookingHistory
+                        // Filter out empty entries with no action, name, or timestamp
+                        .filter(entry =>
+                          entry.action &&
+                          entry.action.trim() !== '' &&
+                          (entry.performedByName || entry.timestamp)
+                        )
                       )
+                      .sort((a, b) => {
+                        // Sort by timestamp, most recent first
+                        const timeA = new Date(a.timestamp || 0).getTime();
+                        const timeB = new Date(b.timestamp || 0).getTime();
+                        return timeB - timeA;
+                      })
                       .map((entry, index) => (
-                      <div key={index} className="border-l-4 border-blue-500 pl-4 py-3 bg-gray-50 rounded-r-lg">
+                      <div 
+                        key={entry.isCallback ? `callback-${entry.details?.callbackTime}` : index} 
+                        className={`border-l-4 pl-4 py-3 rounded-r-lg ${
+                          entry.isCallback 
+                            ? 'border-purple-500 bg-purple-50' 
+                            : 'border-blue-500 bg-gray-50'
+                        }`}
+                      >
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-2">
+                              {entry.isCallback && (
+                                <FiClock className="h-4 w-4 text-purple-600" />
+                              )}
                               <span className="font-semibold text-gray-900">
-                                {entry.action}
+                                {entry.isCallback ? '📞 Callback Scheduled' : entry.action}
                               </span>
                               <span className="text-sm text-gray-500">
-                                by {entry.performedByName}
+                                {entry.isCallback ? '' : `by ${entry.performedByName}`}
                               </span>
                             </div>
 
                             {entry.details && Object.keys(entry.details).length > 0 && (
                               <div className="text-sm text-gray-600 mb-2">
-                                {entry.action === 'NOTES_UPDATED' ? (
+                                {entry.isCallback ? (
+                                  <div className="bg-purple-100 p-3 rounded-lg">
+                                    <div className="font-medium text-purple-800 mb-1">
+                                      Scheduled for: {entry.details.callbackTime}
+                                    </div>
+                                    <div className="text-sm text-purple-700">
+                                      Note: {entry.details.note}
+                                    </div>
+                                    <div className="text-xs text-purple-600 mt-1">
+                                      Status: {entry.details.status}
+                                    </div>
+                                  </div>
+                                ) : entry.action === 'NOTES_UPDATED' ? (
                                   <div className="space-y-2">
                                     <div className="bg-blue-50 p-3 rounded-lg">
                                       <div className="font-medium text-blue-800 mb-1">

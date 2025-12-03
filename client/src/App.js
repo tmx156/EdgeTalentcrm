@@ -23,6 +23,7 @@ import Finance from './pages/Finance';
 import Sales from './pages/Sales';
 import Messages from './pages/Messages';
 import SalesApe from './pages/SalesApe';
+import BlockedSlots from './pages/BlockedSlots';
 
 // Create browser history
 const history = createBrowserHistory();
@@ -87,6 +88,7 @@ function App() {
                           <Route path="/sales" element={<Sales />} />
                           <Route path="/messages" element={<Messages />} />
                           <Route path="/salesape" element={<SalesApe />} />
+                          <Route path="/blocked-slots" element={<BlockedSlots />} />
                           <Route path="/" element={<Navigate to="/dashboard" />} />
                         </Routes>
                       </Layout>

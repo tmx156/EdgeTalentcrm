@@ -19,7 +19,7 @@ const TIME_SLOTS = [
   { time: '16:30', type: 'available', emoji: '' }
 ];
 
-const WeeklySlotCalendar = ({ weekStart, events, onDayClick, onEventClick }) => {
+const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, onEventClick }) => {
   // Generate 7 days starting from weekStart
   const getDaysOfWeek = () => {
     const days = [];
@@ -35,6 +35,43 @@ const WeeklySlotCalendar = ({ weekStart, events, onDayClick, onEventClick }) => 
   };
 
   const days = getDaysOfWeek();
+
+  // Check if a slot is blocked
+  const isSlotBlocked = (day, timeSlot = null, slotNumber = null) => {
+    if (!blockedSlots || blockedSlots.length === 0) return false;
+    
+    const dateStr = day.toISOString().split('T')[0];
+    
+    return blockedSlots.some(block => {
+      // Check if the block is for this date
+      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+      if (blockDateStr !== dateStr) return false;
+      
+      // Full day block
+      if (!block.time_slot) {
+        // If checking a specific slot number
+        if (slotNumber && block.slot_number) {
+          return parseInt(block.slot_number) === parseInt(slotNumber);
+        }
+        // If block has no slot_number, both slots are blocked
+        if (!block.slot_number) {
+          return true;
+        }
+      }
+      
+      // Specific time slot block
+      if (timeSlot && block.time_slot === timeSlot) {
+        if (slotNumber && block.slot_number) {
+          return parseInt(block.slot_number) === parseInt(slotNumber);
+        }
+        if (!block.slot_number) {
+          return true;
+        }
+      }
+      
+      return false;
+    });
+  };
 
   // Get events for a specific day, time, and slot
   const getEventForDayTimeSlot = (day, time, slot) => {
@@ -69,7 +106,12 @@ const WeeklySlotCalendar = ({ weekStart, events, onDayClick, onEventClick }) => 
   };
 
   // Get cell background color
-  const getCellBackground = (event) => {
+  const getCellBackground = (event, day, time, slot) => {
+    // Check if slot is blocked first - blocked slots are always grey
+    if (isSlotBlocked(day, time, slot)) {
+      return 'bg-gray-300 opacity-60'; // Greyed out for blocked slots
+    }
+    
     if (!event) return 'bg-white';
     
     if (event.has_sale) return 'bg-blue-400';
@@ -102,14 +144,30 @@ const WeeklySlotCalendar = ({ weekStart, events, onDayClick, onEventClick }) => 
             {/* Day headers */}
             {days.map((day, index) => {
               const isToday = day.toDateString() === new Date().toDateString();
+              // Check for full day block (no time_slot and no slot_number)
+              const isDayBlocked = blockedSlots && blockedSlots.some(block => {
+                const dateStr = day.toISOString().split('T')[0];
+                const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
+              });
               
               return (
                 <div
                   key={index}
-                  className={`bg-gray-50 border-r border-b border-gray-300 p-2 text-center cursor-pointer hover:bg-gray-100 transition-colors ${
+                  className={`bg-gray-50 border-r border-b border-gray-300 p-2 text-center ${
+                    isDayBlocked 
+                      ? 'bg-gray-300 opacity-60 cursor-not-allowed' 
+                      : 'cursor-pointer hover:bg-gray-100'
+                  } transition-colors ${
                     index === 6 ? 'border-r-0' : ''
-                  } ${isToday ? 'bg-blue-50 font-bold' : ''}`}
-                  onClick={() => onDayClick(day)}
+                  } ${isToday && !isDayBlocked ? 'bg-blue-50 font-bold' : ''}`}
+                  onClick={() => {
+                    if (isDayBlocked) {
+                      alert('This day is blocked and cannot be viewed');
+                      return;
+                    }
+                    onDayClick(day);
+                  }}
                 >
                   <div className="text-xs font-semibold">
                     {day.toLocaleDateString('en-GB', { weekday: 'short' }).toUpperCase()}
@@ -117,9 +175,15 @@ const WeeklySlotCalendar = ({ weekStart, events, onDayClick, onEventClick }) => 
                   <div className={`text-lg ${isToday ? 'text-blue-600' : ''}`}>
                     {day.getDate()}
                   </div>
-                  <div className="text-xs text-gray-500 flex justify-center gap-1">
-                    <span>S1</span>
-                    <span>S2</span>
+                  <div className="text-xs text-gray-500 flex justify-center gap-1 items-center">
+                    {isDayBlocked ? (
+                      <span>🔒 Blocked</span>
+                    ) : (
+                      <>
+                        <span>S1</span>
+                        <span>S2</span>
+                      </>
+                    )}
                   </div>
                 </div>
               );
@@ -150,34 +214,40 @@ const WeeklySlotCalendar = ({ weekStart, events, onDayClick, onEventClick }) => 
                       <div className="grid grid-cols-2 gap-1 h-full">
                         {/* Slot 1 */}
                         <div
-                          className={`compact-cell ${getCellBackground(slot1Event)} rounded cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center border border-gray-200`}
+                          className={`compact-cell ${getCellBackground(slot1Event, day, slotConfig.time, 1)} rounded ${isSlotBlocked(day, slotConfig.time, 1) ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200`}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (isSlotBlocked(day, slotConfig.time, 1)) return; // Don't allow clicks on blocked slots
                             if (slot1Event) {
                               onEventClick(slot1Event);
                             } else {
                               onDayClick(day, slotConfig.time, 1);
                             }
                           }}
-                          title={slot1Event ? `${slot1Event.name} - Slot 1` : `Book ${slotConfig.time} Slot 1`}
+                          title={isSlotBlocked(day, slotConfig.time, 1) ? 'Blocked' : (slot1Event ? `${slot1Event.name} - Slot 1` : `Book ${slotConfig.time} Slot 1`)}
                         >
-                          {slot1Event ? getCellContent(slot1Event) : slotConfig.emoji && <span className="text-xs">{slotConfig.emoji}</span>}
+                          {isSlotBlocked(day, slotConfig.time, 1) ? (
+                            <span className="text-xs">🔒</span>
+                          ) : slot1Event ? getCellContent(slot1Event) : slotConfig.emoji && <span className="text-xs">{slotConfig.emoji}</span>}
                         </div>
 
                         {/* Slot 2 */}
                         <div
-                          className={`compact-cell ${getCellBackground(slot2Event)} rounded cursor-pointer hover:opacity-80 transition-opacity flex items-center justify-center border border-gray-200`}
+                          className={`compact-cell ${getCellBackground(slot2Event, day, slotConfig.time, 2)} rounded ${isSlotBlocked(day, slotConfig.time, 2) ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200`}
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (isSlotBlocked(day, slotConfig.time, 2)) return; // Don't allow clicks on blocked slots
                             if (slot2Event) {
                               onEventClick(slot2Event);
                             } else {
                               onDayClick(day, slotConfig.time, 2);
                             }
                           }}
-                          title={slot2Event ? `${slot2Event.name} - Slot 2` : `Book ${slotConfig.time} Slot 2`}
+                          title={isSlotBlocked(day, slotConfig.time, 2) ? 'Blocked' : (slot2Event ? `${slot2Event.name} - Slot 2` : `Book ${slotConfig.time} Slot 2`)}
                         >
-                          {slot2Event ? getCellContent(slot2Event) : slotConfig.emoji && <span className="text-xs">{slotConfig.emoji}</span>}
+                          {isSlotBlocked(day, slotConfig.time, 2) ? (
+                            <span className="text-xs">🔒</span>
+                          ) : slot2Event ? getCellContent(slot2Event) : slotConfig.emoji && <span className="text-xs">{slotConfig.emoji}</span>}
                         </div>
                       </div>
                     </div>

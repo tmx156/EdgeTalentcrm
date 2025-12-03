@@ -157,13 +157,13 @@ router.post('/campaign/start', auth, adminAuth, async (req, res) => {
         // Replace template variables
         const personalizedSubject = template.subject
           .replace(/{leadName}/g, lead.name)
-          .replace(/{companyName}/g, 'Avensis Models');
+          .replace(/{companyName}/g, 'Edge Talent');
 
         const personalizedBody = (template.email_body || template.content || '')
           .replace(/{leadName}/g, lead.name)
           .replace(/{leadEmail}/g, lead.email)
           .replace(/{leadPhone}/g, lead.phone)
-          .replace(/{companyName}/g, 'Avensis Models')
+          .replace(/{companyName}/g, 'Edge Talent')
           .replace(/{originalContactDate}/g, new Date(lead.created_at).toLocaleDateString());
 
         // Send email using messaging service

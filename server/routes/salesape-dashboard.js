@@ -7,7 +7,6 @@ const express = require('express');
 const router = express.Router();
 const { auth } = require('../middleware/auth');
 const dbManager = require('../database-connection-manager');
-const salesapeSyncService = require('../services/salesapeSync');
 
 /**
  * @route   GET /api/salesape-dashboard/status
@@ -381,44 +380,6 @@ router.post('/queue/resume', auth, async (req, res) => {
     res.json({ message: 'Queue resumed' });
   } catch (error) {
     console.error('Error resuming queue:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-/**
- * @route   GET /api/salesape-dashboard/sync-status
- * @desc    Get SalesApe sync service status
- * @access  Private
- */
-router.get('/sync-status', auth, async (req, res) => {
-  try {
-    const status = salesapeSyncService.getStatus();
-    res.json({
-      success: true,
-      data: status
-    });
-  } catch (error) {
-    console.error('Error fetching sync status:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
-  }
-});
-
-/**
- * @route   POST /api/salesape-dashboard/sync-now
- * @desc    Trigger immediate sync
- * @access  Private (Admin only)
- */
-router.post('/sync-now', auth, async (req, res) => {
-  try {
-    // Trigger sync without waiting
-    salesapeSyncService.syncNow();
-
-    res.json({
-      success: true,
-      message: 'Sync triggered successfully'
-    });
-  } catch (error) {
-    console.error('Error triggering sync:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

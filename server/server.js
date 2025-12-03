@@ -47,15 +47,21 @@ const retargetingRoutes = require('./routes/retargeting');
 const financeRoutes = require('./routes/finance');
 const uploadRoutes = require('./routes/upload');
 const smsRoutes = require('./routes/sms');
-const legacyRoutes = require('./routes/legacy');
+// Legacy routes removed - no longer needed
+// const legacyRoutes = require('./routes/legacy');
 const bookerAnalyticsRoutes = require('./routes/booker-analytics');
 const emailTestRoutes = require('./routes/email-test');
 const usersPublicRoutes = require('./routes/usersPublic');
 const salesapeRoutes = require('./routes/salesape');
+const blockedSlotsRoutes = require('./routes/blocked-slots');
+const callbackRemindersRoutes = require('./routes/callback-reminders');
+const gmailAuthRoutes = require('./routes/gmail-auth');
+const gravityFormsWebhookRoutes = require('./routes/gravity-forms-webhook');
 // TEMPORARILY DISABLED: const scheduler = require('./utils/scheduler');
-const { startEmailPoller } = require('./utils/emailPoller');
+// OLD IMAP-based email poller (replaced with Gmail API)
+// const { startEmailPoller } = require('./utils/emailPoller');
+const { startGmailPoller } = require('./utils/gmailPoller');
 const FinanceReminderService = require('./services/financeReminderServiceSupabase');
-const salesapeSyncService = require('./services/salesapeSync');
 // Removed legacy auto-sync import to avoid accidental background duplication
 let startUltraFastSMSPolling = () => {};
 try {
@@ -378,6 +384,36 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Gmail Push Notification Health Check
+app.get('/api/gmail/health', async (req, res) => {
+  try {
+    const GMAIL_PUSH_ENABLED = process.env.GMAIL_PUSH_ENABLED === 'true';
+
+    if (!GMAIL_PUSH_ENABLED) {
+      return res.json({
+        pushEnabled: false,
+        mode: 'polling',
+        message: 'Using traditional polling mode. Set GMAIL_PUSH_ENABLED=true to enable push notifications.'
+      });
+    }
+
+    const gmailWatcherService = require('./services/gmailWatcherService');
+    const status = await gmailWatcherService.getWatchStatus();
+
+    res.json({
+      pushEnabled: true,
+      mode: 'push-notifications',
+      ...status
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      pushEnabled: process.env.GMAIL_PUSH_ENABLED === 'true',
+      error: error.message
+    });
+  }
+});
+
 // No-cache headers for all API routes to prevent stale data
 app.use('/api/*', (req, res, next) => {
   // Disable caching for API responses
@@ -428,7 +464,8 @@ app.use('/api/retargeting', retargetingRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/sms', smsRoutes);
-app.use('/api/legacy', legacyRoutes);
+// Legacy routes removed - no longer needed
+// app.use('/api/legacy', legacyRoutes);
 app.use('/api/booker-analytics', bookerAnalyticsRoutes);
 app.use('/api/email-test', emailTestRoutes);
 app.use('/api/salesape', salesapeRoutes);
@@ -438,6 +475,16 @@ app.use('/api/salesape-webhook', salesapeWebhookRouter);
 // SalesApe Dashboard API
 const salesapeDashboardRoutes = require('./routes/salesape-dashboard');
 app.use('/api/salesape-dashboard', salesapeDashboardRoutes);
+// Blocked Slots API (for calendar availability management)
+app.use('/api/blocked-slots', blockedSlotsRoutes);
+app.use('/api/callback-reminders', callbackRemindersRoutes);
+// Gmail API Authentication Routes
+app.use('/api/gmail', gmailAuthRoutes);
+// Gmail Push Notification Webhook Routes
+const gmailWebhookRoutes = require('./routes/gmail-webhook');
+app.use('/api/gmail/webhook', gmailWebhookRoutes);
+// Gravity Forms Webhook Integration (for importing leads from Gravity Forms)
+app.use('/api/gravity-forms-webhook', gravityFormsWebhookRoutes);
 // TEMPORARILY DISABLED: app.use('/api/performance', require('./routes/performance'));
 
 // --- Lightweight short link storage for long booking confirmations ---
@@ -619,11 +666,37 @@ global.isDatabaseConnected = () => isDbConnected;
 // Graceful shutdown handling
 process.on('SIGINT', async () => {
   console.log('\n🛑 Received SIGINT. Graceful shutdown initiated...');
+
+  // Stop Gmail watcher if using push notifications
+  const GMAIL_PUSH_ENABLED = process.env.GMAIL_PUSH_ENABLED === 'true';
+  if (GMAIL_PUSH_ENABLED) {
+    try {
+      const gmailWatcherService = require('./services/gmailWatcherService');
+      await gmailWatcherService.stopWatching();
+      console.log('✅ Gmail watcher stopped gracefully');
+    } catch (e) {
+      console.error('⚠️  Error stopping Gmail watcher:', e?.message || e);
+    }
+  }
+
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   console.log('\n🛑 Received SIGTERM. Graceful shutdown initiated...');
+
+  // Stop Gmail watcher if using push notifications
+  const GMAIL_PUSH_ENABLED = process.env.GMAIL_PUSH_ENABLED === 'true';
+  if (GMAIL_PUSH_ENABLED) {
+    try {
+      const gmailWatcherService = require('./services/gmailWatcherService');
+      await gmailWatcherService.stopWatching();
+      console.log('✅ Gmail watcher stopped gracefully');
+    } catch (e) {
+      console.error('⚠️  Error stopping Gmail watcher:', e?.message || e);
+    }
+  }
+
   process.exit(0);
 });
 
@@ -631,7 +704,7 @@ process.on('SIGTERM', async () => {
 const PORT = process.env.PORT || 5000;
 
 testDatabaseConnection().then(() => {
-  server.listen(PORT, '0.0.0.0', () => {
+  server.listen(PORT, '0.0.0.0', async () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`🔌 WebSocket server ready for real-time sync`);
     console.log(`🗄️  Connected to Supabase database`);
@@ -652,13 +725,47 @@ testDatabaseConnection().then(() => {
       console.error('❌ Failed to start BulkSMS reply poller:', e?.message || e);
     }
 
-    // CRITICAL FIX: Start Email Poller for Gmail IMAP monitoring
-    try {
-      console.log('📧 Starting Email Poller...');
-      startEmailPoller(io);
-      console.log('✅ Email poller started successfully');
-    } catch (e) {
-      console.error('❌ Failed to start email poller:', e?.message || e);
+    // GMAIL API: Start Gmail monitoring (Push Notifications or Polling)
+    const GMAIL_PUSH_ENABLED = process.env.GMAIL_PUSH_ENABLED === 'true';
+
+    if (GMAIL_PUSH_ENABLED) {
+      // Use Gmail Push Notifications (Real-time, event-driven)
+      try {
+        console.log('📧 Starting Gmail Push Notification System...');
+
+        // Set up Socket.IO for message processor
+        const gmailMessageProcessor = require('./services/gmailMessageProcessor');
+        gmailMessageProcessor.setSocketIO(io);
+
+        // Start watching both Gmail accounts
+        const gmailWatcherService = require('./services/gmailWatcherService');
+        await gmailWatcherService.startWatching();
+
+        console.log('✅ Gmail Push Notification System started successfully');
+        console.log('📊 Monitoring both hello@ and diary@ accounts');
+      } catch (e) {
+        console.error('❌ Failed to start Gmail Push Notification System:', e?.message || e);
+        console.error('💡 Falling back to polling mode...');
+
+        // Fallback to polling
+        try {
+          startGmailPoller(io);
+          console.log('✅ Gmail API poller started (fallback mode)');
+        } catch (fallbackError) {
+          console.error('❌ Both push and polling failed:', fallbackError?.message || fallbackError);
+        }
+      }
+    } else {
+      // Use traditional polling (Backward compatibility)
+      try {
+        console.log('📧 Starting Gmail API Poller (Polling Mode)...');
+        startGmailPoller(io);
+        console.log('✅ Gmail API poller started successfully');
+        console.log('💡 To enable push notifications, set GMAIL_PUSH_ENABLED=true');
+      } catch (e) {
+        console.error('❌ Failed to start Gmail API poller:', e?.message || e);
+        console.error('💡 Run /api/gmail/auth to set up Gmail API authentication');
+      }
     }
 
     // ENABLED: Finance Reminder Service (now converted to Supabase)
@@ -670,15 +777,14 @@ testDatabaseConnection().then(() => {
       console.error('❌ Failed to start finance reminder service:', e?.message || e);
     }
 
-    // SalesApe Status Sync Service
-    // Automatically syncs lead status from SalesApe's Airtable to CRM
-    // This runs until SalesApe webhook integration is properly configured
+    // ENABLED: Callback Reminder Service
     try {
-      console.log('🔄 Starting SalesApe sync service...');
-      salesapeSyncService.start();
-      console.log('✅ SalesApe sync service started');
+      const CallbackReminderService = require('./services/callbackReminderService');
+      const callbackReminderService = new CallbackReminderService();
+      callbackReminderService.start();
+      console.log('✅ Callback reminder service started');
     } catch (e) {
-      console.error('❌ Failed to start SalesApe sync service:', e?.message || e);
+      console.error('❌ Failed to start callback reminder service:', e?.message || e);
     }
   });
 }).catch(() => {

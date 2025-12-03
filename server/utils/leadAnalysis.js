@@ -1,6 +1,6 @@
 const axios = require('axios');
 const levenshtein = require('fast-levenshtein');
-const { createClient } = require('@supabase/supabase-js');
+// Legacy database connection removed - no longer importing Supabase client for legacy DB
 
 // Normalize phone number to last 10 digits
 function normalizePhone(phone) {
@@ -15,71 +15,11 @@ function normalizeEmail(email) {
   return email.toLowerCase().trim();
 }
 
-// Fetch legacy leads from Supabase
+// Legacy database connection removed - no longer needed
+// Returns empty array to maintain compatibility with existing code
 async function fetchLegacyLeads() {
-  try {
-    // Initialize Supabase client with hardcoded credentials (same as database manager)
-    const supabaseUrl = 'https://tnltvfzltdeilanxhlvy.supabase.co';
-    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubHR2ZnpsdGRlaWxhbnhobHZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxOTk4MzUsImV4cCI6MjA3Mjc3NTgzNX0.T_HaALQeSiCjLkpVuwQZUFnJbuSyRy2wf2kWiqJ99Lc';
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Fetch legacy leads from separate legacy_leads table with pagination
-    console.log('📜 Fetching legacy leads with pagination...');
-
-    const allLegacyLeads = [];
-    const batchSize = 1000;
-    let from = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-      const { data: batch, error } = await supabase
-        .from('legacy_leads')
-        .select('id, name, phone, email, postcode, age, image_url, import_timestamp')
-        .eq('import_status', 'imported')
-        .range(from, from + batchSize - 1)
-        .order('import_timestamp', { ascending: false });
-
-      if (error) {
-        console.error('❌ Error fetching legacy leads batch:', error.message);
-        break;
-      }
-
-      if (!batch || batch.length === 0) {
-        hasMore = false;
-      } else {
-        allLegacyLeads.push(...batch);
-        from += batchSize;
-
-        // Safety check to prevent infinite loops
-        if (from > 50000) {
-          console.log('⚠️ Reached safety limit of 50,000 records');
-          break;
-        }
-      }
-    }
-
-    console.log(`📜 Successfully fetched ${allLegacyLeads.length} total legacy leads`);
-
-    if (!allLegacyLeads || allLegacyLeads.length === 0) {
-      console.log('⚠️ No legacy leads found in legacy_leads table');
-      return [];
-    }
-
-    // Log a sample of the legacy leads for debugging
-    if (allLegacyLeads.length > 0) {
-      console.log('📋 Sample legacy leads:');
-      allLegacyLeads.slice(0, 3).forEach((lead, i) => {
-        console.log(`  ${i + 1}. ${lead.name || 'N/A'} - ${lead.phone || 'N/A'} - ${lead.email || 'N/A'}`);
-      });
-    }
-
-    return allLegacyLeads;
-
-  } catch (error) {
-    console.error('❌ Error in fetchLegacyLeads:', error.message);
-    return [];
-  }
+  console.log('ℹ️ Legacy leads fetching disabled - using only current database');
+  return [];
 }
 
 // Normalize UK postcode for API lookup

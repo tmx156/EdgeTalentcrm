@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import MessageModal from '../components/MessageModal';
+import EmailThread from '../components/EmailThread';
 import { decodeEmailContent, getEmailContentPreview } from '../utils/emailContentDecoder';
 import {
   FiMessageSquare,
@@ -18,7 +19,8 @@ import {
   FiInbox,
   FiSend,
   FiCheck,
-  FiX
+  FiX,
+  FiPaperclip
 } from 'react-icons/fi';
 import axios from 'axios';
 
@@ -81,49 +83,35 @@ const Messages = () => {
     }
   }, [readMessageIds, localStorageLoaded]);
 
-  // Calculate stats based on conversations
-  const calculateConversationStats = (conversations, allMessages) => {
-    const totalConversations = conversations.filter(c => c.isConversation).length;
-    const totalIndividualMessages = allMessages.length;
 
-    // Count conversations by type (conversations can have both SMS and email)
-    const smsConversations = conversations.filter(c => c.isConversation && c.hasSMS).length;
-    const emailConversations = conversations.filter(c => c.isConversation && c.hasEmail).length;
-    const mixedConversations = conversations.filter(c => c.isConversation && c.hasSMS && c.hasEmail).length;
-
-    // Count unread conversations (conversations with unread messages)
-    const unreadConversations = conversations.filter(c => c.isConversation && c.unreadCount > 0).length;
-
-    // Calculate total messages across all conversations
-    const totalMessagesInConversations = conversations
-      .filter(c => c.isConversation)
-      .reduce((total, conv) => total + conv.messageCount, 0);
-
-    return {
-      totalMessages: totalConversations, // Show conversations count
-      smsCount: smsConversations,
-      emailCount: emailConversations,
-      mixedCount: mixedConversations,
-      unreadCount: unreadConversations,
-      totalIndividualMessages, // Keep track of actual message count
-      totalMessagesInConversations
-    };
-  };
-
-  // Group messages into conversation threads by lead (not by lead+type)
-  const groupMessagesIntoConversations = (messages) => {
-    const conversations = new Map();
+  // Group messages into Gmail-like conversation threads
+  const groupMessagesIntoThreads = (messages) => {
+    const threads = new Map();
     const orphanedMessages = [];
 
     messages.forEach(message => {
       // Only group SMS and email messages that have a leadId
       if ((message.type === 'sms' || message.type === 'email') && message.leadId) {
-        const conversationKey = message.leadId; // Group by lead only
+        // For emails: group by lead + subject (normalized)
+        // For SMS: group by lead only
+        let threadKey;
+        const subject = message.subject || message.details?.subject || '';
+        if (message.type === 'email' && subject) {
+          // Normalize subject (remove Re:, Fwd:, etc. and trim)
+          const normalizedSubject = subject
+            .replace(/^(re|fwd?|fw):\s*/i, '')
+            .trim()
+            .toLowerCase();
+          threadKey = `email_${message.leadId}_${normalizedSubject}`;
+        } else {
+          // SMS threads: one per lead
+          threadKey = `sms_${message.leadId}`;
+        }
 
-        if (!conversations.has(conversationKey)) {
-          // Create new conversation with the most recent message
-          conversations.set(conversationKey, {
-            id: `conv_${message.leadId}`,
+        if (!threads.has(threadKey)) {
+          // Create new thread
+          threads.set(threadKey, {
+            id: threadKey,
             leadId: message.leadId,
             leadName: message.leadName,
             leadEmail: message.leadEmail,
@@ -135,42 +123,43 @@ const Messages = () => {
             unreadCount: message.isRead === false ? 1 : 0,
             hasSMS: message.type === 'sms',
             hasEmail: message.type === 'email',
+            type: message.type, // Primary type
             messages: [message],
             timestamp: new Date(message.timestamp || message.created_at),
-            isConversation: true,
-            // Track delivery status for conversations
+            isThread: true,
+            subject: subject || null, // For email threads
             hasFailedDeliveries: message.delivery_status === 'failed' || message.email_status === 'failed',
             hasPendingDeliveries: message.delivery_status === 'pending' || message.delivery_status === 'sending'
           });
         } else {
-          const conversation = conversations.get(conversationKey);
+          const thread = threads.get(threadKey);
 
-          // Add message to conversation
-          conversation.messages.push(message);
-          conversation.messageCount++;
+          // Add message to thread
+          thread.messages.push(message);
+          thread.messageCount++;
 
           // Update unread count
           if (message.isRead === false) {
-            conversation.unreadCount++;
+            thread.unreadCount++;
           }
 
           // Update message type flags
-          if (message.type === 'sms') conversation.hasSMS = true;
-          if (message.type === 'email') conversation.hasEmail = true;
+          if (message.type === 'sms') thread.hasSMS = true;
+          if (message.type === 'email') thread.hasEmail = true;
 
           // Update delivery status flags
           if (message.delivery_status === 'failed' || message.email_status === 'failed') {
-            conversation.hasFailedDeliveries = true;
+            thread.hasFailedDeliveries = true;
           }
           if (message.delivery_status === 'pending' || message.delivery_status === 'sending') {
-            conversation.hasPendingDeliveries = true;
+            thread.hasPendingDeliveries = true;
           }
 
           // Update last message if this is newer
           const messageTime = new Date(message.timestamp || message.created_at);
-          if (messageTime > conversation.timestamp) {
-            conversation.lastMessage = message;
-            conversation.timestamp = messageTime;
+          if (messageTime > thread.timestamp) {
+            thread.lastMessage = message;
+            thread.timestamp = messageTime;
           }
         }
       } else {
@@ -179,12 +168,12 @@ const Messages = () => {
       }
     });
 
-    // Convert conversations to array and sort by most recent
-    const conversationArray = Array.from(conversations.values())
+    // Convert threads to array and sort by most recent
+    const threadArray = Array.from(threads.values())
       .sort((a, b) => b.timestamp - a.timestamp);
 
-    // Combine conversations and orphaned messages
-    return [...conversationArray, ...orphanedMessages];
+    // Combine threads and orphaned messages
+    return [...threadArray, ...orphanedMessages];
   };
 
   // Fetch messages
@@ -226,21 +215,33 @@ const Messages = () => {
         };
       });
 
-      // TEMPORARILY DISABLE conversation grouping to test if messages appear
-      // const groupedMessages = groupMessagesIntoConversations(fetchedMessages);
-      const groupedMessages = fetchedMessages; // Use raw messages for now
+      // Group messages into Gmail-like threads
+      const groupedMessages = groupMessagesIntoThreads(fetchedMessages);
 
-      // TEMPORARILY USE SIMPLE STATS
-      const conversationStats = {
-        totalMessages: groupedMessages.length,
-        smsCount: groupedMessages.filter(m => m.type === 'sms').length,
-        emailCount: groupedMessages.filter(m => m.type === 'email').length,
-        unreadCount: groupedMessages.filter(m => !m.isRead).length
+      // Recalculate unread counts for threads based on actual message read status
+      const updatedGroupedMessages = groupedMessages.map(item => {
+        if (item.isThread && item.messages) {
+          const unreadCount = item.messages.filter(m => !m.isRead).length;
+          return {
+            ...item,
+            unreadCount,
+            hasUnread: unreadCount > 0
+          };
+        }
+        return item;
+      });
+
+      // Calculate stats based on threads
+      const threadStats = {
+        totalMessages: updatedGroupedMessages.filter(m => m.isThread).length,
+        smsCount: updatedGroupedMessages.filter(m => m.isThread && m.hasSMS).length,
+        emailCount: updatedGroupedMessages.filter(m => m.isThread && m.hasEmail).length,
+        unreadCount: updatedGroupedMessages.filter(m => m.isThread && m.unreadCount > 0).length
       };
 
-      setMessages(groupedMessages);
-      setFilteredMessages(groupedMessages);
-      setStats(conversationStats);
+      setMessages(updatedGroupedMessages);
+      setFilteredMessages(updatedGroupedMessages);
+      setStats(threadStats);
     } catch (error) {
       console.error('Error fetching messages:', error);
       // Set empty state on error
@@ -691,20 +692,53 @@ const Messages = () => {
 
     // Search filter
     if (searchTerm) {
-      filtered = filtered.filter(msg => 
-        msg.leadName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        msg.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        msg.leadPhone?.includes(searchTerm) ||
-        msg.leadEmail?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      filtered = filtered.filter(msg => {
+        if (msg.isThread) {
+          // For threads, search across all messages in the thread
+          const searchLower = searchTerm.toLowerCase();
+          return (
+            msg.leadName?.toLowerCase().includes(searchLower) ||
+            msg.leadPhone?.includes(searchTerm) ||
+            msg.leadEmail?.toLowerCase().includes(searchLower) ||
+            msg.subject?.toLowerCase().includes(searchLower) ||
+            msg.messages?.some(m => 
+              (m.content || '').toLowerCase().includes(searchLower) ||
+              (m.details?.body || '').toLowerCase().includes(searchLower) ||
+              (m.details?.subject || '').toLowerCase().includes(searchLower)
+            )
+          );
+        } else {
+          // For individual messages
+          return (
+            msg.leadName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (msg.content || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            msg.leadPhone?.includes(searchTerm) ||
+            msg.leadEmail?.toLowerCase().includes(searchTerm.toLowerCase())
+          );
+        }
+      });
     }
 
-    // Type filter (sms or email)
-    filtered = filtered.filter(msg => msg.type === selectedFilter);
+    // Type filter (sms or email) - for threads, check if they contain the type
+    if (selectedFilter !== 'all') {
+      filtered = filtered.filter(msg => {
+        if (msg.isThread) {
+          return selectedFilter === 'sms' ? msg.hasSMS : msg.hasEmail;
+        } else {
+          return msg.type === selectedFilter;
+        }
+      });
+    }
 
-    // Direction filter
+    // Direction filter - for threads, check last message
     if (selectedDirection !== 'all') {
-      filtered = filtered.filter(msg => msg.direction === selectedDirection);
+      filtered = filtered.filter(msg => {
+        if (msg.isThread) {
+          return msg.lastMessage?.direction === selectedDirection;
+        } else {
+          return msg.direction === selectedDirection;
+        }
+      });
     }
 
     setFilteredMessages(filtered);
@@ -819,7 +853,7 @@ const Messages = () => {
 
   // Mark message as read with proper race condition handling
   const markAsRead = async (message) => {
-    const messageId = message.id;
+    const messageId = message.id || message.messageId;
 
     // Prevent duplicate requests if already processing
     if (readMessageIds.has(messageId) || message.processing) {
@@ -833,14 +867,38 @@ const Messages = () => {
       // Mark as processing to prevent race conditions
       const updateProcessingState = (processing) => {
         setMessages(prev =>
-          prev.map(msg =>
-            msg.id === messageId ? { ...msg, processing } : msg
-          )
+          prev.map(msg => {
+            // Update individual messages
+            if (msg.id === messageId) {
+              return { ...msg, processing };
+            }
+            // Update messages within threads
+            if (msg.isThread && msg.messages) {
+              return {
+                ...msg,
+                messages: msg.messages.map(m => 
+                  m.id === messageId ? { ...m, processing } : m
+                )
+              };
+            }
+            return msg;
+          })
         );
         setFilteredMessages(prev =>
-          prev.map(msg =>
-            msg.id === messageId ? { ...msg, processing } : msg
-          )
+          prev.map(msg => {
+            if (msg.id === messageId) {
+              return { ...msg, processing };
+            }
+            if (msg.isThread && msg.messages) {
+              return {
+                ...msg,
+                messages: msg.messages.map(m => 
+                  m.id === messageId ? { ...m, processing } : m
+                )
+              };
+            }
+            return msg;
+          })
         );
       };
 
@@ -848,14 +906,46 @@ const Messages = () => {
 
       // Optimistic UI update - mark as read immediately for better UX
       setMessages(prev =>
-        prev.map(msg =>
-          msg.id === messageId ? { ...msg, isRead: true } : msg
-        )
+        prev.map(msg => {
+          // Update individual messages
+          if (msg.id === messageId) {
+            return { ...msg, isRead: true };
+          }
+          // Update messages within threads and recalculate unread count
+          if (msg.isThread && msg.messages) {
+            const updatedMessages = msg.messages.map(m => 
+              m.id === messageId ? { ...m, isRead: true } : m
+            );
+            const unreadCount = updatedMessages.filter(m => !m.isRead).length;
+            return {
+              ...msg,
+              messages: updatedMessages,
+              unreadCount,
+              lastMessage: updatedMessages.find(m => m.id === msg.lastMessage?.id) || msg.lastMessage
+            };
+          }
+          return msg;
+        })
       );
       setFilteredMessages(prev =>
-        prev.map(msg =>
-          msg.id === messageId ? { ...msg, isRead: true } : msg
-        )
+        prev.map(msg => {
+          if (msg.id === messageId) {
+            return { ...msg, isRead: true };
+          }
+          if (msg.isThread && msg.messages) {
+            const updatedMessages = msg.messages.map(m => 
+              m.id === messageId ? { ...m, isRead: true } : m
+            );
+            const unreadCount = updatedMessages.filter(m => !m.isRead).length;
+            return {
+              ...msg,
+              messages: updatedMessages,
+              unreadCount,
+              lastMessage: updatedMessages.find(m => m.id === msg.lastMessage?.id) || msg.lastMessage
+            };
+          }
+          return msg;
+        })
       );
 
       // Use messageId directly (now that we're using UUIDs consistently)
@@ -867,6 +957,12 @@ const Messages = () => {
 
         // Add to permanent read set - once read, stays read forever
         setReadMessageIds(prev => new Set([...prev, messageId]));
+
+        // Update stats after marking as read
+        setStats(prev => ({
+          ...prev,
+          unreadCount: Math.max((prev.unreadCount || 0) - 1, 0)
+        }));
 
         updateProcessingState(false);
       } else {
@@ -916,24 +1012,30 @@ const Messages = () => {
   };
 
   // Open message modal instead of navigating directly
-  const handleMessageClick = (message) => {
-    markAsRead(message);
+  const handleMessageClick = async (message) => {
+    // Mark as read first (await to ensure it completes)
+    // This will update the message state optimistically
+    await markAsRead(message);
     
     // Convert message format to notification format for the modal
+    // After markAsRead, the message is marked as read, so use true
+    // But also include messageId for the modal to handle read status properly
     const notificationFormat = {
       id: message.id,
+      messageId: message.messageId || message.id, // Include messageId for proper read status handling
       leadId: message.leadId,
       leadName: message.leadName,
       leadPhone: message.leadPhone,
       leadEmail: message.leadEmail,
-      content: message.content,  // Changed from 'message' to 'content'
+      content: message.content,
       timestamp: message.timestamp,
-      read: true,
+      read: false, // Set to false so modal will mark it as read (handles edge cases)
       type: message.type,
       direction: message.direction,
       subject: message.subject || message.content,  // Add subject for emails
       isGrouped: message.isGrouped,
-      conversationCount: message.conversationCount
+      conversationCount: message.conversationCount,
+      attachments: message.attachments || []  // Include attachments
     };
     
     setSelectedMessageModal(notificationFormat);
@@ -1181,6 +1283,7 @@ const Messages = () => {
               onChange={(e) => setSelectedFilter(e.target.value)}
               className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             >
+              <option value="all">All</option>
               <option value="sms">SMS</option>
               <option value="email">Email</option>
             </select>
@@ -1231,134 +1334,108 @@ const Messages = () => {
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-gray-200">
-            {filteredMessages.map((message) => (
-              <li
-                key={message.id}
-                className={`hover:bg-gray-50 cursor-pointer transition-colors relative ${
-                  !message.isRead ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-                }`}
-                onClick={() => handleMessageClick(message)}
-              >
-                <div className="px-4 py-4 flex items-center justify-between">
-                  <div className="flex items-center space-x-4 flex-1">
+          <div className="divide-y divide-gray-200">
+            {filteredMessages.map((item) => {
+              // Handle threads
+              if (item.isThread) {
+                return (
+                  <EmailThread
+                    key={item.id}
+                    thread={item}
+                    onThreadClick={async (thread) => {
+                      // Mark all unread messages in thread as read when clicking
+                      if (thread.unreadCount > 0) {
+                        const unreadMessages = thread.messages.filter(m => !m.isRead);
+                        if (unreadMessages.length > 0) {
+                          for (const message of unreadMessages) {
+                            await markAsRead(message);
+                          }
+                        }
+                      }
+                      
+                      // Open the latest message in modal
+                      if (thread.lastMessage) {
+                        handleMessageClick(thread.lastMessage);
+                      }
+                    }}
+                    onMarkThreadAsRead={async (thread) => {
+                      // Mark all unread messages in the thread as read
+                      const unreadMessages = thread.messages.filter(m => !m.isRead);
+                      
+                      if (unreadMessages.length > 0) {
+                        console.log(`📧 Marking ${unreadMessages.length} unread messages in thread as read`);
+                        
+                        // Mark each unread message as read
+                        for (const message of unreadMessages) {
+                          await markAsRead(message);
+                        }
+                        
+                        // Update thread's unread count
+                        setMessages(prev =>
+                          prev.map(msg => {
+                            if (msg.id === thread.id && msg.isThread) {
+                              return {
+                                ...msg,
+                                unreadCount: 0,
+                                messages: msg.messages.map(m => ({ ...m, isRead: true }))
+                              };
+                            }
+                            return msg;
+                          })
+                        );
+                        
+                        setFilteredMessages(prev =>
+                          prev.map(msg => {
+                            if (msg.id === thread.id && msg.isThread) {
+                              return {
+                                ...msg,
+                                unreadCount: 0,
+                                messages: msg.messages.map(m => ({ ...m, isRead: true }))
+                              };
+                            }
+                            return msg;
+                          })
+                        );
+                      }
+                    }}
+                    isSelected={selectedIds.includes(item.id)}
+                    userRole={user.role}
+                  />
+                );
+              }
+              
+              // Handle individual messages (orphaned)
+              return (
+                <div
+                  key={item.id}
+                  className={`px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors ${
+                    !item.isRead ? 'bg-blue-50' : 'bg-white'
+                  }`}
+                  onClick={() => handleMessageClick(item)}
+                >
+                  <div className="flex items-center space-x-3">
                     {user.role === 'admin' && (
                       <input
                         type="checkbox"
-                        checked={selectedIds.includes(message.id)}
-                        onChange={(e) => toggleSelectOne(e, message.id)}
+                        checked={selectedIds.includes(item.id)}
+                        onChange={(e) => toggleSelectOne(e, item.id)}
                         onClick={(e) => e.stopPropagation()}
                         className="h-4 w-4"
                       />
                     )}
-                    {/* Message Icon */}
-                    <div className="flex-shrink-0">
-                      {getMessageIcon(message.type, message.direction)}
-                    </div>
-
-                    {/* Message Content */}
+                    {getMessageIcon(item.type, item.direction)}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <p className={`text-sm font-medium ${!message.isRead ? 'text-gray-900' : 'text-gray-600'}`}>
-                            {message.leadName}
-                          </p>
-                          <span className="text-xs text-gray-500">
-                            {message.leadPhone}
-                          </span>
-                          {message.direction === 'received' && !message.isRead && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-500 text-white animate-pulse">
-                              NEW
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                            message.direction === 'sent'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            {message.direction === 'sent' ? (
-                              <>
-                                <FiSend className="h-3 w-3 mr-1" />
-                                Sent
-                              </>
-                            ) : (
-                              <>
-                                <FiInbox className="h-3 w-3 mr-1" />
-                                Received
-                              </>
-                            )}
-                          </span>
-                          {/* Delivery Status for Sent Messages */}
-                          {message.direction === 'sent' && message.delivery_status && (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ml-2 ${
-                              message.delivery_status === 'delivered'
-                                ? 'bg-green-100 text-green-800'
-                                : message.delivery_status === 'failed'
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-yellow-100 text-yellow-800'
-                            }`}>
-                              {message.delivery_status === 'delivered' && (
-                                <>
-                                  <FiCheck className="h-3 w-3 mr-1" />
-                                  Delivered
-                                </>
-                              )}
-                              {message.delivery_status === 'failed' && (
-                                <>
-                                  <FiX className="h-3 w-3 mr-1" />
-                                  Failed
-                                </>
-                              )}
-                              {message.delivery_status === 'sending' && (
-                                <>
-                                  <FiRefreshCw className="h-3 w-3 mr-1 animate-spin" />
-                                  Sending
-                                </>
-                              )}
-                              {message.delivery_status === 'pending' && (
-                                <>
-                                  <FiClock className="h-3 w-3 mr-1" />
-                                  Pending
-                                </>
-                              )}
-                            </span>
-                          )}
-                          <FiArrowUpRight className="h-4 w-4 text-gray-400" />
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-500 truncate mt-1">
-                        {getEmailContentPreview(message.content, 100)}
+                      <p className="text-sm font-medium text-gray-900">{item.leadName}</p>
+                      <p className="text-sm text-gray-500 truncate">
+                        {getEmailContentPreview(item.content, 100)}
                       </p>
-                      {/* Error message for failed deliveries */}
-                      {message.direction === 'sent' && message.delivery_status === 'failed' && message.error_message && (
-                        <div className="mt-1">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-red-50 text-red-700 border border-red-200">
-                            <FiX className="h-3 w-3 mr-1" />
-                            Error: {message.error_message.length > 50
-                              ? `${message.error_message.substring(0, 50)}...`
-                              : message.error_message}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex items-center mt-2 text-xs text-gray-500">
-                        <FiClock className="h-3 w-3 mr-1" />
-                        {formatTime(message.timestamp)}
-                        {message.performedByName && message.direction === 'sent' && (
-                          <>
-                            <span className="mx-2">•</span>
-                            <FiUser className="h-3 w-3 mr-1" />
-                            {message.performedByName}
-                          </>
-                        )}
-                      </div>
                     </div>
+                    <span className="text-xs text-gray-500">{formatTime(item.timestamp)}</span>
                   </div>
                 </div>
-              </li>
-            ))}
-          </ul>
+              );
+            })}
+          </div>
         )}
       </div>
 

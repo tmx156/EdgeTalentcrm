@@ -19,7 +19,7 @@ const VirtualizedLeadsTable = ({
     const lead = leads[index];
     if (!lead) return null;
 
-    const isSelected = selectedLeads.includes(lead.id);
+    const isSelected = selectedLeads.includes(String(lead.id));
     const isHovered = hoveredIndex === index;
 
     return (

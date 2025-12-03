@@ -6,12 +6,12 @@ import axios from 'axios';
 import ConnectionStatus from './ConnectionStatus';
 import MessageModal from './MessageModal';
 import EdgeTalentLogo from '../EDGE TALENT 500x500 px BLK RED LOGOff.png';
-import { 
-  FiHome, 
-  FiUsers, 
-  FiUser, 
-  FiCalendar, 
-  FiBarChart2, 
+import {
+  FiHome,
+  FiUsers,
+  FiUser,
+  FiCalendar,
+  FiBarChart2,
   FiLogOut,
   FiMenu,
   FiX,
@@ -22,7 +22,9 @@ import {
   FiMail,
   FiDollarSign,
   FiTrendingUp,
-  FiMessageSquare
+  FiMessageSquare,
+  FiLock,
+  FiPhone
 } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
 
@@ -272,17 +274,69 @@ const Layout = ({ children }) => {
       console.log('💾 Layout: Persisted read status for:', messageId);
     };
 
+    // Handle callback reminders
+    const handleCallbackReminder = (data) => {
+      console.log('📞 Callback reminder received:', data);
+      
+      // Add to notification bell
+      const notification = {
+        id: `callback_${data.reminderId}`,
+        type: 'callback_reminder',
+        leadId: data.leadId,
+        leadName: data.leadName || 'Unknown Lead',
+        message: data.message,
+        timestamp: data.timestamp || new Date().toISOString(),
+        formattedTime: 'Just now',
+        read: false,
+        callbackTime: data.callbackTime,
+        callbackNote: data.callbackNote || ''
+      };
+
+      setSmsNotifications(prev => {
+        // Check if notification already exists
+        const exists = prev.some(n => n.id === notification.id);
+        if (exists) {
+          return prev; // Don't add duplicates
+        }
+        return [notification, ...prev.slice(0, 9)]; // Keep only 10 most recent
+      });
+
+      // Show browser notification if permission granted
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('⏰ Callback Reminder', {
+          body: data.message,
+          icon: '/favicon.ico',
+          tag: `callback_${data.reminderId}`,
+          requireInteraction: true
+        });
+      } else if ('Notification' in window && Notification.permission === 'default') {
+        // Request permission if not yet asked
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            new Notification('⏰ Callback Reminder', {
+              body: data.message,
+              icon: '/favicon.ico',
+              tag: `callback_${data.reminderId}`,
+              requireInteraction: true
+            });
+          }
+        });
+      }
+    };
+
     socket.on('lead_updated', handleLeadUpdate);
     // Listen to new event name only to avoid duplicate notifications
     socket.on('sms_received', handleSmsReceived);
     socket.on('message_received', handleMessageReceived);
     socket.on('message_read', handleMessageRead);
+    socket.on('callback_reminder', handleCallbackReminder);
 
     return () => {
       socket.off('lead_updated', handleLeadUpdate);
       socket.off('sms_received', handleSmsReceived);
       socket.off('message_received', handleMessageReceived);
       socket.off('message_read', handleMessageRead);
+      socket.off('callback_reminder', handleCallbackReminder);
     };
   }, [socket, notificationsEnabled]);
 
@@ -567,6 +621,31 @@ const Layout = ({ children }) => {
 
   // Open message modal instead of navigating directly
   const handleNotificationClick = (notification) => {
+    // Handle callback reminders differently
+    if (notification.type === 'callback_reminder') {
+      // Mark as read
+      setSmsNotifications(prev =>
+        prev.map(notif => {
+          if (notif.id === notification.id) {
+            return { ...notif, read: true };
+          }
+          return notif;
+        })
+      );
+      
+      // Persist read status
+      const ids = Array.from(new Set([...readNotificationIds, notification.id]));
+      persistReadIds(ids);
+      
+      // Navigate to lead details
+      if (notification.leadId) {
+        navigate(`/leads/${notification.leadId}`);
+        setNotificationsOpen(false);
+      }
+      return;
+    }
+    
+    // Original handler for SMS/Email notifications
     markNotificationAsRead(notification); // Pass the entire notification object
     setNotificationsOpen(false);
     setSelectedMessageModal(notification);
@@ -637,6 +716,7 @@ const Layout = ({ children }) => {
       ]
     },
     { name: 'Diary', href: '/calendar', icon: FiCalendar },
+    { name: 'Blocked Slots', href: '/blocked-slots', icon: FiLock, adminOnly: true },
     { name: 'SalesApe AI', href: '/salesape', icon: RiRobot2Line, adminOnly: true },
     { name: 'Messages', href: '/messages', icon: FiMessageSquare },
     { name: 'Sales', href: '/sales', icon: FiTrendingUp, adminOnly: true },
@@ -1140,7 +1220,11 @@ const Layout = ({ children }) => {
                               >
                                 <div className="flex items-start space-x-3">
                                   <div className="flex-shrink-0">
-                                    {notification.type === 'email' ? (
+                                    {notification.type === 'callback_reminder' ? (
+                                      <FiPhone className={`h-5 w-5 ${
+                                        !notification.read ? 'text-purple-600' : 'text-gray-400'
+                                      }`} />
+                                    ) : notification.type === 'email' ? (
                                       <FiMail className={`h-5 w-5 ${
                                         !notification.read ? 'text-blue-600' : 'text-gray-400'
                                       }`} />
@@ -1161,6 +1245,11 @@ const Layout = ({ children }) => {
                                             Subject: {notification.subject}
                                           </span>
                                         )}
+                                        {notification.type === 'callback_reminder' && notification.callbackTime && (
+                                          <span className="text-xs text-purple-600 block font-semibold">
+                                            ⏰ {notification.callbackTime}
+                                          </span>
+                                        )}
                                       </p>
                                       <p className="text-xs text-gray-500">
                                         {notification.formattedTime || 'Just now'}
@@ -1169,8 +1258,15 @@ const Layout = ({ children }) => {
                                     <p className="text-sm text-gray-600 truncate">
                                       {notification.message}
                                     </p>
+                                    {notification.type === 'callback_reminder' && notification.callbackNote && (
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        Note: {notification.callbackNote}
+                                      </p>
+                                    )}
                                     {!notification.read && (
-                                      <div className="w-2 h-2 bg-blue-600 rounded-full mt-1"></div>
+                                      <div className={`w-2 h-2 rounded-full mt-1 ${
+                                        notification.type === 'callback_reminder' ? 'bg-purple-600' : 'bg-blue-600'
+                                      }`}></div>
                                     )}
                                   </div>
                                 </div>
