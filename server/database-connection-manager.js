@@ -15,19 +15,41 @@ class DatabaseConnectionManager {
     try {
       // Use SERVICE ROLE KEY for backend operations to bypass RLS policies
       // This is critical for admin operations like deleting leads
-      this.client = createClient(config.supabase.url, config.supabase.serviceRoleKey);
-
-      console.log('✅ Supabase client initialized with SERVICE ROLE KEY (RLS bypassed)');
+      const url = config.supabase.url;
+      const key = config.supabase.serviceRoleKey;
+      
+      // Validate key exists and looks valid
+      if (!key || key.length < 100) {
+        throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing or too short. Expected a long JWT token.');
+      }
+      
+      if (!key.startsWith('eyJ')) {
+        console.warn('⚠️  WARNING: SUPABASE_SERVICE_ROLE_KEY does not start with "eyJ" - may be invalid');
+      }
+      
+      this.client = createClient(url, key);
+      
+      // Log key preview (first 20 chars) for debugging
+      const keyPreview = key.substring(0, 20);
+      console.log(`✅ Supabase client initialized with SERVICE ROLE KEY (RLS bypassed)`);
+      console.log(`   URL: ${url}`);
+      console.log(`   Key preview: ${keyPreview}...`);
     } catch (error) {
-      console.error('❌ Failed to initialize Supabase client:', error);
+      console.error('❌ Failed to initialize Supabase client:', error.message);
       // Fallback to direct initialization if config fails
       try {
         const fallbackUrl = process.env.SUPABASE_URL || config.supabase.url;
         const fallbackKey = process.env.SUPABASE_SERVICE_ROLE_KEY || config.supabase.serviceRoleKey;
+        
+        if (!fallbackKey || fallbackKey.length < 100) {
+          throw new Error('SUPABASE_SERVICE_ROLE_KEY is missing or invalid in environment variables');
+        }
+        
         this.client = createClient(fallbackUrl, fallbackKey);
         console.log('✅ Supabase client initialized with fallback SERVICE ROLE credentials');
       } catch (fallbackError) {
-        console.error('❌ Fallback initialization also failed:', fallbackError);
+        console.error('❌ Fallback initialization also failed:', fallbackError.message);
+        console.error('❌ CRITICAL: Cannot connect to database. Please check SUPABASE_SERVICE_ROLE_KEY in Railway.');
       }
     }
   }

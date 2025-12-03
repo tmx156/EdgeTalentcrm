@@ -4,22 +4,15 @@ FROM node:20-alpine
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files for dependency installation (optimized layer caching)
 COPY package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy server package files and install
 COPY server/package*.json ./server/
-RUN cd server && npm install
-
-# Copy client package files and install
 COPY client/package*.json ./client/
-RUN cd client && npm install
 
-# Copy the rest of the application
-COPY . .
+# Install all dependencies (dev deps needed for build)
+RUN npm install && \
+    cd server && npm install && \
+    cd ../client && npm install
 
 # Set build-time environment variables for React app
 # These are baked into the client build
@@ -27,6 +20,9 @@ ARG REACT_APP_SUPABASE_URL
 ARG REACT_APP_SUPABASE_ANON_KEY
 ENV REACT_APP_SUPABASE_URL=$REACT_APP_SUPABASE_URL
 ENV REACT_APP_SUPABASE_ANON_KEY=$REACT_APP_SUPABASE_ANON_KEY
+
+# Copy the rest of the application
+COPY . .
 
 # Build the client with environment variables
 RUN npm run build
