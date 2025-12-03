@@ -1,6 +1,21 @@
 # Use Node.js 20 as the base image (recommended for Supabase)
 FROM node:20-alpine
 
+# Install build dependencies for native modules (sharp, etc.)
+# These are needed for sharp image processing and other native dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    cairo-dev \
+    jpeg-dev \
+    pango-dev \
+    giflib-dev \
+    pixman-dev \
+    pangomm-dev \
+    libjpeg-turbo-dev \
+    freetype-dev
+
 # Set working directory
 WORKDIR /app
 
