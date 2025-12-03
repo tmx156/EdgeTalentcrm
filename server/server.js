@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 
 // Load centralized configuration (with fallbacks for backward compatibility)
 const config = require('./config');
@@ -606,15 +607,46 @@ app.get('/c/:id', async (req, res) => {
 });
 
 // Serve static files from React build
-app.use(express.static(path.join(__dirname, '../client/build')));
+const buildPath = path.join(__dirname, '../client/build');
+const indexPath = path.join(buildPath, 'index.html');
+
+// Check if build directory exists
+if (fs.existsSync(buildPath)) {
+  console.log('✅ React build directory found:', buildPath);
+  app.use(express.static(buildPath, {
+    maxAge: '1y',
+    etag: true,
+    lastModified: true
+  }));
+} else {
+  console.error('❌ React build directory not found:', buildPath);
+  console.error('⚠️  Frontend will not be served. Run "npm run build" in the client directory.');
+}
 
 // Handle React routing - serve index.html for all non-API routes
+// This must be AFTER all API routes
 app.get('*', (req, res) => {
   // Don't serve index.html for API routes
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ message: 'API endpoint not found' });
   }
-  res.sendFile(path.join(__dirname, '../client/build/index.html'));
+  
+  // Check if index.html exists
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(500).send(`
+      <html>
+        <head><title>Build Error</title></head>
+        <body style="font-family: Arial; padding: 40px; text-align: center;">
+          <h1>⚠️ Build Not Found</h1>
+          <p>The React build directory is missing.</p>
+          <p>Expected path: ${buildPath}</p>
+          <p>Please ensure the build completed successfully.</p>
+        </body>
+      </html>
+    `);
+  }
 });
 
 // Enhanced error handling middleware with database awareness
