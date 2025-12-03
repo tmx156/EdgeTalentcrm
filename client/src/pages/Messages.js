@@ -712,10 +712,10 @@ const Messages = () => {
           return (
             msg.leadName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (msg.content || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        msg.leadPhone?.includes(searchTerm) ||
-        msg.leadEmail?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+            msg.leadPhone?.includes(searchTerm) ||
+            msg.leadEmail?.toLowerCase().includes(searchTerm.toLowerCase())
+          );
+        }
       });
     }
 
@@ -1429,13 +1429,13 @@ const Messages = () => {
                       <p className="text-sm text-gray-500 truncate">
                         {getEmailContentPreview(item.content, 100)}
                       </p>
-                        </div>
+                    </div>
                     <span className="text-xs text-gray-500">{formatTime(item.timestamp)}</span>
-                        </div>
-                      </div>
+                  </div>
+                </div>
               );
             })}
-                        </div>
+          </div>
         )}
       </div>
 

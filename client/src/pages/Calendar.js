@@ -1426,53 +1426,53 @@ const Calendar = () => {
     const previousEvent = { ...selectedEvent };
     const previousEvents = [...events];
 
-      // Prepare update data
-      let updateData = {
-        ...selectedEvent.extendedProps.lead
-      };
+    // Prepare update data
+    let updateData = {
+      ...selectedEvent.extendedProps.lead
+    };
 
-      // For cancellation, set status to Cancelled but preserve the original booking date
-      if (newStatus === 'Cancelled') {
-        updateData = {
-          ...updateData,
+    // For cancellation, set status to Cancelled but preserve the original booking date
+    if (newStatus === 'Cancelled') {
+      updateData = {
+        ...updateData,
         status: 'Cancelled',
-          cancellation_reason: 'Appointment cancelled via calendar'
-        };
-      } else if (newStatus === 'Confirmed') {
-        updateData = {
-          ...updateData,
+        cancellation_reason: 'Appointment cancelled via calendar'
+      };
+    } else if (newStatus === 'Confirmed') {
+      updateData = {
+        ...updateData,
         status: 'Booked',
         is_confirmed: 1,
         booking_status: null
-        };
-      } else if (newStatus === 'Unconfirmed') {
-        updateData = {
-          ...updateData,
-          status: 'Booked',
-          is_confirmed: 0,
+      };
+    } else if (newStatus === 'Unconfirmed') {
+      updateData = {
+        ...updateData,
+        status: 'Booked',
+        is_confirmed: 0,
         booking_status: null
-        };
-      } else if (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') {
-        updateData = {
-          ...updateData,
-          status: 'Booked',
+      };
+    } else if (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') {
+      updateData = {
+        ...updateData,
+        status: 'Booked',
         booking_status: newStatus,
         is_confirmed: newStatus === 'Reschedule' ? 0 : null
-        };
-      } else {
-        updateData = {
-          ...updateData,
-          status: newStatus,
+      };
+    } else {
+      updateData = {
+        ...updateData,
+        status: newStatus,
         booking_status: null
-        };
-      }
-        
+      };
+    }
+
     // OPTIMISTIC UPDATE: Update UI immediately
-        if (newStatus === 'Cancelled') {
+    if (newStatus === 'Cancelled') {
       // Remove the event from calendar immediately
-          setEvents(prevEvents => prevEvents.filter(event => event.id !== selectedEvent.id));
-          setShowEventModal(false);
-          
+      setEvents(prevEvents => prevEvents.filter(event => event.id !== selectedEvent.id));
+      setShowEventModal(false);
+      
       // Emit real-time update IMMEDIATELY
       emitCalendarUpdate({
         type: 'status_changed',
@@ -1482,54 +1482,54 @@ const Calendar = () => {
         newStatus: 'Cancelled',
         timestamp: new Date()
       });
-        } else {
+    } else {
       // Create updated event for optimistic update
-          const eventTitle = newStatus === 'Confirmed'
-            ? `${leadName} - Booked (Confirmed)`
-            : newStatus === 'Unconfirmed'
-              ? `${leadName} - Booked (Unconfirmed)`
-              : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale')
-                ? `${leadName} - ${newStatus}`
-                : `${leadName} - ${newStatus}`;
+      const eventTitle = newStatus === 'Confirmed'
+        ? `${leadName} - Booked (Confirmed)`
+        : newStatus === 'Unconfirmed'
+          ? `${leadName} - Booked (Unconfirmed)`
+          : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale')
+            ? `${leadName} - ${newStatus}`
+            : `${leadName} - ${newStatus}`;
       
       // Create optimistic lead update
       const optimisticLead = {
         ...selectedEvent.extendedProps.lead,
         ...updateData
       };
-          
-          const updatedEvent = {
-            ...selectedEvent,
-            title: eventTitle,
-            backgroundColor: getEventColor(
-              newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
+
+      const updatedEvent = {
+        ...selectedEvent,
+        title: eventTitle,
+        backgroundColor: getEventColor(
+          newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
           optimisticLead.hasSale,
-              newStatus === 'Confirmed'
-            ),
-            borderColor: getEventColor(
-              newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
+          newStatus === 'Confirmed'
+        ),
+        borderColor: getEventColor(
+          newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
           optimisticLead.hasSale,
-              newStatus === 'Confirmed'
-            ),
-            extendedProps: {
-              ...selectedEvent.extendedProps,
-              status: (newStatus === 'Confirmed' || newStatus === 'Unconfirmed' || newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? 'Booked' : newStatus,
+          newStatus === 'Confirmed'
+        ),
+        extendedProps: {
+          ...selectedEvent.extendedProps,
+          status: (newStatus === 'Confirmed' || newStatus === 'Unconfirmed' || newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? 'Booked' : newStatus,
           displayStatus: newStatus,
-              isConfirmed: newStatus === 'Confirmed' ? true : (newStatus === 'Unconfirmed' ? false : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? (newStatus === 'Reschedule' ? 0 : null) : selectedEvent.extendedProps?.isConfirmed || false),
-              bookingStatus: (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? newStatus : undefined,
+          isConfirmed: newStatus === 'Confirmed' ? true : (newStatus === 'Unconfirmed' ? false : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? (newStatus === 'Reschedule' ? 0 : null) : selectedEvent.extendedProps?.isConfirmed || false),
+          bookingStatus: (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? newStatus : undefined,
           lead: optimisticLead
-            }
-          };
+        }
+      };
 
       // Update UI immediately (optimistic update)
-          setEvents(prevEvents => {
-            const newEvents = prevEvents.map(event => 
-              event.id === selectedEvent.id ? updatedEvent : event
-            );
-            return newEvents;
-          });
-          setSelectedEvent(updatedEvent);
-          
+      setEvents(prevEvents => {
+        const newEvents = prevEvents.map(event => 
+          event.id === selectedEvent.id ? updatedEvent : event
+        );
+        return newEvents;
+      });
+      setSelectedEvent(updatedEvent);
+      
       // Emit real-time update IMMEDIATELY (before API call)
       emitCalendarUpdate({
         type: 'status_changed',
@@ -1589,61 +1589,61 @@ const Calendar = () => {
               return newEvents;
             });
             setSelectedEvent(finalEvent);
-        }
-        
-        // Emit diary update for synchronization
-        try {
-          if (newStatus === 'Confirmed' || oldStatus === 'Confirmed' ||
-              newStatus === 'Booked' || oldStatus === 'Booked' || 
-              newStatus === 'Attended' || oldStatus === 'Attended' ||
-              newStatus === 'Complete' || oldStatus === 'Complete' ||
-              newStatus === 'Cancelled' || oldStatus === 'Cancelled' ||
-              newStatus === 'No Show' || oldStatus === 'No Show' ||
-              newStatus === 'Unconfirmed' || oldStatus === 'Unconfirmed' ||
-              newStatus === 'Reschedule' || oldStatus === 'Reschedule' ||
-              newStatus === 'Arrived' || oldStatus === 'Arrived' ||
-              newStatus === 'Left' || oldStatus === 'Left' ||
-              newStatus === 'On Show' || oldStatus === 'On Show' ||
-              newStatus === 'No Sale' || oldStatus === 'No Sale') {
-            
-            await axios.post('/api/stats/diary-update', {
-              leadId: selectedEvent.id,
-              leadName: leadName,
-              oldStatus: oldStatus,
-              newStatus: newStatus === 'Cancelled' ? 'Cancelled' : (newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Booked' : newStatus)),
-              dateBooked: selectedEvent.start,
-              timestamp: new Date().toISOString()
-            });
           }
-        } catch (diaryError) {
-          console.warn('Diary update failed:', diaryError);
-        }
-        
+
+          // Emit diary update for synchronization
+          try {
+            if (newStatus === 'Confirmed' || oldStatus === 'Confirmed' ||
+                newStatus === 'Booked' || oldStatus === 'Booked' || 
+                newStatus === 'Attended' || oldStatus === 'Attended' ||
+                newStatus === 'Complete' || oldStatus === 'Complete' ||
+                newStatus === 'Cancelled' || oldStatus === 'Cancelled' ||
+                newStatus === 'No Show' || oldStatus === 'No Show' ||
+                newStatus === 'Unconfirmed' || oldStatus === 'Unconfirmed' ||
+                newStatus === 'Reschedule' || oldStatus === 'Reschedule' ||
+                newStatus === 'Arrived' || oldStatus === 'Arrived' ||
+                newStatus === 'Left' || oldStatus === 'Left' ||
+                newStatus === 'On Show' || oldStatus === 'On Show' ||
+                newStatus === 'No Sale' || oldStatus === 'No Sale') {
+              
+              await axios.post('/api/stats/diary-update', {
+                leadId: selectedEvent.id,
+                leadName: leadName,
+                oldStatus: oldStatus,
+                newStatus: newStatus === 'Cancelled' ? 'Cancelled' : (newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Booked' : newStatus)),
+                dateBooked: selectedEvent.start,
+                timestamp: new Date().toISOString()
+              });
+            }
+          } catch (diaryError) {
+            console.warn('Diary update failed:', diaryError);
+          }
+          
           // Real-time update already emitted above, just sync with server response
           // Background refresh to ensure sync (but don't override optimistic update)
           setTimeout(() => {
             debouncedFetchEvents();
           }, 2000);
-      }
-    } catch (error) {
-      console.error('Error updating event status:', error);
+        }
+      } catch (error) {
+        console.error('Error updating event status:', error);
         
         // ROLLBACK: Revert optimistic update on error
         setEvents(previousEvents);
         setSelectedEvent(previousEvent);
-      
-      // More detailed error reporting
+        
+        // More detailed error reporting
         let errorMessage = 'Failed to update status. Changes have been reverted. Please try again.';
-      if (error.response) {
+        if (error.response) {
           errorMessage = `Server error: ${error.response.data?.message || error.response.statusText}. Changes have been reverted.`;
-      } else if (error.request) {
+        } else if (error.request) {
           errorMessage = 'Network error: Could not reach server. Changes have been reverted.';
-      } else {
+        } else {
           errorMessage = `Error: ${error.message}. Changes have been reverted.`;
+        }
+        
+        alert(errorMessage);
       }
-      
-      alert(errorMessage);
-    }
     })();
   };
 

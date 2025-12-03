@@ -1984,7 +1984,7 @@ const Leads = () => {
                         // Stop propagation to prevent row click
                         e.stopPropagation();
                         if (lead.id) {
-                        handleSelectLead(lead.id, e.target.checked);
+                          handleSelectLead(lead.id, e.target.checked);
                         } else {
                           console.error('❌ Cannot select lead - missing ID:', lead);
                         }

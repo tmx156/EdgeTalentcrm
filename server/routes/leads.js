@@ -2843,7 +2843,7 @@ router.delete('/bulk', auth, adminAuth, async (req, res) => {
       if (idString && idString.length > 0) {
         // Accept if it's a valid UUID format OR if it's 36 characters (might be UUID without dashes or different format)
         if (uuidRegex.test(idString) || idString.length === 36) {
-        validatedIds.push(idString);
+          validatedIds.push(idString);
         } else {
           // Still accept it if it's a reasonable length (might be a different ID format)
           // But log a warning
