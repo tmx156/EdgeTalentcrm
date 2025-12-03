@@ -1,6 +1,9 @@
 # Use Node.js 20 as the base image (recommended for Supabase)
 FROM node:20-alpine
 
+# Force cache bust - Updated: 2025-12-03-17:20
+RUN echo "Cache bust: 2025-12-03-17:20:00"
+
 # Install build dependencies for native modules (sharp, etc.)
 # These are needed for sharp image processing and other native dependencies
 RUN apk add --no-cache \
