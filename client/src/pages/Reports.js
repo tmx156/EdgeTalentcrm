@@ -1,9 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, Cell } from 'recharts';
-import { FiDownload, FiCalendar, FiUser, FiTrendingUp, FiDollarSign, FiBarChart2, FiRefreshCw, FiTarget, FiAward, FiCheck } from 'react-icons/fi';
+import React, { useState, useEffect, useCallback } from 'react';
+import { FiDownload, FiCalendar, FiUser, FiTrendingUp, FiDollarSign, FiRefreshCw, FiTarget, FiAward, FiCheck } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { getCurrentUKTime, getTodayUK } from '../utils/timeUtils';
 import axios from 'axios';
 
 const Reports = () => {
@@ -27,26 +25,6 @@ const Reports = () => {
   const [monthlyBreakdown, setMonthlyBreakdown] = useState([]);
   const [salesDetails, setSalesDetails] = useState([]);
   const [loading, setLoading] = useState(false);
-  
-  // Calculate this week Monday-Sunday (UK week logic)
-  const getThisWeekDates = () => {
-    const now = new Date();
-    const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    const daysToMonday = currentDay === 0 ? 6 : currentDay - 1;
-    
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - daysToMonday);
-    monday.setHours(0, 0, 0, 0);
-    
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
-    
-    return {
-      startDate: monday.toISOString().split('T')[0],
-      endDate: sunday.toISOString().split('T')[0]
-    };
-  };
   
   // Get today's date for default filter
   const getTodayDate = () => {
@@ -74,7 +52,7 @@ const Reports = () => {
       fetchUsers();
     }
     fetchReportData();
-  }, [user]);
+  }, [user, fetchUsers, fetchReportData]);
 
   // Real-time updates
   useEffect(() => {
@@ -101,9 +79,9 @@ const Reports = () => {
         socket.off('stats_update_needed', handleRealTimeUpdate);
       };
     }
-  }, [socket]);
+  }, [socket, fetchReportData]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const response = await axios.get('/api/users');
       setUsers([
@@ -114,9 +92,9 @@ const Reports = () => {
       console.error('Error fetching users:', error);
       setUsers([{ id: 'all', name: 'All Users' }]);
     }
-  };
+  }, []);
 
-  const fetchReportData = async () => {
+  const fetchReportData = useCallback(async () => {
     setLoading(true);
     try {
       // Convert date range to UTC timestamps for proper filtering
@@ -287,7 +265,7 @@ const Reports = () => {
       console.error('Error fetching report data:', error);
     }
     setLoading(false);
-  };
+  }, [filters]);
 
   // Calculate KPIs using EXACT DAILY ACTIVITY LOGIC from Dashboard
   const calculateKPIs = (leads, sales, users) => {

@@ -21,7 +21,7 @@ import Templates from './pages/Templates';
 import BookersTemplates from './pages/BookersTemplates';
 import Finance from './pages/Finance';
 import Sales from './pages/Sales';
-import Messages from './pages/Messages';
+import Messages from './pages/MessagesNew'; // Updated to use premium Gmail-style design
 import SalesApe from './pages/SalesApe';
 import BlockedSlots from './pages/BlockedSlots';
 

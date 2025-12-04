@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 
-const LeadStatusCards = ({ leads, onLeadSelect, onRemoveFromQueue }) => {
+const LeadStatusCards = ({ leads, onLeadSelect, onRemoveFromQueue, onRemoveAll }) => {
   if (!leads || leads.length === 0) {
     return (
       <div className="text-center py-20">
@@ -49,8 +49,29 @@ const LeadStatusCards = ({ leads, onLeadSelect, onRemoveFromQueue }) => {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-      {leads.map((lead, index) => (
+    <div>
+      {/* ✅ NEW: Header with Remove All button */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">
+            📋 SalesApe Queue
+          </h2>
+          <p className="text-gray-600 mt-1">
+            {leads.length} leads in queue
+          </p>
+        </div>
+        {leads.length > 0 && onRemoveAll && (
+          <button
+            onClick={onRemoveAll}
+            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors font-medium flex items-center gap-2"
+          >
+            🗑️ Remove All ({leads.length})
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {leads.map((lead, index) => (
         <motion.div
           key={lead.id}
           initial={{ opacity: 0, scale: 0.9 }}
@@ -122,7 +143,8 @@ const LeadStatusCards = ({ leads, onLeadSelect, onRemoveFromQueue }) => {
             </div>
           </div>
         </motion.div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 };

@@ -1,26 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import MessageModal from '../components/MessageModal';
 import EmailThread from '../components/EmailThread';
-import { decodeEmailContent, getEmailContentPreview } from '../utils/emailContentDecoder';
+import { getEmailContentPreview } from '../utils/emailContentDecoder';
 import {
   FiMessageSquare,
   FiMail,
-  FiPhone,
-  FiUser,
-  FiClock,
   FiFilter,
   FiSearch,
   FiEye,
-  FiArrowUpRight,
   FiRefreshCw,
-  FiInbox,
-  FiSend,
-  FiCheck,
-  FiX,
-  FiPaperclip
+  FiInbox
 } from 'react-icons/fi';
 import axios from 'axios';
 
@@ -176,8 +168,8 @@ const Messages = () => {
     return [...threadArray, ...orphanedMessages];
   };
 
-  // Fetch messages
-  const fetchMessages = async () => {
+  // Fetch messages - wrapped in useCallback to prevent infinite loops
+  const fetchMessages = useCallback(async () => {
     try {
       setLoading(true);
       const response = await axios.get('/api/messages-list');
@@ -251,7 +243,7 @@ const Messages = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [readMessageIds]); // Only re-create fetchMessages when readMessageIds changes
 
   // Initial load - wait for localStorage to be loaded
   useEffect(() => {
@@ -259,7 +251,7 @@ const Messages = () => {
 
     console.log('🚀 Messages: localStorage loaded, fetching initial messages...');
     fetchMessages();
-  }, [localStorageLoaded]);
+  }, [localStorageLoaded, fetchMessages]);
 
   // Re-fetch messages when readMessageIds changes (after localStorage is loaded)
   // This ensures the UI reflects the latest read status
@@ -299,17 +291,17 @@ const Messages = () => {
   useEffect(() => {
     if (!localStorageLoaded) return;
 
-    // Less frequent polling to prevent flashing - poll every 60 seconds
+    // REDUCED polling frequency - poll every 5 minutes to prevent flashing and reduce server load
     const pollingInterval = setInterval(() => {
       console.log('📱 Messages: Polling for new messages...');
       fetchMessages();
-    }, 60000); // Poll every 60 seconds to reduce flashing
+    }, 300000); // Poll every 5 minutes (300000ms)
 
     return () => {
       clearInterval(pollingInterval);
       console.log('✅ Messages: Cleaned up polling');
     };
-  }, [localStorageLoaded]);
+  }, [localStorageLoaded, fetchMessages]);
 
   // Sync selectedFilter with ?type=sms|email in URL
   useEffect(() => {
@@ -530,14 +522,11 @@ const Messages = () => {
             unreadCount: (prev.unreadCount || 0) + 1
           }));
         }
-        
-        // Refresh messages from server after a longer delay to prevent flashing
-        // Only refresh if this is a new message not already in our list
-        const existingMessage = messages.find(msg => msg.id === data.messageId);
-        if (!existingMessage) {
-          setTimeout(() => fetchMessages(), 10000); // 10 seconds delay
-        }
-        
+
+        // ✅ FIX: Don't auto-refresh - SMS messages are already added optimistically via socket
+        // The 5-minute polling interval will handle any missed messages
+        // Removed: setTimeout(() => fetchMessages(), 10000);
+
         // Show a brief notification
         console.log(`📱 New SMS received from ${data.phone}: ${data.content}`);
       };
@@ -595,13 +584,10 @@ const Messages = () => {
           }));
         }
         
-        // Refresh messages from server after a longer delay to prevent flashing
-        // Only refresh if this is a new message not already in our list
-        const existingMessage = messages.find(msg => msg.id === data.messageId);
-        if (!existingMessage) {
-          setTimeout(() => fetchMessages(), 10000); // 10 seconds delay
-        }
-        
+        // ✅ FIX: Don't auto-refresh - emails are already added optimistically via socket
+        // The 5-minute polling interval will handle any missed messages
+        // Removed: setTimeout(() => fetchMessages(), 10000);
+
         // Show a brief notification
         console.log(`📧 New email received from ${data.leadId}: ${data.content}`);
       };
@@ -611,11 +597,10 @@ const Messages = () => {
         console.log('🔄 Messages: Received messages_synced event:', data);
         setSyncStatus(`Synced ${data.totalSynced} messages, skipped ${data.totalSkipped} duplicates`);
 
-        // Only refresh if there were actually new messages synced
-        if (data.totalSynced > 0) {
-          setTimeout(() => fetchMessages(), 5000); // 5 second delay to prevent flashing
-        }
-        
+        // ✅ FIX: Don't auto-refresh on sync - rely on 5-minute polling instead
+        // This prevents constant flashing when syncing messages
+        // Removed: setTimeout(() => fetchMessages(), 5000);
+
         // Clear status after 5 seconds
         setTimeout(() => setSyncStatus(null), 5000);
       };
@@ -688,7 +673,7 @@ const Messages = () => {
 
   // Filter messages based on search and filters
   useEffect(() => {
-    let filtered = messages;
+    let filtered = [...messages];
 
     // Search filter
     if (searchTerm) {
@@ -1056,45 +1041,7 @@ const Messages = () => {
     }, 800);
   };
 
-  // Sync historical messages from provider
-  const handleSyncMessages = async () => {
-    if (syncing) return;
-    
-    setSyncing(true);
-    setSyncStatus('Starting sync...');
-    
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/sms/sync?purge=true', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setSyncStatus(`✅ ${data.message}`);
-        console.log('📱 SMS sync completed:', data);
-        
-        // Refresh messages to show newly synced ones
-        fetchMessages();
-      } else {
-        setSyncStatus(`❌ Sync failed: ${data.error || data.message}`);
-        console.error('SMS sync failed:', data);
-      }
-    } catch (error) {
-      setSyncStatus(`❌ Sync error: ${error.message}`);
-      console.error('Error syncing messages:', error);
-    } finally {
-      setSyncing(false);
-      
-      // Clear status after 5 seconds
-      setTimeout(() => setSyncStatus(null), 5000);
-    }
-  };
+  // Removed unused handleSyncMessages function
 
   // Format timestamp
   const formatTime = (timestamp) => {

@@ -45,8 +45,8 @@ COPY . .
 # Build the client with environment variables
 RUN npm run build
 
-# Expose port
-EXPOSE 5000
+# Expose port (Railway uses 8080 by default)
+EXPOSE 8080
 
 # Start the application
 CMD ["npm", "run", "railway:start"]
