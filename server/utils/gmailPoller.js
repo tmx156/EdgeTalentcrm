@@ -6,6 +6,7 @@ const fsSync = require('fs'); // For synchronous operations like existsSync
 const path = require('path');
 const config = require('../config');
 const supabaseStorage = require('./supabaseStorage');
+const GmailEmailExtractor = require('./gmailEmailExtractor');
 
 /**
  * Gmail API Poller - Multi-Account Support
@@ -416,29 +417,16 @@ class GmailPoller {
 
     console.log(`📧 [${this.accountConfig.displayName}] Processing: From: ${fromEmail}, To: ${toEmail}, Subject: "${subject}"`);
 
-    // Find or create lead by sender email
+    // ✅ FIX: Only process emails from existing CRM leads (don't create new leads automatically)
     let lead = await this.findLead(fromEmail);
-    
+
     if (!lead) {
-      // Create a new lead automatically for unknown senders
-      console.log(`📧 [${this.accountConfig.displayName}] No lead found for ${fromEmail}, creating new lead...`);
-      lead = await this.createLead(fromEmail, from);
-      if (!lead) {
-        console.warn(`⚠️ [${this.accountConfig.displayName}] Could not create lead for ${fromEmail}, skipping email`);
-        return 'skipped';
-      }
-      console.log(`✅ [${this.accountConfig.displayName}] Created new lead: ${lead.name} (${lead.email})`);
-    } else {
-      console.log(`📧 [${this.accountConfig.displayName}] Found lead: ${lead.name} (${lead.email})`);
+      // Skip emails from senders not in CRM (prevents processing spam/unrelated emails)
+      console.log(`📧 [${this.accountConfig.displayName}] ⚠️ No lead found for ${fromEmail}, skipping email (not in CRM)`);
+      return 'skipped';
     }
 
-    // Extract email body
-    const body = this.extractEmailBody(message.payload);
-
-    // Remove body length check - process all emails, even if body is short
-    if (!body || body.trim().length === 0) {
-      console.warn(`⚠️ [${this.accountConfig.displayName}] Email body is empty, but processing anyway`);
-    }
+    console.log(`📧 [${this.accountConfig.displayName}] Found lead: ${lead.name} (${lead.email})`)
 
     // Check for duplicates in database (more reliable than in-memory check)
     const { data: existingByGmailId, error: gmailIdCheckError } = await this.supabase
@@ -456,8 +444,34 @@ class GmailPoller {
       return 'duplicate';
     }
 
-    // Extract and upload attachments
+    // Extract email content using enhanced extractor (HTML + embedded images)
+    const extractor = new GmailEmailExtractor(this.gmail, this.accountKey, supabaseStorage);
+    const emailContent = await extractor.extractEmailContent(message, messageId);
+    
+    // Get text and HTML versions
+    const bodyText = emailContent.text || extractor.cleanEmailBody(emailContent.text || '', false);
+    const htmlBody = emailContent.html || null;
+    const embeddedImages = emailContent.embeddedImages || [];
+
+    // Remove body length check - process all emails, even if body is short
+    if (!bodyText || bodyText.trim().length === 0) {
+      console.warn(`⚠️ [${this.accountConfig.displayName}] Email body is empty, but processing anyway`);
+    }
+
+    // Extract and upload regular attachments (non-embedded)
     const attachments = await this.extractAndUploadAttachments(message, messageId);
+
+    // Combine embedded images with regular attachments for storage
+    const allAttachments = [...attachments];
+    
+    // Store embedded images metadata (they're already uploaded)
+    const embeddedImagesMetadata = embeddedImages.map(img => ({
+      ...img,
+      is_embedded: true
+    }));
+    
+    // Combine all attachments (embedded images + regular attachments)
+    const combinedAttachments = [...allAttachments, ...embeddedImagesMetadata];
 
     // Insert to messages table
     const recordId = randomUUID();
@@ -471,12 +485,13 @@ class GmailPoller {
         lead_id: lead.id,
         type: 'email',
         subject: subject,
-        content: body || '(No content)',
+        content: bodyText || '(No content)', // Plain text version
+        email_body: htmlBody || null, // HTML version for Gmail-style rendering
         recipient_email: fromEmail,
         status: 'delivered', // Using 'delivered' for received emails (allowed by constraint)
         gmail_message_id: messageId,
         gmail_account_key: this.accountKey, // Track which account received it
-        attachments: attachments.length > 0 ? attachments : null, // Store as JSONB array
+        attachments: combinedAttachments.length > 0 ? combinedAttachments : null, // Store as JSONB array
         sent_at: emailReceivedDate,
         created_at: processingDate,
         updated_at: processingDate,
@@ -490,10 +505,10 @@ class GmailPoller {
     }
 
     // Update booking history
-    await this.updateLeadHistory(lead, subject, body || '(No content)', emailReceivedDate);
+    await this.updateLeadHistory(lead, subject, bodyText || '(No content)', emailReceivedDate);
 
     // Emit events
-    this.emitEvents(lead, recordId, subject, body || '(No content)', emailReceivedDate);
+    this.emitEvents(lead, recordId, subject, bodyText || '(No content)', emailReceivedDate);
 
     console.log(`✅ [${this.accountConfig.displayName}] Email processed successfully: "${subject}" from ${fromEmail}`);
     return 'processed';

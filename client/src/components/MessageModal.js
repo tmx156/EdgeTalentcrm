@@ -5,7 +5,6 @@ import {
   FiMail,
   FiSend, 
   FiUser, 
-  FiPhone, 
   FiClock,
   FiArrowRight,
   FiCheck,
@@ -17,6 +16,7 @@ import {
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
 import { decodeEmailContent, isEmailContentEncoded } from '../utils/emailContentDecoder';
+import GmailEmailRenderer from './GmailEmailRenderer';
 
 const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
   const [replyText, setReplyText] = useState('');
@@ -175,7 +175,7 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
       setMarkingAsRead(false);
       setReadError(null);
     }
-  }, [isOpen, notification, fetchConversationHistory]);
+  }, [isOpen, notification, fetchConversationHistory, socket]);
 
   // Listen for real-time updates to refresh conversation fast
   useEffect(() => {
@@ -432,59 +432,35 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
                 </div>
               </div>
               <div className="px-4 py-3">
-                <p className={`text-sm whitespace-pre-wrap break-words ${
-                  notification.direction === 'sent' ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {decodeEmailContent(notification.content)}
-                </p>
-                {isEmailContentEncoded(notification.content) && (
-                  <span className={`mt-2 inline-block px-2 py-0.5 text-xs rounded ${
-                    notification.direction === 'sent' 
-                      ? 'bg-blue-500 text-blue-100' 
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    Auto-decoded
-                  </span>
+                {/* Use GmailEmailRenderer for emails, fallback to text for SMS */}
+                {notification?.type === 'email' && (notification.email_body || notification.html_content) ? (
+                  <div className={notification.direction === 'sent' ? 'text-white' : 'text-gray-900'}>
+                    <GmailEmailRenderer
+                      htmlContent={notification.email_body || notification.html_content}
+                      textContent={notification.content}
+                      attachments={notification.attachments || []}
+                      embeddedImages={notification.embedded_images || []}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <p className={`text-sm whitespace-pre-wrap break-words ${
+                      notification.direction === 'sent' ? 'text-white' : 'text-gray-900'
+                    }`}>
+                      {decodeEmailContent(notification.content)}
+                    </p>
+                    {isEmailContentEncoded(notification.content) && (
+                      <span className={`mt-2 inline-block px-2 py-0.5 text-xs rounded ${
+                        notification.direction === 'sent' 
+                          ? 'bg-blue-500 text-blue-100' 
+                          : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        Auto-decoded
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
-              {/* Display attachments if available */}
-              {notification.attachments && Array.isArray(notification.attachments) && notification.attachments.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <div className="flex items-center mb-2">
-                    <FiPaperclip className="h-4 w-4 text-gray-500 mr-2" />
-                    <span className="text-xs font-medium text-gray-700">
-                      {notification.attachments.length} Attachment{notification.attachments.length !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {notification.attachments.map((attachment, idx) => (
-                      <a
-                        key={idx}
-                        href={attachment.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-between p-2 bg-gray-50 hover:bg-gray-100 rounded-md border border-gray-200 transition-colors group"
-                      >
-                        <div className="flex items-center space-x-2 flex-1 min-w-0">
-                          <FiFile className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {attachment.filename}
-                            </p>
-                            {attachment.size && (
-                              <p className="text-xs text-gray-500">
-                                {(attachment.size / 1024).toFixed(2)} KB
-                                {attachment.mimetype && ` • ${attachment.mimetype}`}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <FiDownload className="h-4 w-4 text-gray-400 group-hover:text-blue-600 transition-colors flex-shrink-0 ml-2" />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
           
@@ -584,11 +560,23 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
                         
                         {/* Message Body */}
                         <div className="px-4 py-3">
-                          <p className={`text-sm whitespace-pre-wrap break-words ${
-                            isSent ? 'text-white' : isFailed ? 'text-red-900' : 'text-gray-900'
-                          }`}>
-                            {decodeEmailContent(message.details?.body || message.details?.message || message.details?.subject || 'No content')}
-                          </p>
+                          {/* Use GmailEmailRenderer for emails if HTML content is available */}
+                          {notification?.type === 'email' && (message.details?.email_body || message.details?.html_content) ? (
+                            <div className={isSent ? 'text-white' : isFailed ? 'text-red-900' : 'text-gray-900'}>
+                              <GmailEmailRenderer
+                                htmlContent={message.details?.email_body || message.details?.html_content}
+                                textContent={message.details?.body || message.details?.message || message.details?.subject || 'No content'}
+                                attachments={message.details?.attachments || []}
+                                embeddedImages={message.details?.embedded_images || []}
+                              />
+                            </div>
+                          ) : (
+                            <p className={`text-sm whitespace-pre-wrap break-words ${
+                              isSent ? 'text-white' : isFailed ? 'text-red-900' : 'text-gray-900'
+                            }`}>
+                              {decodeEmailContent(message.details?.body || message.details?.message || message.details?.subject || 'No content')}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

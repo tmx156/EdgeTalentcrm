@@ -1,6 +1,8 @@
 const { createClient } = require('@supabase/supabase-js');
 const { randomUUID } = require('crypto');
 const gmailService = require('../utils/gmailService');
+const GmailEmailExtractor = require('../utils/gmailEmailExtractor');
+const supabaseStorage = require('../utils/supabaseStorage');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -85,16 +87,6 @@ async function processGmailMessage(accountKey, messageId) {
 
     console.log(`📧 [${accountKey}] Found lead: ${lead.name} (${lead.email})`);
 
-    // Extract email body
-    const body = extractEmailBody(message.payload);
-
-    if (!body || body.length < 3) {
-      console.warn(`📧 [${accountKey}] Extracted content too short or empty - skipping`);
-      return false;
-    }
-
-    console.log(`📧 [${accountKey}] Body extracted: ${body.substring(0, 100)}...`);
-
     // Check for duplicates using gmail_message_id
     const { data: existingByGmailId, error: gmailIdCheckError } = await supabase
       .from('messages')
@@ -112,6 +104,37 @@ async function processGmailMessage(accountKey, messageId) {
       return false;
     }
 
+    // Get Gmail client
+    const gmail = gmailService.getGmailClient(accountKey);
+
+    // Extract email content using enhanced extractor (HTML + embedded images)
+    const extractor = new GmailEmailExtractor(gmail, accountKey, supabaseStorage);
+    const emailContent = await extractor.extractEmailContent(message, messageId);
+    
+    // Get text and HTML versions
+    const bodyText = emailContent.text || extractor.cleanEmailBody(emailContent.text || '', false);
+    const htmlBody = emailContent.html || null;
+    const embeddedImages = emailContent.embeddedImages || [];
+
+    if (!bodyText || bodyText.trim().length === 0) {
+      console.warn(`📧 [${accountKey}] Extracted content too short or empty - skipping`);
+      return false;
+    }
+
+    console.log(`📧 [${accountKey}] Body extracted: ${bodyText.substring(0, 100)}...`);
+    if (htmlBody) {
+      console.log(`📧 [${accountKey}] HTML body extracted: ${htmlBody.length} characters`);
+    }
+    if (embeddedImages.length > 0) {
+      console.log(`📧 [${accountKey}] Found ${embeddedImages.length} embedded image(s)`);
+    }
+
+    // Store embedded images metadata
+    const embeddedImagesMetadata = embeddedImages.map(img => ({
+      ...img,
+      is_embedded: true
+    }));
+
     // Insert to messages table
     const recordId = randomUUID();
     const emailReceivedDate = date ? new Date(date).toISOString() : new Date().toISOString();
@@ -124,11 +147,13 @@ async function processGmailMessage(accountKey, messageId) {
         lead_id: lead.id,
         type: 'email',
         subject: subject,
-        content: body,
+        content: bodyText, // Plain text version
+        email_body: htmlBody || null, // HTML version for Gmail-style rendering
         recipient_email: fromEmail,
         status: 'received',
         gmail_message_id: messageId,
         gmail_account_key: accountKey, // Track which account received it
+        attachments: embeddedImagesMetadata.length > 0 ? embeddedImagesMetadata : null, // Store embedded images
         sent_at: emailReceivedDate,
         created_at: processingDate,
         updated_at: processingDate,
@@ -151,10 +176,10 @@ async function processGmailMessage(accountKey, messageId) {
     }
 
     // Update booking history
-    await updateLeadHistory(lead, subject, body, emailReceivedDate, accountKey);
+    await updateLeadHistory(lead, subject, bodyText, emailReceivedDate, accountKey);
 
     // Emit Socket.IO events
-    emitEvents(lead, recordId, subject, body, emailReceivedDate, accountKey);
+    emitEvents(lead, recordId, subject, bodyText, emailReceivedDate, accountKey);
 
     console.log(`✅ [${accountKey}] Email stored successfully: "${subject}" from ${fromEmail}`);
     return true;

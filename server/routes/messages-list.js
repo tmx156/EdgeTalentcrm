@@ -94,7 +94,7 @@ router.get('/', auth, async (req, res) => {
       // First get messages (bounded by time window and limit, trimmed columns)
       const { data: messageRows, error: messageError } = await supabase
         .from('messages')
-        .select('id, lead_id, type, content, sms_body, subject, sent_by, sent_by_name, status, email_status, read_status, delivery_status, provider_message_id, delivery_provider, delivery_attempts, sent_at, created_at, attachments')
+        .select('id, lead_id, type, content, email_body, sms_body, subject, sent_by, sent_by_name, status, email_status, read_status, delivery_status, provider_message_id, delivery_provider, delivery_attempts, sent_at, created_at, attachments')
         .gte('created_at', createdAfter)
         .order('created_at', { ascending: false })
         .limit(validatedLimit);
@@ -176,17 +176,24 @@ router.get('/', auth, async (req, res) => {
 
           // Parse attachments if they exist
           let attachments = [];
+          let embeddedImages = [];
           if (row.attachments) {
             try {
-              attachments = typeof row.attachments === 'string' 
+              const allAttachments = typeof row.attachments === 'string' 
                 ? JSON.parse(row.attachments) 
                 : row.attachments;
-              if (!Array.isArray(attachments)) {
+              if (!Array.isArray(allAttachments)) {
                 attachments = [];
+                embeddedImages = [];
+              } else {
+                // Separate embedded images from regular attachments
+                embeddedImages = allAttachments.filter(att => att.is_embedded === true);
+                attachments = allAttachments.filter(att => !att.is_embedded || att.is_embedded === false);
               }
             } catch (e) {
               console.warn('Error parsing attachments:', e);
               attachments = [];
+              embeddedImages = [];
             }
           }
 
@@ -206,9 +213,16 @@ router.get('/', auth, async (req, res) => {
             performedBy: row.sent_by,
             performedByName: row.sent_by_name,
             content,
-            details: { body: content, subject: row.subject },
+            email_body: row.email_body || null, // HTML content for Gmail-style rendering
+            details: { 
+              body: content, 
+              subject: row.subject,
+              email_body: row.email_body || null
+            },
             isRead: row.read_status === true || direction === 'sent', // Use messages table read_status as source of truth
-            attachments: attachments, // Include attachments
+            attachments: attachments, // Regular attachments (non-embedded)
+            embedded_images: embeddedImages, // Embedded images (CID images)
+            subject: row.subject,
             // Add delivery status tracking fields
             delivery_status: row.delivery_status,
             error_message: row.error_message,
