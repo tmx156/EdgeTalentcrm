@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import FullCalendar from '@fullcalendar/react';
-import dayGridPlugin from '@fullcalendar/daygrid';
-import timeGridPlugin from '@fullcalendar/timegrid';
-import interactionPlugin from '@fullcalendar/interaction';
 import {
   FiCalendar, FiClock, FiMapPin, FiUser, FiX, FiPhone, FiMail,
-  FiFileText, FiWifi, FiActivity, FiCheckCircle,
+  FiFileText, FiActivity, FiCheckCircle,
   FiExternalLink, FiCheck, FiSettings, FiEdit, FiMessageSquare,
   FiChevronDown, FiChevronUp, FiChevronLeft, FiChevronRight, FiSearch, FiDownload
 } from 'react-icons/fi';
@@ -17,7 +13,7 @@ import SaleModal from '../components/SaleModal';
 import ImageLightbox from '../components/ImageLightbox';
 import LazyImage from '../components/LazyImage';
 import { getOptimizedImageUrl } from '../utils/imageUtils';
-import { getCurrentUKTime, getTodayUK, toUKTime } from '../utils/timeUtils';
+import { getCurrentUKTime } from '../utils/timeUtils';
 import SlotCalendar from '../components/SlotCalendar';
 import WeeklySlotCalendar from '../components/WeeklySlotCalendar';
 import MonthlySlotCalendar from '../components/MonthlySlotCalendar';
@@ -33,7 +29,9 @@ const Calendar = () => {
   const [showMoreStatuses, setShowMoreStatuses] = useState(false);
   
   // PERFORMANCE: Cache for loaded date ranges - Track which date ranges have been loaded
-  const [loadedRanges, setLoadedRanges] = useState(new Set());
+  // Use ref instead of state to prevent fetchEvents from being recreated
+  const loadedRangesRef = useRef(new Set());
+  const [loadedRanges, setLoadedRanges] = useState(new Set()); // Keep state for UI if needed, but use ref for logic
 
   const [showLeadFormModal, setShowLeadFormModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => {
@@ -42,6 +40,8 @@ const Calendar = () => {
   });
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const calendarRef = useRef(null);
+  const bookingAlertShownRef = useRef(new Set()); // Track which booking leads have already shown the alert
+  const lastFetchTimeRef = useRef(0); // Use ref for lastFetchTime to prevent recreation
   const { socket, subscribeToCalendarUpdates, subscribeToLeadUpdates, isConnected, emitCalendarUpdate } = useSocket();
   const [leadForm, setLeadForm] = useState({
     _id: '',
@@ -189,6 +189,7 @@ const Calendar = () => {
     // If force refresh, clear the cache
     if (force) {
       console.log('📅 Force refresh: Clearing calendar cache');
+      loadedRangesRef.current = new Set();
       setLoadedRanges(new Set());
       setEvents([]);
     }
@@ -201,7 +202,7 @@ const Calendar = () => {
     
     // Increased debounce for better performance (minimum 3 seconds between fetches)
     const now = Date.now();
-    if (!force && now - lastFetchTime < 3000) {
+    if (!force && now - lastFetchTimeRef.current < 3000) {
       console.log('📅 Calendar: Fetch debounced, too soon since last fetch');
       return;
     }
@@ -214,7 +215,7 @@ const Calendar = () => {
     
     // Set fetching state
     setIsFetching(true);
-    setLastFetchTime(now);
+    lastFetchTimeRef.current = now; // Update ref instead of state
     
     try {
       console.log(`📅 Fetching calendar events...`);
@@ -242,8 +243,8 @@ const Calendar = () => {
       // Create range key for tracking
       rangeKey = `${startDate.toISOString()}_${endDate.toISOString()}`;
       
-      // Check if this range was already loaded (unless force refresh)
-      if (!force && loadedRanges.has(rangeKey)) {
+      // Check if this range was already loaded (unless force refresh) - use ref to prevent recreation
+      if (!force && loadedRangesRef.current.has(rangeKey)) {
         console.log('📅 Range already loaded, skipping fetch:', rangeKey);
         setIsFetching(false);
         return;
@@ -376,8 +377,6 @@ const Calendar = () => {
             displayStatus = lead.status;
           }
           
-          const isBookingStatus = ['Reschedule', 'Arrived', 'Left', 'No Show', 'No Sale'].includes(displayStatus);
-          
           // PERFORMANCE: Simplified title construction
           const event = {
             id: lead.id,
@@ -441,9 +440,10 @@ const Calendar = () => {
 
       console.log(`📅 Calendar: Final events array has ${finalEvents.length} unique events`);
 
-      // Mark this range as loaded if we have a rangeKey
+      // Mark this range as loaded if we have a rangeKey - use ref to prevent recreation
       if (rangeKey) {
-        setLoadedRanges(prev => new Set([...prev, rangeKey]));
+        loadedRangesRef.current.add(rangeKey);
+        setLoadedRanges(new Set(loadedRangesRef.current)); // Update state for UI if needed
         console.log(`📅 Marked range as loaded: ${rangeKey}`);
       }
 
@@ -512,7 +512,7 @@ const Calendar = () => {
       // Always reset fetching state
       setIsFetching(false);
     }
-  }, []); // Empty dependency array - function doesn't need to recreate
+  }, [getEventColor, isFetching]); // Removed loadedRanges and lastFetchTime - using refs instead to prevent recreation loop
 
   // Fetch booking confirmation templates
   useEffect(() => {
@@ -555,29 +555,51 @@ const Calendar = () => {
     if (bookingLead) {
       try {
         const leadData = JSON.parse(bookingLead);
-        console.log('📊 Loading booking data from localStorage:', leadData);
-        setLeadForm({
-          _id: leadData.id, // Preserve the lead ID
-          name: leadData.name || '',
-          phone: leadData.phone || '',
-          email: leadData.email || '',
-          postcode: leadData.postcode || '',
-          status: 'Booked', // Set status to Booked when coming from leads page
-          notes: leadData.notes || '',
-          image_url: leadData.image_url || '',
-          isReschedule: leadData.isReschedule || false
-        });
-        console.log('📊 Set leadForm with ID:', leadData.id);
-        // Clear the localStorage data after a delay to prevent race conditions
-        setTimeout(() => {
+        const leadId = leadData.id;
+        
+        // Only show alert if we haven't shown it for this lead yet
+        if (!bookingAlertShownRef.current.has(leadId)) {
+          console.log('📊 Loading booking data from localStorage:', leadData);
+          setLeadForm({
+            _id: leadId, // Preserve the lead ID
+            name: leadData.name || '',
+            phone: leadData.phone || '',
+            email: leadData.email || '',
+            postcode: leadData.postcode || '',
+            status: 'Booked', // Set status to Booked when coming from leads page
+            notes: leadData.notes || '',
+            image_url: leadData.image_url || '',
+            isReschedule: leadData.isReschedule || false
+          });
+          console.log('📊 Set leadForm with ID:', leadId);
+          
+          // Mark this lead as having shown the alert
+          bookingAlertShownRef.current.add(leadId);
+          
+          // Clear the localStorage data immediately to prevent re-triggering
           localStorage.removeItem('bookingLead');
-        }, 1000);
-        // Show a contextual notification based on current status
-        setTimeout(() => {
-          const action = leadData.isReschedule ? 'reschedule' : (leadData.currentStatus?.toLowerCase() === 'booked' ? 'reschedule' : 'book');
-          const message = `Lead data for ${leadData.name} has been loaded. Click on a time slot to ${action} the appointment.`;
-          alert(message);
-        }, 500);
+          
+          // Show a contextual notification based on current status (only once)
+          setTimeout(() => {
+            const action = leadData.isReschedule ? 'reschedule' : (leadData.currentStatus?.toLowerCase() === 'booked' ? 'reschedule' : 'book');
+            const message = `Lead data for ${leadData.name} has been loaded. Click on a time slot to ${action} the appointment.`;
+            alert(message);
+          }, 500);
+        } else {
+          // Lead data already processed, just load it without showing alert
+          setLeadForm({
+            _id: leadId,
+            name: leadData.name || '',
+            phone: leadData.phone || '',
+            email: leadData.email || '',
+            postcode: leadData.postcode || '',
+            status: 'Booked',
+            notes: leadData.notes || '',
+            image_url: leadData.image_url || '',
+            isReschedule: leadData.isReschedule || false
+          });
+          localStorage.removeItem('bookingLead');
+        }
       } catch (error) {
         console.error('Error parsing lead data:', error);
         localStorage.removeItem('bookingLead');
@@ -596,7 +618,7 @@ const Calendar = () => {
     return () => {
       clearTimeout(initialFetch);
     };
-  }, []); // Empty dependency array - only run once on mount
+  }, [fetchEvents]); // Include fetchEvents dependency
 
   // Fetch blocked slots when date or view changes
   useEffect(() => {
@@ -956,73 +978,7 @@ const Calendar = () => {
     };
   };
 
-  const handleEventClick = async (clickInfo) => {
-    // Debug logging
-    console.log('📅 Event clicked:', clickInfo.event.title);
-    console.log('📸 Event image_url:', clickInfo.event.extendedProps?.lead?.image_url);
-    console.log('📋 Full event extendedProps:', clickInfo.event.extendedProps);
-
-    // Store a stable plain-object snapshot so live updates don't close the modal
-    setSelectedEvent(createEventSnapshot(clickInfo.event));
-    setShowEventModal(true);
-    setShowAllMessages(false);
-    // Don't fetch sale details on modal open - only fetch if needed
-    setSelectedSale(null);
-
-    // REMOVED: Booking history API call - was causing 403 errors and blocking calendar render
-    // Booking history is already included in the calendar events response
-  };
-
-
-
-  const handleDateTimeClick = (clickInfo) => {
-    // Get current view
-    const calendarApi = calendarRef.current.getApi();
-    const currentView = calendarApi.view.type;
-    
-    if (currentView === 'dayGridMonth') {
-      // If in month view, switch to day view
-      const dateStr = clickInfo.dateStr || clickInfo.startStr;
-      calendarApi.changeView('timeGridDay', dateStr);
-    } else if (currentView === 'timeGridDay' || currentView === 'timeGridWeek') {
-      // If in day or week view, open lead form for time slot booking
-      // Handle both dateClick and select events
-      const selectedDateTime = clickInfo.date || clickInfo.start || new Date(clickInfo.dateStr || clickInfo.startStr);
-      
-      // Check if the selected time is within business hours (10 AM - 5:45 PM)
-      const hour = selectedDateTime.getHours();
-      const minute = selectedDateTime.getMinutes();
-
-      if (hour < 10 || (hour >= 17 && minute > 45)) {
-        alert('Please select a time between 10:00 AM and 5:45 PM');
-        return;
-      }
-      
-      // Round to nearest 15-minute interval
-      const roundedMinutes = Math.round(minute / 15) * 15;
-      selectedDateTime.setMinutes(roundedMinutes, 0, 0);
-      
-      // Debug logging for timezone handling
-      console.log('🕐 Click Debug:', {
-        originalClickInfo: clickInfo,
-        selectedDateTime: selectedDateTime.toISOString(),
-        selectedDateTimeLocal: selectedDateTime.toLocaleString(),
-        selectedDateTimeUTC: selectedDateTime.toUTCString(),
-        hour: selectedDateTime.getHours(),
-        minute: selectedDateTime.getMinutes(),
-        timezoneOffset: selectedDateTime.getTimezoneOffset()
-      });
-      
-      setSelectedDate({
-        ...clickInfo,
-        dateStr: selectedDateTime.toISOString(),
-        date: selectedDateTime
-      });
-      setSendEmail(true);
-      setSendSms(true);
-      setShowLeadFormModal(true);
-    }
-  };
+  // Removed unused handleEventClick and handleDateTimeClick functions
 
 
 
@@ -3136,7 +3092,6 @@ const Calendar = () => {
                         
                         // Check permissions for button visibility
                         // const canChangeStatus = user?.role === 'admin' || user?.role === 'viewer' || user?.role === 'booker';
-                        const isAssignedLead = selectedEvent.extendedProps?.lead?.booker === user?.id;
                         const canChangeConfirmation = user?.role === 'admin' || user?.role === 'viewer' || user?.role === 'booker';
                         const canChangeOtherStatuses = user?.role === 'admin' || user?.role === 'viewer';
                         const canCancelBooking = user?.role === 'admin' || user?.role === 'viewer' || user?.role === 'booker';
@@ -3313,9 +3268,6 @@ const Calendar = () => {
                       history = [];
                     }
                     const messages = Array.isArray(history) ? history.filter(h => ['SMS_SENT', 'SMS_RECEIVED', 'SMS_FAILED'].includes(h.action)) : [];
-                    const receivedMessages = messages.filter(m => m.action === 'SMS_RECEIVED')
-                                                     .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
-                    const lastReceived = receivedMessages[0];
                     
                     if (messages.length === 0) return null;
                     
