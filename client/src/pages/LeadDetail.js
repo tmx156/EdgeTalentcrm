@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { FiArrowLeft, FiEdit, FiSave, FiPhone, FiMail, FiMapPin, FiCalendar, FiMessageSquare, FiSend, FiChevronLeft, FiChevronRight, FiChevronUp, FiChevronDown, FiActivity, FiCheckCircle, FiX, FiRefreshCw, FiClock, FiUser, FiCheck, FiSettings } from 'react-icons/fi';
+import { FiArrowLeft, FiEdit, FiSave, FiPhone, FiMail, FiMapPin, FiCalendar, FiMessageSquare, FiSend, FiChevronLeft, FiChevronRight, FiChevronUp, FiChevronDown, FiClock, FiUser, FiCheck, FiSettings } from 'react-icons/fi';
 import axios from 'axios';
-import TagSystem from '../components/TagSystem';
 import LeadStatusDropdown from '../components/LeadStatusDropdown';
 import PhotoModal from '../components/PhotoModal';
 import LazyImage from '../components/LazyImage';
@@ -43,15 +42,12 @@ const LeadDetail = () => {
   // Photo modal state
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
 
-  // Reschedule modal state
-  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
+  // Reschedule modal state (kept for potential future use)
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
 
   // Image preloading state
   const [preloadedImages, setPreloadedImages] = useState(new Set());
-  const [newDate, setNewDate] = useState('');
-  const [newTime, setNewTime] = useState('');
-  const [rescheduleLoading, setRescheduleLoading] = useState(false);
-  const [rescheduleError, setRescheduleError] = useState('');
 
   // Sale state
   const [sale, setSale] = useState(null);
@@ -148,7 +144,7 @@ const LeadDetail = () => {
   ].includes(t.type);
 
   // Preload adjacent lead images for smooth navigation
-  const preloadAdjacentImages = async () => {
+  const preloadAdjacentImages = useCallback(async () => {
     if (allLeads.length <= 1) return;
 
     const currentLeadIndex = currentIndex;
@@ -183,118 +179,10 @@ const LeadDetail = () => {
     } catch (error) {
       console.warn('⚠️ Failed to preload some images:', error);
     }
-  };
-
-  // Initialize component and handle navigation
-  useEffect(() => {
-    console.log('🔍 LeadDetail: Component initialized', { id, hasState: !!location.state });
-
-    // Always try to set up navigation context
-    if (location.state) {
-      const { statusFilter, searchTerm, filteredLeads } = location.state;
-      console.log('🔍 LeadDetail: Setting up navigation context');
-
-      setFilterContext({
-        statusFilter: statusFilter || 'all',
-        searchTerm: searchTerm || '',
-        filteredLeads: filteredLeads || []
-      });
-
-      if (filteredLeads && filteredLeads.length > 0) {
-        setAllLeads(filteredLeads);
-        const index = filteredLeads.findIndex(lead => lead.id === id);
-        setCurrentIndex(index !== -1 ? index : 0);
-        console.log('📍 LeadDetail: Navigation context ready, index:', index);
-      }
-    }
-
-    // Fallback: if we don't have leads but have an ID, fetch all leads
-    if (id && allLeads.length === 0 && !location.state?.filteredLeads) {
-      console.log('⚠️ LeadDetail: No leads available, fetching all');
-      fetchAllLeads();
-    }
-  }, [id, location.state]); // Add dependencies
-
-  // Separate effect for initial data fetching
-  useEffect(() => {
-    if (id && !lead) {
-      console.log('📥 LeadDetail: Fetching initial data for lead:', id);
-      fetchLead();
-      fetchTemplates();
-      fetchSale();
-      fetchBookingHistory();
-      fetchUpcomingCallbacks();
-    }
-  }, [id]);
-
-  // Handle lead ID changes (navigation within the app)
-  useEffect(() => {
-    if (id && allLeads.length > 0) {
-      // Update current index if lead exists in our list
-      const leadIndex = allLeads.findIndex(lead => lead.id === id);
-      if (leadIndex !== -1) {
-        setCurrentIndex(leadIndex);
-        console.log('🔄 LeadDetail: Updated index for existing lead:', leadIndex);
-      }
-
-      // Fetch data for the new lead
-      fetchLead();
-      fetchTemplates();
-      fetchSale();
-      fetchBookingHistory();
-      fetchUpcomingCallbacks();
-    }
-  }, [id, allLeads]);
-
-  // Preload adjacent images when leads or current index changes
-  useEffect(() => {
-    if (allLeads.length > 0) {
-      preloadAdjacentImages();
-    }
   }, [allLeads, currentIndex]);
 
-  // Fetch conversation history when messages section is expanded
-  useEffect(() => {
-    if (messagesExpanded && lead) {
-      fetchConversationHistory();
-    }
-  }, [messagesExpanded, lead]);
-
-  // Auto-resize textarea when reply changes or mode changes
-  useEffect(() => {
-    if (newReply && messagesExpanded) {
-      setTimeout(() => {
-        const textarea = document.querySelector('textarea[placeholder*="reply"]');
-        autoResizeTextarea(textarea);
-      }, 0);
-    }
-  }, [newReply, replyMode, messagesExpanded]);
-
-  const fetchTemplates = async () => {
-    try {
-      // Fetch user-specific templates (bookersOnly=true means only their templates)
-      const response = await axios.get('/api/templates?bookersOnly=true');
-      const allTemplates = response.data.map(template => ({
-        ...template,
-        _id: template.id || template._id // Ensure _id field exists
-      }));
-      
-      // Filter for Bookers Template types only
-      const bookersTemplates = allTemplates.filter(isLeadTemplate);
-      
-      // Set both SMS and Email templates to the same filtered list
-      // (templates can have both smsBody and emailBody)
-      setSmsTemplates(bookersTemplates.filter(t => t.smsBody || t.sendSMS));
-      setEmailTemplates(bookersTemplates.filter(t => t.emailBody || t.sendEmail));
-    } catch (error) {
-      console.error('Error fetching templates:', error);
-      // Use fallback templates
-      setSmsTemplates(fallbackSmsTemplates);
-      setEmailTemplates(fallbackEmailTemplates);
-    }
-  };
-
-  const fetchAllLeads = async () => {
+  // Define fetchAllLeads before it's used in useEffect
+  const fetchAllLeads = useCallback(async () => {
     try {
       // Use filter context if available, otherwise fetch all leads
       const params = {};
@@ -330,9 +218,34 @@ const LeadDetail = () => {
       setAllLeads([]);
       setCurrentIndex(0);
     }
-  };
+  }, [id, filterContext]);
 
-  const fetchLead = async () => {
+  // Define all fetch functions before they're used in useEffect hooks
+  const fetchTemplates = useCallback(async () => {
+    try {
+      // Fetch user-specific templates (bookersOnly=true means only their templates)
+      const response = await axios.get('/api/templates?bookersOnly=true');
+      const allTemplates = response.data.map(template => ({
+        ...template,
+        _id: template.id || template._id // Ensure _id field exists
+      }));
+      
+      // Filter for Bookers Template types only
+      const bookersTemplates = allTemplates.filter(isLeadTemplate);
+      
+      // Set both SMS and Email templates to the same filtered list
+      // (templates can have both smsBody and emailBody)
+      setSmsTemplates(bookersTemplates.filter(t => t.smsBody || t.sendSMS));
+      setEmailTemplates(bookersTemplates.filter(t => t.emailBody || t.sendEmail));
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+      // Use fallback templates
+      setSmsTemplates(fallbackSmsTemplates);
+      setEmailTemplates(fallbackEmailTemplates);
+    }
+  }, []);
+
+  const fetchLead = useCallback(async () => {
     if (!id) {
       console.log('⚠️ No ID provided for fetchLead');
       return;
@@ -357,9 +270,10 @@ const LeadDetail = () => {
       setLoading(false);
       setNavigationLoading(false); // Reset navigation loading when done
     }
-  };
+  }, [id]);
 
-  const fetchSale = async () => {
+  const fetchSale = useCallback(async () => {
+    if (!id) return;
     try {
       const response = await axios.get(`/api/sales/by-lead/${id}`);
       setSale(response.data);
@@ -372,9 +286,10 @@ const LeadDetail = () => {
         setSale(null);
       }
     }
-  };
+  }, [id]);
 
-  const fetchBookingHistory = async () => {
+  const fetchBookingHistory = useCallback(async () => {
+    if (!id) return;
     try {
       setHistoryLoading(true);
       const response = await axios.get(`/api/leads/${id}/history`);
@@ -385,9 +300,10 @@ const LeadDetail = () => {
     } finally {
       setHistoryLoading(false);
     }
-  };
+  }, [id]);
 
-  const fetchUpcomingCallbacks = async () => {
+  const fetchUpcomingCallbacks = useCallback(async () => {
+    if (!id) return;
     try {
       const response = await axios.get(`/api/leads/${id}/callbacks`);
       setUpcomingCallbacks(response.data || []);
@@ -395,7 +311,166 @@ const LeadDetail = () => {
       console.error('Error fetching upcoming callbacks:', error);
       setUpcomingCallbacks([]);
     }
-  };
+  }, [id]);
+
+  const fetchConversationHistory = useCallback(async () => {
+    if (!lead || !messagesExpanded) return;
+    
+    try {
+      setConversationLoading(true);
+      
+      // Get conversation history from booking history
+      if (lead.booking_history) {
+        const history = typeof lead.booking_history === 'string' 
+          ? JSON.parse(lead.booking_history) 
+          : lead.booking_history;
+        
+        // Filter communication entries and sort by timestamp
+        const communications = history
+          .filter(entry => ['SMS_SENT', 'SMS_RECEIVED', 'EMAIL_SENT', 'EMAIL_RECEIVED'].includes(entry.action))
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        setConversationHistory(communications);
+      } else {
+        setConversationHistory([]);
+      }
+    } catch (error) {
+      console.error('Error fetching conversation history:', error);
+      setConversationHistory([]);
+    } finally {
+      setConversationLoading(false);
+    }
+  }, [lead, messagesExpanded]);
+
+  // Initialize component and handle navigation
+  // Use useRef to track if we've initialized to prevent re-initialization on navigation
+  const initializedRef = useRef(false);
+  const locationStateRef = useRef(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    // Only run if we're actually on the lead detail route (exact match)
+    const isOnLeadDetailRoute = location.pathname === `/leads/${id}`;
+    
+    if (!id || !isOnLeadDetailRoute) {
+      // If we're not on the lead detail route, reset initialization flag
+      // This allows re-initialization when navigating back
+      if (!isOnLeadDetailRoute) {
+        initializedRef.current = false;
+        locationStateRef.current = null;
+      }
+      return;
+    }
+
+    // Check if location.state actually changed
+    const currentStateStr = JSON.stringify(location.state);
+    const previousStateStr = JSON.stringify(locationStateRef.current);
+    const stateChanged = currentStateStr !== previousStateStr;
+    
+    // Only initialize once per route, or if location.state actually changed
+    if (!initializedRef.current || stateChanged) {
+      console.log('🔍 LeadDetail: Component initialized', { id, hasState: !!location.state });
+
+      // Always try to set up navigation context
+      if (location.state) {
+        const { statusFilter, searchTerm, filteredLeads } = location.state;
+        console.log('🔍 LeadDetail: Setting up navigation context');
+
+        if (isMountedRef.current) {
+          setFilterContext({
+            statusFilter: statusFilter || 'all',
+            searchTerm: searchTerm || '',
+            filteredLeads: filteredLeads || []
+          });
+
+          if (filteredLeads && filteredLeads.length > 0) {
+            setAllLeads(filteredLeads);
+            const index = filteredLeads.findIndex(lead => lead.id === id);
+            setCurrentIndex(index !== -1 ? index : 0);
+            console.log('📍 LeadDetail: Navigation context ready, index:', index);
+          }
+        }
+      }
+
+      // Fallback: if we don't have leads but have an ID, fetch all leads
+      if (id && allLeads.length === 0 && !location.state?.filteredLeads && isMountedRef.current) {
+        console.log('⚠️ LeadDetail: No leads available, fetching all');
+        fetchAllLeads();
+      }
+
+      initializedRef.current = true;
+      locationStateRef.current = location.state;
+    }
+
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [id, location.pathname, allLeads.length, fetchAllLeads]); // Removed location.state, use location.pathname instead
+
+  // Reset initialization when navigating to a different lead
+  useEffect(() => {
+    initializedRef.current = false;
+    locationStateRef.current = null;
+    isMountedRef.current = true;
+  }, [id]);
+
+  // Separate effect for initial data fetching
+  useEffect(() => {
+    if (id && !lead) {
+      console.log('📥 LeadDetail: Fetching initial data for lead:', id);
+      fetchLead();
+      fetchTemplates();
+      fetchSale();
+      fetchBookingHistory();
+      fetchUpcomingCallbacks();
+    }
+  }, [id, lead, fetchLead, fetchTemplates, fetchSale, fetchBookingHistory, fetchUpcomingCallbacks]);
+
+  // Handle lead ID changes (navigation within the app)
+  useEffect(() => {
+    if (id && allLeads.length > 0) {
+      // Update current index if lead exists in our list
+      const leadIndex = allLeads.findIndex(lead => lead.id === id);
+      if (leadIndex !== -1) {
+        setCurrentIndex(leadIndex);
+        console.log('🔄 LeadDetail: Updated index for existing lead:', leadIndex);
+      }
+
+      // Fetch data for the new lead
+      fetchLead();
+      fetchTemplates();
+      fetchSale();
+      fetchBookingHistory();
+      fetchUpcomingCallbacks();
+    }
+  }, [id, allLeads.length, fetchLead, fetchTemplates, fetchSale, fetchBookingHistory, fetchUpcomingCallbacks]);
+
+  // Preload adjacent images when leads or current index changes
+  useEffect(() => {
+    if (allLeads.length > 0) {
+      preloadAdjacentImages();
+    }
+  }, [allLeads, currentIndex, preloadAdjacentImages]);
+
+  // Fetch conversation history when messages section is expanded
+  useEffect(() => {
+    if (messagesExpanded && lead) {
+      fetchConversationHistory();
+    }
+  }, [messagesExpanded, lead, fetchConversationHistory]);
+
+  // Auto-resize textarea when reply changes or mode changes
+  useEffect(() => {
+    if (newReply && messagesExpanded) {
+      setTimeout(() => {
+        const textarea = document.querySelector('textarea[placeholder*="reply"]');
+        autoResizeTextarea(textarea);
+      }, 0);
+    }
+  }, [newReply, replyMode, messagesExpanded]);
+
+  // All fetch functions moved above to useCallback before useEffect hooks
 
   const handleSave = async () => {
     try {
@@ -545,35 +620,7 @@ const LeadDetail = () => {
     }
   };
 
-  // Conversation Functions
-  const fetchConversationHistory = async () => {
-    if (!lead || !messagesExpanded) return;
-    
-    try {
-      setConversationLoading(true);
-      
-      // Get conversation history from booking history
-      if (lead.booking_history) {
-        const history = typeof lead.booking_history === 'string' 
-          ? JSON.parse(lead.booking_history) 
-          : lead.booking_history;
-        
-        // Filter communication entries and sort by timestamp
-        const communications = history
-          .filter(entry => ['SMS_SENT', 'SMS_RECEIVED', 'EMAIL_SENT', 'EMAIL_RECEIVED'].includes(entry.action))
-          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-        
-        setConversationHistory(communications);
-      } else {
-        setConversationHistory([]);
-      }
-    } catch (error) {
-      console.error('Error fetching conversation history:', error);
-      setConversationHistory([]);
-    } finally {
-      setConversationLoading(false);
-    }
-  };
+  // fetchConversationHistory moved above to useCallback before useEffect
 
   const handleSendQuickReply = async () => {
     if (!newReply.trim()) {
@@ -717,102 +764,7 @@ const LeadDetail = () => {
     }
   };
 
-  const handleCancelAppointment = async () => {
-    if (lead.status === 'Cancelled') {
-      alert('This appointment is already cancelled.');
-      return;
-    }
-
-    const confirmationMessage = `Are you sure you want to cancel ${lead.name}'s appointment?\n\n` +
-      `This will:\n` +
-      `• Change the status to "Cancelled"\n` +
-      `• Remove the appointment from the calendar\n` +
-      `• Update the booking history\n` +
-      `• Update daily diary statistics\n\n` +
-      `This action cannot be undone.`;
-
-    if (!window.confirm(confirmationMessage)) {
-      return;
-    }
-
-    const oldStatus = lead.status;
-    const originalDateBooked = lead.dateBooked;
-
-    try {
-      const response = await axios.put(`/api/leads/${lead.id}`, {
-        ...lead,
-        status: 'Cancelled',
-        dateBooked: null // Remove the booking date
-      });
-
-      if (response.data.success || response.data.lead) {
-        const updatedLead = response.data.lead || response.data;
-        setLead(updatedLead);
-        setFormData(updatedLead);
-        
-        // Emit diary update for cancellation
-        try {
-          await axios.post('/api/stats/diary-update', {
-            leadId: lead.id,
-            leadName: lead.name,
-            oldStatus: oldStatus,
-            newStatus: 'Cancelled',
-            dateBooked: originalDateBooked,
-            timestamp: new Date().toISOString()
-          });
-        } catch (diaryError) {
-          console.warn('Diary update failed:', diaryError);
-        }
-        
-        // Show success message with visual feedback
-        alert(`❌ Successfully cancelled ${lead.name}'s appointment. Diary statistics have been updated.`);
-        
-        // Refresh the lead data
-        fetchLead();
-      }
-    } catch (error) {
-      console.error('Error cancelling appointment:', error);
-      alert('Failed to cancel appointment. Please try again.');
-    }
-  };
-
-  const handleRescheduleAppointment = () => {
-    if (lead.status === 'Cancelled') {
-      alert('Cannot reschedule a cancelled appointment. Please change the status first.');
-      return;
-    }
-    setNewDate(lead.dateBooked ? lead.dateBooked.split('T')[0] : '');
-    setNewTime(lead.dateBooked ? new Date(lead.dateBooked).toISOString().substr(11, 5) : '');
-    setRescheduleModalOpen(true);
-  };
-
-  const handleRescheduleSubmit = async () => {
-    setRescheduleLoading(true);
-    setRescheduleError('');
-    try {
-      const isoDateTime = newDate && newTime ? new Date(`${newDate}T${newTime}`).toISOString() : null;
-      if (!isoDateTime) {
-        setRescheduleError('Please select both date and time.');
-        setRescheduleLoading(false);
-        return;
-      }
-      const response = await axios.put(`/api/leads/${lead.id}`, {
-        ...lead,
-        dateBooked: isoDateTime,
-        status: 'Booked',
-        is_confirmed: 0, // Reset to unconfirmed when rescheduling
-        booking_status: 'Reschedule', // Set to new Reschedule status to indicate rescheduling
-        isReschedule: true,
-        rescheduleReason: `Appointment rescheduled via lead detail to ${new Date(isoDateTime).toLocaleString()}`
-      });
-      setLead(response.data.lead || response.data);
-      setFormData(response.data.lead || response.data);
-      setRescheduleModalOpen(false);
-    } catch (error) {
-      setRescheduleError('Failed to reschedule. Please try again.');
-    }
-    setRescheduleLoading(false);
-  };
+  // Removed unused functions: handleCancelAppointment, handleRescheduleAppointment, handleRescheduleSubmit, handleNoAnswerIncrement
 
   const getStatusBadgeClass = (status) => {
     switch (status?.toLowerCase()) {
@@ -842,16 +794,7 @@ const LeadDetail = () => {
     });
   };
 
-  // No Answer Counter functionality
-  const handleNoAnswerIncrement = async () => {
-    try {
-      const response = await axios.post(`/api/leads/${id}/no-answer`);
-      setLead(response.data);
-      setFormData(response.data);
-    } catch (error) {
-      console.error('Error updating no answer count:', error);
-    }
-  };
+  // Removed unused handleNoAnswerIncrement function
 
   if (loading || navigationLoading) {
     return (

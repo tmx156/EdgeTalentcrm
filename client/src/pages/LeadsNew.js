@@ -684,8 +684,8 @@ const LeadsNew = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100">
-      {/* Modern Sticky Header */}
-      <div className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-gray-200/50 shadow-sm">
+      {/* Modern Header */}
+      <div className="backdrop-blur-xl bg-white/80 border-b border-gray-200/50 shadow-sm">
         <div className="px-6 py-4">
           {/* Top Row - Responsive for mobile */}
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-4">
@@ -873,71 +873,76 @@ const LeadsNew = () => {
             })}
           </div>
         </div>
+      </div>
 
-        {/* Date Filter */}
-        <div className="px-6 pb-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl border border-blue-200">
-            <div className="flex items-center space-x-2">
-              <FiCalendar className="h-5 w-5 text-blue-600" />
-              <span className="text-sm font-semibold text-gray-800">
-                {statusFilter === 'Assigned' ? 'Date Assigned:' : 'Date Added:'}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setDateFilter('today')}
-                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all duration-200 ${
-                  dateFilter === 'today'
-                    ? 'bg-blue-600 text-white shadow-md transform scale-105'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Today
-              </button>
-              <button
-                onClick={() => setDateFilter('yesterday')}
-                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all duration-200 ${
-                  dateFilter === 'yesterday'
-                    ? 'bg-blue-600 text-white shadow-md transform scale-105'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Yesterday
-              </button>
-              <button
-                onClick={() => setDateFilter('week')}
-                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all duration-200 ${
-                  dateFilter === 'week'
-                    ? 'bg-blue-600 text-white shadow-md transform scale-105'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Last 7 Days
-              </button>
-              <button
-                onClick={() => setDateFilter('month')}
-                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all duration-200 ${
-                  dateFilter === 'month'
-                    ? 'bg-blue-600 text-white shadow-md transform scale-105'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                Last 30 Days
-              </button>
-              <button
-                onClick={() => setDateFilter('all')}
-                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-all duration-200 ${
-                  dateFilter === 'all'
-                    ? 'bg-blue-600 text-white shadow-md transform scale-105'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                All Time
-              </button>
-            </div>
+      {/* Date Filter - Scrollable Section */}
+      <div className="px-3 sm:px-6 pt-4 pb-4 bg-gradient-to-br from-gray-50 via-white to-gray-100">
+        <div className="flex flex-col gap-3 bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 rounded-xl border border-blue-200">
+          {/* Label Section */}
+          <div className="flex items-center space-x-2 flex-shrink-0">
+            <FiCalendar className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
+            <span className="text-xs sm:text-sm font-semibold text-gray-800 whitespace-nowrap">
+              {statusFilter === 'Assigned' ? 'Date Assigned:' : 'Date Added:'}
+            </span>
+          </div>
+          
+          {/* Quick Filter Buttons */}
+          <div className="flex flex-wrap gap-2 w-full">
+            <button
+              onClick={() => setDateFilter('today')}
+              className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-lg font-medium transition-all duration-200 whitespace-nowrap ${
+                dateFilter === 'today'
+                  ? 'bg-blue-600 text-white shadow-md transform scale-105'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setDateFilter('yesterday')}
+              className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-lg font-medium transition-all duration-200 whitespace-nowrap ${
+                dateFilter === 'yesterday'
+                  ? 'bg-blue-600 text-white shadow-md transform scale-105'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Yesterday
+            </button>
+            <button
+              onClick={() => setDateFilter('week')}
+              className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-lg font-medium transition-all duration-200 whitespace-nowrap ${
+                dateFilter === 'week'
+                  ? 'bg-blue-600 text-white shadow-md transform scale-105'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Last 7 Days
+            </button>
+            <button
+              onClick={() => setDateFilter('month')}
+              className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-lg font-medium transition-all duration-200 whitespace-nowrap ${
+                dateFilter === 'month'
+                  ? 'bg-blue-600 text-white shadow-md transform scale-105'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              Last 30 Days
+            </button>
+            <button
+              onClick={() => setDateFilter('all')}
+              className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-lg font-medium transition-all duration-200 whitespace-nowrap ${
+                dateFilter === 'all'
+                  ? 'bg-blue-600 text-white shadow-md transform scale-105'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              All Time
+            </button>
+          </div>
 
-            {/* Custom Date Range */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:ml-auto">
+          {/* Custom Date Range */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto sm:ml-auto">
+            <div className="flex items-center gap-2 flex-1 sm:flex-initial">
               <input
                 type="date"
                 value={customDateStart}
@@ -945,10 +950,10 @@ const LeadsNew = () => {
                   setCustomDateStart(e.target.value);
                   if (e.target.value) setDateFilter('custom');
                 }}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="flex-1 sm:flex-initial border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-0"
                 placeholder="Start date"
               />
-              <span className="text-gray-500 text-sm">to</span>
+              <span className="text-gray-500 text-xs sm:text-sm whitespace-nowrap">to</span>
               <input
                 type="date"
                 value={customDateEnd}
@@ -956,7 +961,7 @@ const LeadsNew = () => {
                   setCustomDateEnd(e.target.value);
                   if (e.target.value) setDateFilter('custom');
                 }}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="flex-1 sm:flex-initial border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-0"
                 placeholder="End date"
               />
               {(customDateStart || customDateEnd) && (
@@ -966,7 +971,7 @@ const LeadsNew = () => {
                     setCustomDateEnd('');
                     setDateFilter('all');
                   }}
-                  className="text-gray-500 hover:text-red-600 p-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                  className="text-gray-500 hover:text-red-600 p-1.5 hover:bg-red-50 rounded-lg transition-colors flex-shrink-0"
                   title="Clear custom dates"
                 >
                   <FiX className="h-4 w-4" />

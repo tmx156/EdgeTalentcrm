@@ -96,15 +96,46 @@ router.get('/queue', auth, async (req, res) => {
     );
 
     // Query leads that have been sent to SalesApe (salesape_sent_at IS NOT NULL)
-    const { data: allLeads, error } = await supabase
-      .from('leads')
-      .select('*')
-      .not('salesape_sent_at', 'is', null) // Only leads that have been sent to SalesApe
-      .order('salesape_sent_at', { ascending: false }) // Most recent first
-      .limit(200);
+    // Try to query, but handle case where column might not exist yet
+    let allLeads = [];
+    let error = null;
+
+    try {
+      const result = await supabase
+        .from('leads')
+        .select('*')
+        .not('salesape_sent_at', 'is', null) // Only leads that have been sent to SalesApe
+        .order('salesape_sent_at', { ascending: false }) // Most recent first
+        .limit(200);
+      
+      allLeads = result.data || [];
+      error = result.error;
+    } catch (queryError) {
+      // If column doesn't exist, check if it's a column error
+      if (queryError.message && queryError.message.includes('column') && queryError.message.includes('does not exist')) {
+        console.error('❌ CRITICAL: salesape_sent_at column does not exist in database!');
+        console.error('📋 Please run the migration: server/migrations/add_salesape_tracking_columns.sql');
+        return res.status(500).json({ 
+          message: 'Database schema missing SalesApe columns',
+          error: 'Please run the migration script to add SalesApe tracking columns',
+          migrationFile: 'server/migrations/add_salesape_tracking_columns.sql'
+        });
+      }
+      throw queryError;
+    }
 
     if (error) {
       console.error('Error fetching queue from Supabase:', error);
+      // Check if it's a column missing error
+      if (error.message && error.message.includes('column') && error.message.includes('does not exist')) {
+        console.error('❌ CRITICAL: salesape_sent_at column does not exist in database!');
+        console.error('📋 Please run the migration: server/migrations/add_salesape_tracking_columns.sql');
+        return res.status(500).json({ 
+          message: 'Database schema missing SalesApe columns',
+          error: 'Please run the migration script to add SalesApe tracking columns',
+          migrationFile: 'server/migrations/add_salesape_tracking_columns.sql'
+        });
+      }
       return res.status(500).json({ message: 'Server error', error: error.message });
     }
 

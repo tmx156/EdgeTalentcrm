@@ -33,20 +33,45 @@ const SalesApe = () => {
     // Listen for SalesApe updates
     newSocket.on('salesape_status_update', (data) => {
       console.log('📥 SalesApe status update:', data);
+      // Refresh everything to show latest progress
       fetchActivityData();
+      fetchQueueData();
+      // If this is the selected lead, refresh conversation
+      if (selectedLead && data.leadId === selectedLead.id) {
+        fetchConversation(selectedLead.id);
+      }
     });
 
     newSocket.on('salesape_message', (data) => {
       console.log('💬 New SalesApe message:', data);
+      // Refresh queue to show progress updates
+      fetchQueueData();
+      // Refresh activity stats
+      fetchActivityData();
+      // If this is the selected lead, refresh conversation
       if (selectedLead && data.leadId === selectedLead.id) {
         fetchConversation(selectedLead.id);
       }
-      fetchQueueData();
     });
 
     newSocket.on('salesape_queue_update', (data) => {
-      console.log('📋 Queue update:', data);
+      console.log('📋 Queue update received:', data);
+      // Immediately refresh queue when a lead is added/removed/updated
       fetchQueueData();
+      // Also refresh activity data to update stats
+      fetchActivityData();
+      
+      // If this is a status update for the selected lead, refresh conversation
+      if (selectedLead && data.leadId === selectedLead.id && data.action === 'updated') {
+        fetchConversation(selectedLead.id);
+      }
+      
+      // Also refresh after a short delay to ensure database has updated
+      setTimeout(() => {
+        console.log('🔄 Refreshing queue again after delay...');
+        fetchQueueData();
+        fetchActivityData();
+      }, 500);
     });
 
     setSocket(newSocket);
@@ -60,10 +85,11 @@ const SalesApe = () => {
   useEffect(() => {
     fetchAllData();
     
-    // Auto-refresh every 30 seconds
+    // Auto-refresh every 5 seconds to catch real-time progress updates
     const interval = setInterval(() => {
-      fetchAllData();
-    }, 30000);
+      fetchQueueData();
+      fetchActivityData();
+    }, 5000);
 
     return () => clearInterval(interval);
   }, []);
@@ -100,9 +126,11 @@ const SalesApe = () => {
       const response = await axios.get('/api/salesape-dashboard/queue', {
         headers: { 'x-auth-token': token }
       });
-      setQueueData(response.data);
+      console.log(`📋 Queue data fetched: ${response.data?.length || 0} leads`);
+      setQueueData(response.data || []);
     } catch (error) {
       console.error('Error fetching queue data:', error);
+      setQueueData([]);
     }
   };
 
@@ -152,14 +180,62 @@ const SalesApe = () => {
   const handleRemoveFromQueue = async (leadId) => {
     try {
       const token = localStorage.getItem('token');
-      await axios.post('/api/salesape-dashboard/queue/remove', 
+      const response = await axios.post('/api/salesape-dashboard/queue/remove',
         { leadId },
         { headers: { 'x-auth-token': token } }
       );
-      fetchQueueData();
+
+      console.log('✅ Remove response:', response.data);
+
+      // ✅ FIX: Force refresh and show success
+      await fetchQueueData();
+      alert('✅ Lead removed from queue successfully');
+
+      // If this was the selected lead, clear selection
+      if (selectedLead?.id === leadId) {
+        setSelectedLead(null);
+        setConversationData(null);
+      }
     } catch (error) {
-      console.error('Error removing from queue:', error);
-      alert('Failed to remove lead from queue');
+      console.error('❌ Error removing from queue:', error);
+      alert(`Failed to remove lead: ${error.response?.data?.message || error.message}`);
+    }
+  };
+
+  // ✅ NEW: Bulk remove all from queue
+  const handleRemoveAllFromQueue = async () => {
+    if (!window.confirm(`Remove ALL ${queueData.length} leads from queue? This will stop all SalesApe conversations.`)) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      let successCount = 0;
+      let failCount = 0;
+
+      // Remove all leads one by one
+      for (const lead of queueData) {
+        try {
+          await axios.post('/api/salesape-dashboard/queue/remove',
+            { leadId: lead.id },
+            { headers: { 'x-auth-token': token } }
+          );
+          successCount++;
+        } catch (error) {
+          console.error(`Failed to remove lead ${lead.id}:`, error);
+          failCount++;
+        }
+      }
+
+      // Refresh queue
+      await fetchQueueData();
+      setSelectedLead(null);
+      setConversationData(null);
+
+      alert(`✅ Removed ${successCount} leads from queue${failCount > 0 ? `\n⚠️ ${failCount} failed to remove` : ''}`);
+    } catch (error) {
+      console.error('Error bulk removing from queue:', error);
+      alert('Failed to remove all leads from queue');
     }
   };
 
@@ -274,6 +350,7 @@ const SalesApe = () => {
                 selectedLead={selectedLead}
                 onAddToQueue={handleAddToQueue}
                 onRemoveFromQueue={handleRemoveFromQueue}
+                onRemoveAll={handleRemoveAllFromQueue}
                 onRefresh={fetchQueueData}
               />
             </motion.div>
@@ -313,6 +390,7 @@ const SalesApe = () => {
             leads={queueData}
             onLeadSelect={handleLeadSelect}
             onRemoveFromQueue={handleRemoveFromQueue}
+            onRemoveAll={handleRemoveAllFromQueue}
           />
         </motion.div>
       )}

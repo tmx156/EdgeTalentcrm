@@ -117,8 +117,21 @@ async function sendLeadToSalesApe(lead) {
 
     if (updateResult.error) {
       console.error('❌ Error updating lead after sending to SalesApe:', updateResult.error);
+      // Check if it's a column missing error
+      if (updateResult.error.message && updateResult.error.message.includes('column') && updateResult.error.message.includes('does not exist')) {
+        console.error('❌ CRITICAL: SalesApe tracking columns do not exist in database!');
+        console.error('📋 Please run the migration: server/migrations/add_salesape_tracking_columns.sql');
+        throw new Error('Database schema missing SalesApe columns. Please run the migration script.');
+      }
+      throw updateResult.error;
     } else {
-      console.log(`✅ Lead ${lead.id} updated with salesape_sent_at:`, updateResult.data?.[0]?.salesape_sent_at);
+      const updatedLead = updateResult.data?.[0];
+      if (updatedLead) {
+        console.log(`✅ Lead ${lead.id} updated with salesape_sent_at:`, updatedLead.salesape_sent_at);
+        console.log(`✅ Lead ${lead.id} salesape_status:`, updatedLead.salesape_status);
+      } else {
+        console.warn(`⚠️ Lead ${lead.id} update returned no data - update may have failed silently`);
+      }
     }
 
     // Emit socket event for real-time queue update
@@ -288,6 +301,44 @@ router.post('/update', async (req, res) => {
       engaged: SalesAPE_User_Engaged,
       goalHit: SalesAPE_Goal_Hit
     });
+
+    // Emit socket events for real-time updates
+    if (global.io) {
+      // Emit queue update to refresh the queue with new status
+      global.io.emit('salesape_queue_update', {
+        action: 'updated',
+        leadId: CRM_ID,
+        leadName: lead?.name,
+        status: SalesAPE_Status,
+        userEngaged: SalesAPE_User_Engaged,
+        goalHit: SalesAPE_Goal_Hit,
+        timestamp: new Date().toISOString()
+      });
+
+      // Emit status update for activity monitor
+      global.io.emit('salesape_status_update', {
+        leadId: CRM_ID,
+        leadName: lead?.name,
+        status: SalesAPE_Status,
+        initialMessageSent: SalesAPE_Initial_Message_Sent,
+        userEngaged: SalesAPE_User_Engaged,
+        goalPresented: SalesAPE_Goal_Presented,
+        goalHit: SalesAPE_Goal_Hit,
+        timestamp: new Date().toISOString()
+      });
+
+      // Emit message update if conversation is progressing
+      if (SalesAPE_User_Engaged || SalesAPE_Initial_Message_Sent) {
+        global.io.emit('salesape_message', {
+          leadId: CRM_ID,
+          leadName: lead?.name,
+          status: SalesAPE_Status,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      console.log(`📡 Emitted real-time updates for lead ${CRM_ID}: status=${SalesAPE_Status}`);
+    }
 
     // If goal was hit, trigger additional actions
     if (SalesAPE_Goal_Hit && !lead.salesape_goal_hit) {
