@@ -210,7 +210,10 @@ async function notifySalesApeOfBooking(leadId, eventType = 'Meeting Booked') {
  */
 router.post('/update', async (req, res) => {
   try {
+    console.log('📥 ========== WEBHOOK RECEIVED FROM SALESAPE ==========');
     console.log('📥 Received update from SalesApe:', JSON.stringify(req.body, null, 2));
+    console.log('📥 Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('📥 ====================================================');
 
     const {
       Airtable_Record_ID,
@@ -505,14 +508,22 @@ router.get('/test-log', (req, res) => {
  * Health check endpoint
  */
 router.get('/health', (req, res) => {
+  // Get the base URL from the request
+  const protocol = req.protocol;
+  const host = req.get('host');
+  const baseUrl = `${protocol}://${host}`;
+  
   res.json({
     status: 'healthy',
     configured: !!SALESAPE_CONFIG.PAT_CODE,
+    webhookUrl: `${baseUrl}/api/salesape-webhook/update`,
+    note: 'Configure SalesApe to send webhooks to the webhookUrl above',
     endpoints: {
       webhook: '/api/salesape-webhook/update',
       trigger: '/api/salesape-webhook/trigger/:leadId',
       meetingBooked: '/api/salesape-webhook/meeting-booked/:leadId',
-      testLog: '/api/salesape-webhook/test-log'
+      testLog: '/api/salesape-webhook/test-log',
+      health: '/api/salesape-webhook/health'
     }
   });
 });
