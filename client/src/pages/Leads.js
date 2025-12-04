@@ -1373,7 +1373,7 @@ const Leads = () => {
         {/* Collapse Toggle Button */}
         <button
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className={`hidden lg:flex absolute z-20 bg-white border border-gray-300 rounded-full p-1.5 shadow-md hover:bg-gray-50 transition-all duration-300 ${
+          className={`hidden lg:flex absolute z-10 bg-white border border-gray-300 rounded-full p-1.5 shadow-md hover:bg-gray-50 transition-all duration-300 ${
             sidebarCollapsed 
               ? '-right-3 top-4' 
               : '-right-3 top-4'
