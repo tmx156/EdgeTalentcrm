@@ -87,29 +87,47 @@ router.get('/status', auth, async (req, res) => {
  */
 router.get('/queue', auth, async (req, res) => {
   try {
-    // Get all leads - we'll filter for SalesApe leads on the client side if needed
-    // For now, get recent leads that could be sent to SalesApe
-    const allLeads = await dbManager.query('leads', {
-      select: '*',
-      order: { created_at: 'desc' },
-      limit: 100
-    });
+    // Use Supabase directly to properly filter by salesape_sent_at
+    const { createClient } = require('@supabase/supabase-js');
+    const config = require('../config');
+    const supabase = createClient(
+      config.supabase.url,
+      config.supabase.serviceRoleKey || config.supabase.anonKey
+    );
+
+    // Query leads that have been sent to SalesApe (salesape_sent_at IS NOT NULL)
+    const { data: allLeads, error } = await supabase
+      .from('leads')
+      .select('*')
+      .not('salesape_sent_at', 'is', null) // Only leads that have been sent to SalesApe
+      .order('salesape_sent_at', { ascending: false }) // Most recent first
+      .limit(200);
+
+    if (error) {
+      console.error('Error fetching queue from Supabase:', error);
+      return res.status(500).json({ message: 'Server error', error: error.message });
+    }
 
     if (!allLeads || allLeads.length === 0) {
+      console.log('📋 Queue: No leads found with salesape_sent_at');
       return res.json([]);
     }
 
-    // Filter for leads that have SalesApe data OR could be sent to SalesApe
-    const queueLeads = allLeads
-      .filter(lead => lead.salesape_sent_at || lead.status === 'New' || lead.status === 'Assigned')
-      .map(lead => ({
-        ...lead,
-        // Calculate queue_status based on salesape fields
-        queue_status: lead.salesape_goal_hit ? 'completed' :
-                      lead.salesape_user_engaged ? 'in_progress' :
-                      lead.salesape_initial_message_sent ? 'in_progress' : 
-                      lead.salesape_sent_at ? 'queued' : 'available'
-      }));
+    console.log(`📋 Queue: Found ${allLeads.length} leads in SalesApe queue`);
+
+    // Map leads with queue_status calculation
+    const queueLeads = allLeads.map(lead => ({
+      ...lead,
+      // Calculate queue_status based on salesape_status and flags
+      queue_status: lead.salesape_status === 'failed' ? 'failed' :
+                    lead.salesape_status === 'cancelled' ? 'cancelled' :
+                    lead.salesape_goal_hit ? 'completed' :
+                    lead.salesape_opted_out ? 'completed' :
+                    lead.salesape_follow_ups_ended ? 'completed' :
+                    lead.salesape_user_engaged ? 'in_progress' :
+                    lead.salesape_initial_message_sent ? 'in_progress' :
+                    lead.salesape_sent_at ? 'queued' : 'available'
+    }));
 
     res.json(queueLeads);
   } catch (error) {
@@ -318,7 +336,7 @@ router.post('/queue/add', auth, async (req, res) => {
 
 /**
  * @route   POST /api/salesape-dashboard/queue/remove
- * @desc    Remove a lead from SalesApe queue
+ * @desc    Remove a lead from SalesApe queue (sends "Human Intervention" to stop AI)
  * @access  Private
  */
 router.post('/queue/remove', auth, async (req, res) => {
@@ -329,22 +347,77 @@ router.post('/queue/remove', auth, async (req, res) => {
       return res.status(400).json({ message: 'Lead ID is required' });
     }
 
-    // Update lead to remove from queue
+    // Get lead details first
+    const leads = await dbManager.query('leads', {
+      select: '*',
+      eq: { id: leadId }
+    });
+
+    if (!leads || leads.length === 0) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    const lead = leads[0];
+
+    // ✅ FIX: Send "Human Intervention" to SalesApe to stop the AI conversation
+    if (lead.salesape_sent_at) {
+      try {
+        const axios = require('axios');
+        const SALESAPE_CONFIG = {
+          AIRTABLE_URL: 'https://api.airtable.com/v0/appoT1TexUksGanE8/tblTJGg187Ub84aXf',
+          PAT_CODE: process.env.SALESAPE_PAT_CODE || process.env.SALESAPE_PAT
+        };
+
+        if (SALESAPE_CONFIG.PAT_CODE) {
+          const payload = {
+            fields: {
+              "CRM ID": String(leadId),
+              "Event Type": "Human Intervention" // This stops the AI
+            }
+          };
+
+          console.log('🛑 Sending "Human Intervention" to SalesApe to stop conversation:', leadId);
+
+          await axios.post(SALESAPE_CONFIG.AIRTABLE_URL, payload, {
+            headers: {
+              'Authorization': `Bearer ${SALESAPE_CONFIG.PAT_CODE}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 10000
+          });
+
+          console.log('✅ SalesApe conversation stopped successfully');
+        } else {
+          console.warn('⚠️ SALESAPE_PAT_CODE not configured, skipping SalesApe notification');
+        }
+      } catch (salesapeError) {
+        console.error('❌ Error notifying SalesApe of cancellation:', salesapeError.response?.data || salesapeError.message);
+        // Continue with local removal even if SalesApe notification fails
+      }
+    }
+
+    // Update lead in local database to mark as cancelled
     await dbManager.update('leads', {
       salesape_sent_at: null,
-      salesape_status: null,
-      salesape_last_updated: new Date().toISOString()
+      salesape_status: 'cancelled',
+      salesape_last_updated: new Date().toISOString(),
+      salesape_follow_ups_ended: true
     }, { id: leadId });
 
     // Emit socket event
     if (global.io) {
       global.io.emit('salesape_queue_update', {
         action: 'removed',
-        leadId
+        leadId,
+        leadName: lead.name
       });
     }
 
-    res.json({ message: 'Lead removed from queue' });
+    res.json({
+      success: true,
+      message: 'Lead removed from SalesApe queue and conversation stopped',
+      leadId
+    });
   } catch (error) {
     console.error('Error removing from queue:', error);
     res.status(500).json({ message: 'Server error', error: error.message });

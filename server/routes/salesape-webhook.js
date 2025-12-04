@@ -35,9 +35,40 @@ const SALESAPE_CONFIG = {
  */
 async function sendLeadToSalesApe(lead) {
   try {
-    // Validate required fields
+    // ✅ FIX: Validate required fields before sending
     if (!lead.phone || lead.phone.trim() === '') {
-      throw new Error(`Lead ${lead.name} (ID: ${lead.id}) has no phone number. Phone is required for SalesApe.`);
+      const error = new Error(`Lead ${lead.name} (ID: ${lead.id}) has no phone number. Phone is required for SalesApe.`);
+      error.code = 'MISSING_PHONE';
+
+      // Mark lead as failed
+      await supabase
+        .from('leads')
+        .update({
+          salesape_status: 'failed',
+          salesape_error: 'Missing phone number',
+          salesape_last_updated: new Date().toISOString()
+        })
+        .eq('id', lead.id);
+
+      throw error;
+    }
+
+    // Validate phone format (basic check)
+    const phoneClean = lead.phone.replace(/\D/g, '');
+    if (phoneClean.length < 10) {
+      const error = new Error(`Lead ${lead.name} has invalid phone number: ${lead.phone}`);
+      error.code = 'INVALID_PHONE';
+
+      await supabase
+        .from('leads')
+        .update({
+          salesape_status: 'failed',
+          salesape_error: 'Invalid phone format',
+          salesape_last_updated: new Date().toISOString()
+        })
+        .eq('id', lead.id);
+
+      throw error;
     }
 
     // Format lead data for SalesApe's requirements
@@ -50,8 +81,6 @@ async function sendLeadToSalesApe(lead) {
         "CRM ID": String(lead.id), // Must be a string
         "Context": lead.notes || `Lead from ${lead.source || 'CRM'}`,
         "Base Details": [SALESAPE_CONFIG.BASE_DETAILS_ID]
-        // Note: Airtable auto-processes based on Base Details configuration
-        // No need for custom Priority or Send Immediately fields
       }
     };
 
@@ -61,31 +90,73 @@ async function sendLeadToSalesApe(lead) {
       phone: lead.phone,
       email: lead.email
     });
-    
-    console.log('📋 Full payload:', JSON.stringify(payload, null, 2));
 
+    // ✅ FIX: Add timeout to prevent hanging forever
     const response = await axios.post(SALESAPE_CONFIG.AIRTABLE_URL, payload, {
       headers: {
         'Authorization': `Bearer ${SALESAPE_CONFIG.PAT_CODE}`,
         'Content-Type': 'application/json'
-      }
+      },
+      timeout: 15000 // 15 second timeout
     });
 
     console.log('✅ Lead sent to SalesApe successfully:', response.data.id);
-    
-    // Update lead in our database with SalesApe record ID
-    await supabase
+
+    // ✅ FIX: Update lead status to 'queued' (waiting for AI to start)
+    const updateResult = await supabase
       .from('leads')
       .update({
         salesape_record_id: response.data.id,
         salesape_sent_at: new Date().toISOString(),
-        salesape_status: 'sent'
+        salesape_status: 'queued', // Changed from 'sent' to 'queued'
+        salesape_error: null, // Clear any previous errors
+        salesape_last_updated: new Date().toISOString()
       })
-      .eq('id', lead.id);
+      .eq('id', lead.id)
+      .select(); // Return updated lead to verify
+
+    if (updateResult.error) {
+      console.error('❌ Error updating lead after sending to SalesApe:', updateResult.error);
+    } else {
+      console.log(`✅ Lead ${lead.id} updated with salesape_sent_at:`, updateResult.data?.[0]?.salesape_sent_at);
+    }
+
+    // Emit socket event for real-time queue update
+    if (global.io) {
+      global.io.emit('salesape_queue_update', {
+        action: 'added',
+        leadId: lead.id,
+        leadName: lead.name,
+        timestamp: new Date().toISOString()
+      });
+      console.log(`📡 Emitted salesape_queue_update event for lead ${lead.id}`);
+    }
 
     return response.data;
   } catch (error) {
-    console.error('❌ Error sending lead to SalesApe:', error.response?.data || error.message);
+    console.error('❌ Error sending lead to SalesApe:', {
+      leadId: lead.id,
+      leadName: lead.name,
+      error: error.message,
+      code: error.code,
+      response: error.response?.data
+    });
+
+    // ✅ FIX: Mark lead as failed with detailed error
+    const errorMessage = error.response?.data?.error?.message ||
+                        error.response?.data?.error ||
+                        error.message ||
+                        'Unknown error';
+
+    await supabase
+      .from('leads')
+      .update({
+        salesape_status: 'failed',
+        salesape_error: errorMessage,
+        salesape_last_updated: new Date().toISOString()
+      })
+      .eq('id', lead.id);
+
     throw error;
   }
 }
@@ -154,17 +225,19 @@ router.post('/update', async (req, res) => {
       return res.status(400).json({ error: 'CRM_ID is required' });
     }
 
-    // Prepare update data for our database
+    // ✅ FIX: Properly map SalesApe status updates
+    // Status flow: queued → initial_message_sent → user_engaged → goal_presented → goal_hit/opted_out/ended
     const updateData = {
       salesape_record_id: Airtable_Record_ID,
-      salesape_status: SalesAPE_Status,
+      salesape_status: SalesAPE_Status, // This is the current stage (e.g., "User Engaged", "Goal Hit")
       salesape_initial_message_sent: SalesAPE_Initial_Message_Sent,
       salesape_user_engaged: SalesAPE_User_Engaged,
       salesape_goal_presented: SalesAPE_Goal_Presented,
       salesape_goal_hit: SalesAPE_Goal_Hit,
       salesape_follow_ups_ended: Follow_Ups_Ended,
       salesape_opted_out: Not_Interested_Opted_Out,
-      salesape_last_updated: new Date().toISOString()
+      salesape_last_updated: new Date().toISOString(),
+      salesape_error: null // Clear any previous errors when we get updates
     };
 
     // If conversation summary is being posted, add those fields
@@ -299,6 +372,16 @@ router.post('/trigger/:leadId', auth, async (req, res) => {
 
     // Send to SalesApe
     const result = await sendLeadToSalesApe(lead);
+
+    // Emit socket event for real-time queue update (also emitted in sendLeadToSalesApe, but ensure it's here too)
+    if (global.io) {
+      global.io.emit('salesape_queue_update', {
+        action: 'added',
+        leadId: lead.id,
+        leadName: lead.name,
+        timestamp: new Date().toISOString()
+      });
+    }
 
     res.json({
       success: true,
