@@ -855,6 +855,17 @@ testDatabaseConnection().then(() => {
     } catch (e) {
       console.error('❌ Failed to start callback reminder service:', e?.message || e);
     }
+
+    // Start SalesApe sync service (polls Airtable for status updates)
+    try {
+      const salesapeSyncService = require('./services/salesapeSync');
+      salesapeSyncService.start();
+      console.log('✅ SalesApe sync service started');
+    } catch (e) {
+      console.error('❌ Failed to start SalesApe sync service:', e?.message || e);
+      console.error('   This service polls SalesApe\'s Airtable for status updates');
+      console.error('   Webhook updates will still work if configured in SalesApe');
+    }
   });
 }).catch((error) => {
   // Start server even if Supabase connection fails

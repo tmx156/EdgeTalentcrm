@@ -32,7 +32,6 @@ const SalesApe = () => {
 
     // Listen for SalesApe updates
     newSocket.on('salesape_status_update', (data) => {
-      console.log('📥 SalesApe status update:', data);
       // Refresh everything to show latest progress
       fetchActivityData();
       fetchQueueData();
@@ -43,7 +42,6 @@ const SalesApe = () => {
     });
 
     newSocket.on('salesape_message', (data) => {
-      console.log('💬 New SalesApe message:', data);
       // Refresh queue to show progress updates
       fetchQueueData();
       // Refresh activity stats
@@ -55,7 +53,6 @@ const SalesApe = () => {
     });
 
     newSocket.on('salesape_queue_update', (data) => {
-      console.log('📋 Queue update received:', data);
       // Immediately refresh queue when a lead is added/removed/updated
       fetchQueueData();
       // Also refresh activity data to update stats
@@ -65,13 +62,6 @@ const SalesApe = () => {
       if (selectedLead && data.leadId === selectedLead.id && data.action === 'updated') {
         fetchConversation(selectedLead.id);
       }
-      
-      // Also refresh after a short delay to ensure database has updated
-      setTimeout(() => {
-        console.log('🔄 Refreshing queue again after delay...');
-        fetchQueueData();
-        fetchActivityData();
-      }, 500);
     });
 
     setSocket(newSocket);
@@ -85,11 +75,13 @@ const SalesApe = () => {
   useEffect(() => {
     fetchAllData();
     
-    // Auto-refresh every 5 seconds to catch real-time progress updates
+    // Auto-refresh every 30 seconds to catch real-time progress updates
+    // Reduced from 5 seconds to minimize server load and log noise
+    // Real-time updates via socket events will still work instantly
     const interval = setInterval(() => {
       fetchQueueData();
       fetchActivityData();
-    }, 5000);
+    }, 30000); // 30 seconds instead of 5
 
     return () => clearInterval(interval);
   }, []);
@@ -126,7 +118,6 @@ const SalesApe = () => {
       const response = await axios.get('/api/salesape-dashboard/queue', {
         headers: { 'x-auth-token': token }
       });
-      console.log(`📋 Queue data fetched: ${response.data?.length || 0} leads`);
       setQueueData(response.data || []);
     } catch (error) {
       console.error('Error fetching queue data:', error);

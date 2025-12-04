@@ -82,8 +82,6 @@ class SalesApeSyncService {
     const startTime = Date.now();
 
     try {
-      console.log(`🔄 [SalesApe Sync #${this.syncCount + 1}] Starting...`);
-
       // Get all leads that have been sent to SalesApe
       const leads = await dbManager.query('leads', {
         select: 'id, name, salesape_record_id, salesape_status, salesape_initial_message_sent, salesape_user_engaged, salesape_goal_hit, salesape_goal_presented',
@@ -91,8 +89,7 @@ class SalesApeSyncService {
       });
 
       if (!leads || leads.length === 0) {
-        console.log('   No leads to sync');
-        return;
+        return; // No leads to sync, exit quietly
       }
 
       let updatedCount = 0;
@@ -155,19 +152,42 @@ class SalesApeSyncService {
             // Update in database
             await dbManager.update('leads', updateData, { id: lead.id });
 
-            console.log(`   ✅ Updated: ${lead.name} (${fields['SalesAPE Status'] || 'status updated'})`);
             updatedCount++;
 
-            // Emit socket event for real-time updates
+            // Emit socket events for real-time updates
             if (global.io) {
+              // Emit status update for activity monitor
               global.io.emit('salesape_status_update', {
                 leadId: lead.id,
                 leadName: lead.name,
                 status: updateData.salesape_status,
                 initialMessageSent: updateData.salesape_initial_message_sent,
                 userEngaged: updateData.salesape_user_engaged,
-                goalHit: updateData.salesape_goal_hit
+                goalPresented: updateData.salesape_goal_presented,
+                goalHit: updateData.salesape_goal_hit,
+                timestamp: new Date().toISOString()
               });
+
+              // Emit queue update to refresh the queue with new status
+              global.io.emit('salesape_queue_update', {
+                action: 'updated',
+                leadId: lead.id,
+                leadName: lead.name,
+                status: updateData.salesape_status,
+                userEngaged: updateData.salesape_user_engaged,
+                goalHit: updateData.salesape_goal_hit,
+                timestamp: new Date().toISOString()
+              });
+
+              // Emit message update if conversation is progressing
+              if (updateData.salesape_user_engaged || updateData.salesape_initial_message_sent) {
+                global.io.emit('salesape_message', {
+                  leadId: lead.id,
+                  leadName: lead.name,
+                  status: updateData.salesape_status,
+                  timestamp: new Date().toISOString()
+                });
+              }
             }
           } else {
             unchangedCount++;
@@ -189,8 +209,10 @@ class SalesApeSyncService {
       this.syncCount++;
       this.lastSyncTime = new Date();
 
-      console.log(`✅ [SalesApe Sync #${this.syncCount}] Complete in ${duration}s`);
-      console.log(`   Updated: ${updatedCount} | Unchanged: ${unchangedCount} | Errors: ${errorCount}`);
+      // Only log if there were updates or errors (reduce log noise)
+      if (updatedCount > 0 || errorCount > 0) {
+        console.log(`✅ [SalesApe Sync #${this.syncCount}] Complete in ${duration}s - Updated: ${updatedCount} | Errors: ${errorCount}`);
+      }
 
     } catch (error) {
       console.error('❌ SalesApe sync error:', error.message);

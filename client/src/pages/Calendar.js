@@ -542,12 +542,19 @@ const Calendar = () => {
     fetchTemplates();
   }, []);
 
+  // Use ref to track if initial fetch has been done to prevent loops
+  const initialFetchDoneRef = useRef(false);
+  
   // Use useEffect WITHOUT fetchEvents as dependency to prevent loops
   useEffect(() => {
+    // Only run initial fetch once
+    if (initialFetchDoneRef.current) return;
+    
     // PERFORMANCE: Single initial fetch after mount
     const initialFetch = setTimeout(() => {
       console.log('📅 Initial calendar data fetch');
       fetchEvents(true); // Force first fetch
+      initialFetchDoneRef.current = true;
     }, 100); // Small delay to let calendar render first
     
     // Check if there's lead data from the leads page
@@ -618,7 +625,7 @@ const Calendar = () => {
     return () => {
       clearTimeout(initialFetch);
     };
-  }, [fetchEvents]); // Include fetchEvents dependency
+  }, []); // Empty dependency array - only run once on mount
 
   // Fetch blocked slots when date or view changes
   useEffect(() => {
@@ -643,9 +650,13 @@ const Calendar = () => {
   }, [currentView, currentDate, blockedSlots]);
 
   // Consolidated real-time updates with proper debouncing
+  // Use ref to store fetchEvents to avoid dependency issues
+  const fetchEventsRef = useRef(fetchEvents);
   useEffect(() => {
-    console.log('📅 Calendar: Setting up real-time updates and polling...');
-    
+    fetchEventsRef.current = fetchEvents;
+  }, [fetchEvents]);
+  
+  useEffect(() => {
     let refreshTimeout = null;
     let pollingInterval = null;
     let unsubscribeCalendar = null;
@@ -656,7 +667,7 @@ const Calendar = () => {
         clearTimeout(refreshTimeout);
       }
       refreshTimeout = setTimeout(() => {
-        fetchEvents();
+        fetchEventsRef.current(); // Use ref to avoid dependency
       }, 5000); // Increased to 5 seconds for better performance
     };
     
@@ -764,13 +775,10 @@ const Calendar = () => {
     
     // Reduced polling frequency to prevent overloading
     pollingInterval = setInterval(() => {
-      console.log('📅 Calendar: Polling for updates...');
       debouncedFetch(); // Use debounced fetch
     }, 120000); // Poll every 2 minutes for better performance
 
     return () => {
-      console.log('📅 Calendar: Cleaning up real-time subscriptions and polling...');
-      
       // Clean up subscriptions
       if (unsubscribeCalendar) {
         unsubscribeCalendar();
@@ -786,10 +794,8 @@ const Calendar = () => {
       if (refreshTimeout) {
         clearTimeout(refreshTimeout);
       }
-      
-      console.log('📅 Calendar: Cleaned up real-time subscriptions and polling');
     };
-  }, [subscribeToCalendarUpdates, subscribeToLeadUpdates, fetchEvents]); // Include fetchEvents in dependencies
+  }, [subscribeToCalendarUpdates, subscribeToLeadUpdates]); // Removed fetchEvents - using ref instead
 
   // Create a debounced fetch function that can be used throughout the component
   const debouncedFetchEvents = useCallback(() => {

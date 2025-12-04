@@ -538,8 +538,6 @@ router.get('/', auth, async (req, res) => {
 // @access  Private (All logged-in users - special endpoint for calendar)
 router.get('/calendar', auth, async (req, res) => {
   try {
-    console.log(`📅 Calendar API: Fetching events for user ${req.user.name} (${req.user.role})`);
-
     // PERFORMANCE: Get pagination and date range from query params
     const { start, end, page = 1, limit = 200, offset = 0 } = req.query;
 
@@ -547,12 +545,9 @@ router.get('/calendar', auth, async (req, res) => {
     const validatedLimit = Math.min(parseInt(limit) || 600, 600);
     const pageInt = Math.max(parseInt(page) || 1, 1);
     const offsetInt = parseInt(offset) || ((pageInt - 1) * validatedLimit);
-    
-    console.log(`📅 Date range filter - Start: ${start || 'none'}, End: ${end || 'none'}, Limit: ${validatedLimit}, Page: ${pageInt}, Offset: ${offsetInt}`);
 
     // PERFORMANCE: Add connection health check
     const startTime = Date.now();
-    console.log(`📅 Calendar API: Starting database query at ${new Date().toISOString()}`);
 
     // Get paginated booked leads using Supabase with date filtering for performance
     let leads, error, totalCount;
@@ -583,8 +578,6 @@ router.get('/calendar', auth, async (req, res) => {
       query = query
         .gte('date_booked', startDate.toISOString())
         .lte('date_booked', endDate.toISOString());
-      
-      console.log(`📅 Calendar API: Date range filter applied: ${startDate.toISOString()} to ${endDate.toISOString()}`);
     }
     
     // First get total count for pagination
@@ -614,8 +607,6 @@ router.get('/calendar', auth, async (req, res) => {
     // Retry logic with improved error handling and timeouts
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        console.log(`📅 Calendar API: Database query attempt ${attempt}...`);
-        
         // Add timeout to prevent hanging
         const queryPromise = query;
         const timeoutPromise = new Promise((_, reject) => {
@@ -627,22 +618,17 @@ router.get('/calendar', auth, async (req, res) => {
         leads = result.data;
         error = result.error;
         
-        const queryTime = Date.now() - startTime;
-        
         if (!error && leads) {
-          console.log(`📅 Calendar API: Successfully fetched ${leads.length} leads on attempt ${attempt} in ${queryTime}ms`);
           break;
         } else if (attempt < 3) {
-          console.log(`📅 Calendar API: Attempt ${attempt} failed in ${queryTime}ms, retrying... Error:`, error?.message);
           await new Promise(resolve => setTimeout(resolve, Math.min(1000 * attempt, 3000))); // Exponential backoff
         }
       } catch (timeoutError) {
-        const queryTime = Date.now() - startTime;
-        console.error(`❌ Calendar API: Query timed out on attempt ${attempt} after ${queryTime}ms:`, timeoutError.message);
         error = timeoutError;
-        
         if (attempt < 3) {
           await new Promise(resolve => setTimeout(resolve, Math.min(1000 * attempt, 3000)));
+        } else {
+          console.error(`❌ Calendar API: Query failed after 3 attempts:`, timeoutError.message);
         }
       }
     }
@@ -842,14 +828,9 @@ router.get('/calendar', auth, async (req, res) => {
       }
     }
 
-    console.log(`📅 Calendar API: Found ${leads?.length || 0} calendar events`);
-    
-    // Debug logging
-    if (leads && leads.length > 0) {
-      console.log('📅 Calendar events details:');
-      leads.forEach((lead, index) => {
-        console.log(`  ${index + 1}. ${lead.name} - Status: ${lead.status} - Date: ${lead.date_booked}`);
-      });
+    // Only log if there are errors or if explicitly debugging
+    if (error && process.env.NODE_ENV === 'development') {
+      console.error('❌ Calendar API Error:', error);
     } else {
       console.log('📅 No calendar events found. Checking database...');
       
