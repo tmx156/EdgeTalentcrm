@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FiPlus, FiSearch, FiFilter, FiChevronRight, FiUserPlus, FiCalendar, FiWifi, FiUpload, FiTrash2, FiX, FiFileText, FiCheck } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiFilter, FiChevronRight, FiChevronLeft, FiUserPlus, FiCalendar, FiWifi, FiUpload, FiTrash2, FiX, FiFileText, FiCheck } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
@@ -76,6 +76,9 @@ const Leads = () => {
   const [quickNotesLead, setQuickNotesLead] = useState(null);
   const [quickNotesText, setQuickNotesText] = useState('');
   const [updatingQuickNotes, setUpdatingQuickNotes] = useState(false);
+  
+  // Filter sidebar state
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Debug: Log selectedLeads changes
   useEffect(() => {
@@ -1364,124 +1367,32 @@ const Leads = () => {
   }
 
   return (
-    <div className="space-y-6" style={{ pointerEvents: 'auto' }}>
-      {/* Page Header */}
-      <div className="flex justify-between items-center">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-3">
-            <h1 className="text-xl font-semibold text-gray-900">Leads</h1>
-            <div className="flex items-center space-x-2">
-              <FiWifi className={`h-4 w-4 ${isConnected ? 'text-green-500' : 'text-red-500'}`} />
-              <span className={`text-xs px-2 py-1 rounded-full ${isConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                {isConnected ? 'Live' : 'Offline'}
-              </span>
-            </div>
-          </div>
-          {user?.role === 'admin' && selectedLeads.length > 0 && (
-            <span className="text-sm text-gray-600">
-              {selectedLeads.length} selected
-            </span>
+    <div className="flex flex-col lg:flex-row -mx-3 sm:-mx-4 lg:-mx-8" style={{ pointerEvents: 'auto', minHeight: 'calc(100vh - 64px)' }}>
+      {/* Left Sidebar - Filters and Search */}
+      <div className={`relative w-full lg:w-80 xl:w-96 lg:border-r lg:border-gray-200 lg:overflow-y-auto lg:h-[calc(100vh-4rem)] lg:sticky lg:top-16 bg-white space-y-4 flex-shrink-0 border-b lg:border-b-0 border-gray-200 transition-all duration-300 ${sidebarCollapsed ? 'lg:w-0 lg:overflow-hidden lg:border-r-0' : 'p-4 lg:p-6'} z-0`}>
+        {/* Collapse Toggle Button */}
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className={`hidden lg:flex absolute z-20 bg-white border border-gray-300 rounded-full p-1.5 shadow-md hover:bg-gray-50 transition-all duration-300 ${
+            sidebarCollapsed 
+              ? '-right-3 top-4' 
+              : '-right-3 top-4'
+          }`}
+          aria-label={sidebarCollapsed ? 'Expand filters' : 'Collapse filters'}
+        >
+          {sidebarCollapsed ? (
+            <FiChevronRight className="h-4 w-4 text-gray-600" />
+          ) : (
+            <FiChevronLeft className="h-4 w-4 text-gray-600" />
           )}
-        </div>
-        <div className="flex items-center space-x-2" style={{ pointerEvents: 'auto' }}>
-          {selectedLeads.length > 0 && (
-            <>
-              <div className="flex items-center space-x-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-md border border-blue-200">
-                <span className="text-sm font-medium">
-                  {selectedLeads.length} lead{selectedLeads.length === 1 ? '' : 's'} selected
-                </span>
-              </div>
-              
-              <button
-                onClick={handleExportSelectedLeads}
-                className="btn-secondary flex items-center space-x-2"
-                title="Export selected leads to CSV"
-              >
-                <FiFileText className="h-4 w-4" />
-                <span>Export Selected</span>
-              </button>
-              
-              {user?.role === 'admin' ? (
-                <>
-                  <button
-                    onClick={handleBulkAssign}
-                    className="btn-secondary flex items-center space-x-2"
-                  >
-                    <FiUserPlus className="h-4 w-4" />
-                    <span>Assign Selected</span>
-                  </button>
-                  <button
-                    onClick={handleBulkSendToSalesApe}
-                    className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-md hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 flex items-center space-x-2 shadow-lg"
-                    title="Send selected leads to SalesApe AI for automated contact"
-                  >
-                    <RiRobot2Line className="h-4 w-4" />
-                    <span>Send to SalesApe AI</span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      console.log('🔍 Delete button clicked!', {
-                        selectedLeads,
-                        count: selectedLeads.length,
-                        event: e
-                      });
-                      e.stopPropagation();
-                      handleBulkDelete();
-                    }}
-                    className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors duration-200 flex items-center space-x-2"
-                    title="Permanently delete selected leads"
-                  >
-                    <FiTrash2 className="h-4 w-4" />
-                    <span>Delete Selected</span>
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setSelectedLeads([])}
-                  className="btn-secondary flex items-center space-x-2"
-                >
-                  <FiX className="h-4 w-4" />
-                  <span>Clear Selection</span>
-                </button>
-              )}
-            </>
-          )}
-
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="btn-secondary flex items-center space-x-2"
-            style={{
-              pointerEvents: 'auto',
-              cursor: 'pointer',
-              transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
-              WebkitTapHighlightColor: 'transparent'
-            }}
-          >
-            <FiUpload className="h-4 w-4" />
-            <span>Upload CSV</span>
-          </button>
-
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="btn-primary flex items-center space-x-2"
-            style={{
-              pointerEvents: 'auto',
-              cursor: 'pointer',
-              transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
-              WebkitTapHighlightColor: 'transparent'
-            }}
-          >
-            <FiPlus className="h-4 w-4" />
-            <span>Add New Lead</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Filters and Search */}
-      <div className="flex flex-col gap-4">
-        {/* Search and Status Filter Row */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
+        </button>
+        
+        {!sidebarCollapsed && (
+          <>
+            {/* Search and Status Filter */}
+            <div className="flex flex-col gap-4">
+          {/* Search */}
+          <div className="relative">
             <FiSearch className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${isSearching ? 'text-blue-500 animate-pulse' : 'text-gray-400'}`} />
             <input
               type="text"
@@ -1496,10 +1407,12 @@ const Leads = () => {
               </div>
             )}
           </div>
+          
+          {/* Status Filter */}
           <div className="flex items-center space-x-2">
             <FiFilter className="h-5 w-5 text-gray-400" />
             <select
-              className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[140px]"
+              className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -1530,7 +1443,7 @@ const Leads = () => {
         </div>
 
         {/* Date Filter Row */}
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center bg-gray-50 p-4 rounded-lg border border-gray-200">
+        <div className="flex flex-col gap-3 bg-gray-50 p-4 rounded-lg border border-gray-200">
           <div className="flex items-center space-x-2">
             <FiCalendar className="h-5 w-5 text-gray-400" />
             <span className="text-sm font-medium text-gray-700">
@@ -1591,7 +1504,7 @@ const Leads = () => {
           </div>
 
           {/* Custom Date Range */}
-          <div className="flex items-center space-x-2 ml-auto">
+          <div className="flex flex-col gap-2">
             <input
               type="date"
               value={customDateStart}
@@ -1599,10 +1512,9 @@ const Leads = () => {
                 setCustomDateStart(e.target.value);
                 if (e.target.value) setDateFilter('custom');
               }}
-              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full"
               placeholder="Start date"
             />
-            <span className="text-gray-500">to</span>
             <input
               type="date"
               value={customDateEnd}
@@ -1610,7 +1522,7 @@ const Leads = () => {
                 setCustomDateEnd(e.target.value);
                 if (e.target.value) setDateFilter('custom');
               }}
-              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full"
               placeholder="End date"
             />
             {(customDateStart || customDateEnd) && (
@@ -1620,17 +1532,135 @@ const Leads = () => {
                   setCustomDateEnd('');
                   setDateFilter('all');
                 }}
-                className="text-gray-500 hover:text-gray-700 p-1"
+                className="text-gray-500 hover:text-gray-700 p-1 text-left text-sm"
                 title="Clear custom dates"
               >
-                <FiX className="h-4 w-4" />
+                <FiX className="h-4 w-4 inline mr-1" />
+                Clear dates
               </button>
             )}
           </div>
-        </div>
+          </div>
+        </>
+        )}
       </div>
+      {/* End Left Sidebar */}
 
-      {/* Status Overview Cards */}
+      {/* Main Content Area - Fullscreen */}
+      <div className="flex-1 overflow-y-auto space-y-6 p-4 lg:p-6 min-w-0">
+        {/* Page Header */}
+        <div className="flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
+              <h1 className="text-xl font-semibold text-gray-900">Leads</h1>
+              <div className="flex items-center space-x-2">
+                <FiWifi className={`h-4 w-4 ${isConnected ? 'text-green-500' : 'text-red-500'}`} />
+                <span className={`text-xs px-2 py-1 rounded-full ${isConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  {isConnected ? 'Live' : 'Offline'}
+                </span>
+              </div>
+            </div>
+            {user?.role === 'admin' && selectedLeads.length > 0 && (
+              <span className="text-sm text-gray-600">
+                {selectedLeads.length} selected
+              </span>
+            )}
+          </div>
+          <div className="flex items-center space-x-2 flex-wrap gap-2" style={{ pointerEvents: 'auto' }}>
+            {selectedLeads.length > 0 && (
+              <>
+                <div className="flex items-center space-x-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-md border border-blue-200">
+                  <span className="text-sm font-medium">
+                    {selectedLeads.length} lead{selectedLeads.length === 1 ? '' : 's'} selected
+                  </span>
+                </div>
+                
+                <button
+                  onClick={handleExportSelectedLeads}
+                  className="btn-secondary flex items-center space-x-2"
+                  title="Export selected leads to CSV"
+                >
+                  <FiFileText className="h-4 w-4" />
+                  <span className="hidden sm:inline">Export Selected</span>
+                </button>
+                
+                {user?.role === 'admin' ? (
+                  <>
+                    <button
+                      onClick={handleBulkAssign}
+                      className="btn-secondary flex items-center space-x-2"
+                    >
+                      <FiUserPlus className="h-4 w-4" />
+                      <span className="hidden sm:inline">Assign Selected</span>
+                    </button>
+                    <button
+                      onClick={handleBulkSendToSalesApe}
+                      className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-md hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 flex items-center space-x-2 shadow-lg"
+                      title="Send selected leads to SalesApe AI for automated contact"
+                    >
+                      <RiRobot2Line className="h-4 w-4" />
+                      <span className="hidden sm:inline">Send to SalesApe AI</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        console.log('🔍 Delete button clicked!', {
+                          selectedLeads,
+                          count: selectedLeads.length,
+                          event: e
+                        });
+                        e.stopPropagation();
+                        handleBulkDelete();
+                      }}
+                      className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors duration-200 flex items-center space-x-2"
+                      title="Permanently delete selected leads"
+                    >
+                      <FiTrash2 className="h-4 w-4" />
+                      <span className="hidden sm:inline">Delete Selected</span>
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => setSelectedLeads([])}
+                    className="btn-secondary flex items-center space-x-2"
+                  >
+                    <FiX className="h-4 w-4" />
+                    <span className="hidden sm:inline">Clear Selection</span>
+                  </button>
+                )}
+              </>
+            )}
+
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="btn-secondary flex items-center space-x-2"
+              style={{
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
+                WebkitTapHighlightColor: 'transparent'
+              }}
+            >
+              <FiUpload className="h-4 w-4" />
+              <span className="hidden sm:inline">Upload CSV</span>
+            </button>
+
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="btn-primary flex items-center space-x-2"
+              style={{
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease',
+                WebkitTapHighlightColor: 'transparent'
+              }}
+            >
+              <FiPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">Add New Lead</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Status Overview Cards */}
       {user?.role === 'booker' ? (
         // Booker-specific folders
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
@@ -2201,6 +2231,9 @@ const Leads = () => {
         )}
         </div>
       )}
+
+      </div>
+      {/* End Main Content Area */}
 
       {/* Add Lead Modal */}
       {showAddModal && (
