@@ -16,14 +16,15 @@ const BookersTemplates = () => {
 
   const [formData, setFormData] = useState({
     name: '',
-    type: 'booking_confirmation', // default to valid type
+    type: 'no_answer', // default to no_answer
     subject: '',
     emailBody: '',
     smsBody: '',
     reminderDays: 5,
     sendEmail: true,
-    sendSMS: true,
-    isActive: true
+    sendSMS: false,
+    isActive: true,
+    emailAccount: 'primary' // Always send from hello@edgetalent.co.uk
   });
 
   useEffect(() => {
@@ -40,11 +41,10 @@ const BookersTemplates = () => {
       });
       if (response.ok) {
         const data = await response.json();
-        // Filter for bookers template types
+        // Filter for bookers template types - only no_answer and invitation_email
         setTemplates(data.filter(t => [
-          'booking_confirmation',
-          'appointment_reminder',
-          'custom'
+          'no_answer',
+          'invitation_email'
         ].includes(t.type)));
       }
     } catch (error) {
@@ -73,25 +73,27 @@ const BookersTemplates = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const url = editingTemplate 
-        ? `/api/templates/${editingTemplate.id}`
+      const url = editingTemplate
+        ? `/api/templates/${editingTemplate._id || editingTemplate.id}`
         : '/api/templates';
       const method = editingTemplate ? 'PUT' : 'POST';
       // Always use a valid type
       const validType = formData.type && [
-        'booking_confirmation',
-        'appointment_reminder',
-        'custom'
-      ].includes(formData.type) ? formData.type : 'booking_confirmation';
+        'no_answer',
+        'invitation_email'
+      ].includes(formData.type) ? formData.type : 'no_answer';
+
+      // Always send from hello@edgetalent.co.uk (primary account)
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ ...formData, type: validType })
+        body: JSON.stringify({ ...formData, type: validType, emailAccount: 'primary' })
       });
       if (response.ok) {
+        alert('Template saved successfully!');
         setShowModal(false);
         setEditingTemplate(null);
         resetForm();
@@ -151,14 +153,15 @@ const BookersTemplates = () => {
   const resetForm = () => {
     setFormData({
       name: '',
-      type: 'booking_confirmation', // default to valid type
+      type: 'no_answer', // default to no_answer
       subject: '',
       emailBody: '',
       smsBody: '',
       reminderDays: 5,
       sendEmail: true,
-      sendSMS: true,
-      isActive: true
+      sendSMS: false,
+      isActive: true,
+      emailAccount: 'primary' // Always send from hello@edgetalent.co.uk
     });
   };
 
@@ -204,8 +207,12 @@ const BookersTemplates = () => {
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Your Templates</h1>
-              <p className="text-gray-600 mt-2">Create and manage your personal SMS and Email templates for Lead Details</p>
+              <h1 className="text-3xl font-bold text-gray-900">Booker Templates</h1>
+              <p className="text-gray-600 mt-2">Create and manage your personal templates</p>
+              <p className="text-sm text-gray-500 mt-1">
+                <span className="font-medium">No Answer:</span> Triggered when changing lead status to "No answer" |
+                <span className="font-medium ml-2">Invitation Email:</span> Quick button in Lead Details messages
+              </p>
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -293,18 +300,25 @@ const BookersTemplates = () => {
                       />
                     </div>
 
-                    {/* Template Type - Removed as per edit hint */}
-                    {/* <div>
+                    <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Template Type
                       </label>
-                      <input
-                        type="text"
-                        value="booker"
-                        disabled
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500"
-                      />
-                    </div> */}
+                      <select
+                        value={formData.type}
+                        onChange={(e) => setFormData({...formData, type: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        required
+                      >
+                        <option value="no_answer">📞 No Answer (Auto-triggered when status = No answer)</option>
+                        <option value="invitation_email">📧 Invitation Email (Quick button in messages)</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formData.type === 'no_answer'
+                          ? 'This template triggers with confirmation when you change a lead status to "No answer"'
+                          : 'This template appears as a quick button in the Lead Details message section'}
+                      </p>
+                    </div>
 
                     <div className="flex items-center gap-4">
                       <label className="flex items-center">

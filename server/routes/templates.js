@@ -102,15 +102,16 @@ router.get('/', auth, async (req, res) => {
       .from('templates')
       .select('*');
 
+    // Define diary template types that bookers should NOT see
+    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
+    
     // If bookersOnly flag is set, everyone (including admin) sees only their own templates
     if (bookersOnly === 'true') {
       // All users see only their own templates
       query = query.eq('user_id', req.user.id);
     } else if (req.user.role !== 'admin') {
-      // Non-admin users see:
-      // 1. Their own templates (any type, any status)
-      // 2. ALL active booking confirmation templates (type OR category = booking_confirmation, so they can send confirmations for any lead)
-      query = query.or(`user_id.eq.${req.user.id},and(or(type.eq.booking_confirmation,category.eq.booking_confirmation),is_active.eq.true)`);
+      // Bookers see ONLY their own templates (no diary templates, no shared templates)
+      query = query.eq('user_id', req.user.id);
     }
     // Admin without bookersOnly flag sees all templates (for /templates admin page)
 
@@ -134,8 +135,17 @@ router.get('/', auth, async (req, res) => {
       return res.status(500).json({ message: 'Server error' });
     }
 
+    // Filter out diary templates for bookers (non-admin users)
+    let filteredTemplates = templates || [];
+    if (req.user.role !== 'admin' && bookersOnly !== 'true') {
+      // Bookers should not see diary templates
+      filteredTemplates = filteredTemplates.filter(t => 
+        !diaryTemplateTypes.includes(t.type)
+      );
+    }
+
     // Add _id field for frontend compatibility and map field names
-    const templatesWithId = (templates || []).map(template => ({
+    const templatesWithId = filteredTemplates.map(template => ({
       ...template,
       _id: template.id,
       emailBody: template.email_body || template.content,
@@ -391,6 +401,11 @@ router.put('/:id', auth, async (req, res) => {
       updateData.attachments = JSON.stringify(req.body.attachments);
     }
 
+    console.log('📝 Updating template:', {
+      id: req.params.id,
+      updateData: { ...updateData, email_body: updateData.email_body?.substring(0, 50) + '...', sms_body: updateData.sms_body?.substring(0, 50) + '...' }
+    });
+
     // Update template in Supabase
     const { data: updatedTemplate, error: updateError } = await supabase
       .from('templates')
@@ -400,9 +415,15 @@ router.put('/:id', auth, async (req, res) => {
       .single();
 
     if (updateError) {
-      console.error('Error updating template:', updateError);
+      console.error('❌ Error updating template:', updateError);
       return res.status(500).json({ message: 'Server error', error: updateError.message });
     }
+
+    console.log('✅ Template updated successfully in database:', {
+      id: updatedTemplate.id,
+      name: updatedTemplate.name,
+      updated_at: updatedTemplate.updated_at
+    });
 
     // Format response for frontend compatibility
     const responseTemplate = {

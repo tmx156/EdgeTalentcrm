@@ -118,10 +118,10 @@ const LeadDetail = () => {
   // Utility to group templates by category (Bookers Templates)
   const categorizeTemplates = (templates) => {
     const categories = {
-      'Booking & Reminders': ['booking_confirmation', 'appointment_reminder'],
-      'Custom Templates': ['custom'],
+      'No Answer Templates': ['no_answer'],
+      'Invitation Templates': ['invitation_email'],
     };
-    const grouped = { 'Booking & Reminders': [], 'Custom Templates': [] };
+    const grouped = { 'No Answer Templates': [], 'Invitation Templates': [] };
     templates.forEach(t => {
       let found = false;
       for (const [cat, types] of Object.entries(categories)) {
@@ -131,16 +131,15 @@ const LeadDetail = () => {
           break;
         }
       }
-      if (!found) grouped['Custom Templates'].push(t); // Default to Custom Templates if unknown
+      if (!found) grouped['Invitation Templates'].push(t); // Default to Invitation Templates if unknown
     });
     return grouped;
   };
 
   // Show only Bookers Templates (matching BookersTemplates page)
   const isLeadTemplate = (t) => [
-    'booking_confirmation',
-    'appointment_reminder',
-    'custom'
+    'no_answer',
+    'invitation_email'
   ].includes(t.type);
 
   // Preload adjacent lead images for smooth navigation
@@ -1432,7 +1431,35 @@ const LeadDetail = () => {
                             )}
                           </select>
                         </div>
-                        
+
+                        {/* Invitation Email Quick Button - Only show in Email mode */}
+                        {replyMode === 'email' && (() => {
+                          const invitationTemplate = emailTemplates.find(t => t.type === 'invitation_email');
+                          return invitationTemplate && (
+                            <div className="flex justify-end mb-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const subj = invitationTemplate.subject || '';
+                                  const msg = invitationTemplate.emailBody || invitationTemplate.message || '';
+                                  const processedMsg = replacePlaceholders(subj) + '\n\n' + replacePlaceholders(msg);
+                                  setNewReply(processedMsg);
+                                  setSelectedEmailTemplate(invitationTemplate._id);
+                                  // Auto-resize textarea
+                                  setTimeout(() => {
+                                    const textarea = document.querySelector('textarea[placeholder*="reply"]');
+                                    autoResizeTextarea(textarea);
+                                  }, 0);
+                                }}
+                                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all flex items-center gap-2 shadow-md text-sm"
+                              >
+                                <FiMail className="h-4 w-4" />
+                                Quick: Send Invitation Email
+                              </button>
+                            </div>
+                          );
+                        })()}
+
                         <div className="flex space-x-2">
                           <textarea
                             value={newReply}

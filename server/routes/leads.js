@@ -368,7 +368,7 @@ router.get('/', auth, async (req, res) => {
       .from('leads')
       .select('*', { count: 'exact', head: true });
 
-    // ROLE-BASED ACCESS CONTROL
+    // ROLE-BASED ACCESS CONTROL - Apply FIRST to ensure correct filtering
     if (req.user.role !== 'admin') {
       dataQuery = dataQuery.eq('booker_id', req.user.id);
       countQuery = countQuery.eq('booker_id', req.user.id);
@@ -414,18 +414,8 @@ router.get('/', auth, async (req, res) => {
       console.log(`🔍 Search filter applied across name/phone/email/postcode: ${term}`);
     }
 
-    // Apply created_at date range filter for dashboard
-    if (created_at_start && created_at_end) {
-      dataQuery = dataQuery
-        .gte('created_at', created_at_start)
-        .lte('created_at', created_at_end);
-      countQuery = countQuery
-        .gte('created_at', created_at_start)
-        .lte('created_at', created_at_end);
-      console.log(`📅 Created date filter applied: ${created_at_start} to ${created_at_end}`);
-    }
-
-    // Apply assigned_at date range filter for assigned leads
+    // Apply assigned_at date range filter for "Date Assigned" filter
+    // This should be applied BEFORE created_at filter (priority)
     if (assigned_at_start && assigned_at_end) {
       dataQuery = dataQuery
         .gte('assigned_at', assigned_at_start)
@@ -434,6 +424,15 @@ router.get('/', auth, async (req, res) => {
         .gte('assigned_at', assigned_at_start)
         .lte('assigned_at', assigned_at_end);
       console.log(`📅 Assigned date filter applied: ${assigned_at_start} to ${assigned_at_end}`);
+    } else if (created_at_start && created_at_end) {
+      // Fallback to created_at only if assigned_at filter is not provided
+      dataQuery = dataQuery
+        .gte('created_at', created_at_start)
+        .lte('created_at', created_at_end);
+      countQuery = countQuery
+        .gte('created_at', created_at_start)
+        .lte('created_at', created_at_end);
+      console.log(`📅 Created date filter applied: ${created_at_start} to ${created_at_end}`);
     }
 
     // Execute queries
@@ -541,8 +540,9 @@ router.get('/calendar', auth, async (req, res) => {
     // PERFORMANCE: Get pagination and date range from query params
     const { start, end, page = 1, limit = 200, offset = 0 } = req.query;
 
-    // Validate and cap limit to prevent performance issues - INCREASED to 600 since message fetching disabled
-    const validatedLimit = Math.min(parseInt(limit) || 600, 600);
+    // Validate and cap limit - INCREASED to 10000 to ensure ALL bookings are returned
+    // Calendar now fetches ALL bookings (5 years back to 5 years forward) so we need higher limit
+    const validatedLimit = Math.min(parseInt(limit) || 10000, 10000);
     const pageInt = Math.max(parseInt(page) || 1, 1);
     const offsetInt = parseInt(offset) || ((pageInt - 1) * validatedLimit);
 
@@ -565,20 +565,18 @@ router.get('/calendar', auth, async (req, res) => {
       .neq('postcode', 'ZZGHOST') // Exclude ghost bookings (stats correction entries)
       .not('status', 'in', '(Cancelled,Rejected)'); // ✅ Exclude cancelled/rejected bookings from calendar
     
-    // PERFORMANCE: Apply date range filter if provided
+    // Apply date range filter if provided
+    // NOTE: Calendar now uses a wide range (5 years back to 5 years forward) to get ALL bookings
     if (start && end) {
-      // Filter to only events within the date range (with some buffer)
       const startDate = new Date(start);
       const endDate = new Date(end);
       
-      // Add 7 days buffer on each side for smooth scrolling
-      startDate.setDate(startDate.getDate() - 7);
-      endDate.setDate(endDate.getDate() + 7);
-      
+      // Use the provided date range directly (calendar sends wide range for all bookings)
       query = query
         .gte('date_booked', startDate.toISOString())
         .lte('date_booked', endDate.toISOString());
     }
+    // If no date range provided, fetch ALL bookings (no date filter)
     
     // First get total count for pagination
     const countQuery = supabase
@@ -591,13 +589,13 @@ router.get('/calendar', auth, async (req, res) => {
     if (start && end) {
       const startDate = new Date(start);
       const endDate = new Date(end);
-      startDate.setDate(startDate.getDate() - 7);
-      endDate.setDate(endDate.getDate() + 7);
-
+      
+      // Use the provided date range directly for count query
       countQuery
         .gte('date_booked', startDate.toISOString())
         .lte('date_booked', endDate.toISOString());
     }
+    // If no date range provided, count ALL bookings (no date filter)
 
     // Apply pagination, limit and ordering
     query = query
@@ -2135,6 +2133,18 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       if (supabaseUpdateFields.booked_at && !supabaseUpdateFields.ever_booked) {
         supabaseUpdateFields.ever_booked = 1;
         console.log(`📊 Ensuring ever_booked is set for ${lead.name}`);
+      }
+      
+      // ✅ DATE ASSIGNED FIX: Set assigned_at when booker_id is set or changed
+      // This ensures all assigned leads have an assigned_at timestamp for proper filtering
+      const newBookerId = supabaseUpdateFields.booker_id !== undefined ? supabaseUpdateFields.booker_id : lead.booker_id;
+      const oldBookerId = lead.booker_id;
+      const isBeingAssigned = newBookerId && (!oldBookerId || newBookerId !== oldBookerId);
+      const hasNoAssignedAt = !lead.assigned_at;
+      
+      if (isBeingAssigned || (newBookerId && hasNoAssignedAt)) {
+        supabaseUpdateFields.assigned_at = new Date().toISOString();
+        console.log(`📅 Lead ${lead.name} assigned_at set to ${supabaseUpdateFields.assigned_at} (booker: ${newBookerId})`);
       }
       
       const updateResult = await dbManager.update('leads', supabaseUpdateFields, { id: req.params.id });
@@ -5173,11 +5183,11 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     // Email workflow: Send automatic email for "Left Message" or "No answer"
     if (emailTriggers.includes(callStatus) && lead.email) {
       try {
-        // Find appropriate email template - look for templates with type/category related to contact attempts
+        // Find the user's specific "no_answer" template (booker-specific)
         const { data: templates, error: templateError } = await supabase
           .from('templates')
           .select('*')
-          .or('type.ilike.%contact%,type.ilike.%message%,type.ilike.%attempt%,category.ilike.%contact%,category.ilike.%message%')
+          .eq('type', 'no_answer')
           .eq('is_active', true)
           .eq('user_id', req.user.id)
           .limit(1);
@@ -5185,19 +5195,9 @@ router.patch('/:id/call-status', auth, async (req, res) => {
         let template = null;
         if (!templateError && templates && templates.length > 0) {
           template = templates[0];
+          console.log(`📧 Found "no_answer" template for user ${req.user.name}:`, template.name);
         } else {
-          // Fallback: try to find any active email template for the user
-          const { data: fallbackTemplates } = await supabase
-            .from('templates')
-            .select('*')
-            .eq('is_active', true)
-            .eq('user_id', req.user.id)
-            .not('email_body', 'is', null)
-            .limit(1);
-          
-          if (fallbackTemplates && fallbackTemplates.length > 0) {
-            template = fallbackTemplates[0];
-          }
+          console.warn(`⚠️ No "no_answer" template found for user ${req.user.name}. Email not sent.`);
         }
 
         if (template && template.email_body) {

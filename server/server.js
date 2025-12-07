@@ -291,7 +291,7 @@ io.on('connection', (socket) => {
     if (socket.connected) {
       socket.emit('ping');
     }
-  }, 25000); // Send ping every 25 seconds
+  }, 120000); // Send ping every 2 minutes (reduced from 25s to prevent DB load)
 
   // Clean up interval on disconnect
   socket.on('disconnect', () => {

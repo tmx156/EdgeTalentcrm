@@ -722,6 +722,7 @@ const Layout = ({ children }) => {
     { name: 'Sales', href: '/sales', icon: FiTrendingUp, adminOnly: true },
     { name: 'Finance', href: '/finance', icon: FiDollarSign, adminOnly: true },
     { name: 'Reports', href: '/reports', icon: FiBarChart2 },
+    { name: 'My Templates', href: '/bookers-templates', icon: FiMail, bookerOnly: true },
     { name: 'Templates', href: '/templates', icon: FiMail, adminOnly: true },
     { name: 'Users', href: '/users', icon: FiUser, adminOnly: true },
   ];
@@ -745,10 +746,13 @@ const Layout = ({ children }) => {
   const filteredNavigation = navigation.filter(item => {
     // Hide admin-only items for non-admins
     if (item.adminOnly && user?.role !== 'admin') return false;
-    
+
+    // Hide booker-only items for non-bookers
+    if (item.bookerOnly && user?.role !== 'booker') return false;
+
     // Hide viewer-hidden items for viewers
     if (item.viewerHidden && user?.role === 'viewer') return false;
-    
+
     return true;
   });
 
