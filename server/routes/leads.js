@@ -5266,15 +5266,8 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     // Only admins should move leads to "Rejected" status
     // Bookers just update call_status to track their call outcomes
     // This keeps leads in the booker's assigned list
-    if (callStatus === 'Wrong number') {
-      updateData.reject_reason = 'Wrong number';
-      // Don't set status = 'Rejected' - let admin do that
-    } else if (closeTriggers.includes(callStatus)) {
-      updateData.reject_reason = `Call status: ${callStatus}`;
-      // Don't set status = 'Rejected' - let admin do that
-    }
 
-    // Update the lead
+    // Update the lead (fast - just update call_status)
     const updateResult = await dbManager.update('leads', updateData, { id: leadId });
 
     if (!updateResult || updateResult.length === 0) {
@@ -5283,24 +5276,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
 
     const updatedLead = updateResult[0];
 
-    // Add to booking history
-    await addBookingHistoryEntry(
-      leadId,
-      'CALL_STATUS_UPDATE',
-      req.user.id,
-      req.user.name,
-      {
-        callStatus: callStatus,
-        workflowTrigger: emailTriggers.includes(callStatus) ? 'email'
-          : closeTriggers.includes(callStatus) ? 'close'
-          : 'callback',
-        updatedBy: req.user.name,
-        timestamp: new Date()
-      },
-      createLeadSnapshot(updatedLead)
-    );
-
-    // Return success immediately (don't wait for email/callback processing)
+    // Return success immediately (don't wait for booking history or workflows)
     // This makes the UI feel instant and responsive
     const workflowResult = {
       emailScheduled: emailTriggers.includes(callStatus) && lead.email,
@@ -5332,6 +5308,27 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     // This prevents blocking the user
     // Wrap in setImmediate to ensure it runs after response is sent
     setImmediate(async () => {
+      // Add to booking history (async - don't block response)
+      try {
+        await addBookingHistoryEntry(
+          leadId,
+          'CALL_STATUS_UPDATE',
+          req.user.id,
+          req.user.name,
+          {
+            callStatus: callStatus,
+            workflowTrigger: emailTriggers.includes(callStatus) ? 'email'
+              : closeTriggers.includes(callStatus) ? 'close'
+              : 'callback',
+            updatedBy: req.user.name,
+            timestamp: new Date()
+          },
+          createLeadSnapshot(updatedLead)
+        );
+      } catch (historyError) {
+        console.error('Error adding booking history:', historyError);
+      }
+
       // Email workflow: Send automatic email for "Left Message" or "No answer"
       if (emailTriggers.includes(callStatus) && lead.email) {
         try {
