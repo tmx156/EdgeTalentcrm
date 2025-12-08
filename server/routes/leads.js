@@ -5332,9 +5332,9 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     // This prevents blocking the user
     // Wrap in setImmediate to ensure it runs after response is sent
     setImmediate(async () => {
-      try {
-        // Email workflow: Send automatic email for "Left Message" or "No answer"
-        if (emailTriggers.includes(callStatus) && lead.email) {
+      // Email workflow: Send automatic email for "Left Message" or "No answer"
+      if (emailTriggers.includes(callStatus) && lead.email) {
+        try {
         // Find the user's specific "no_answer" template (booker-specific)
         const { data: templates, error: templateError } = await supabase
           .from('templates')
@@ -5396,20 +5396,16 @@ router.patch('/:id/call-status', auth, async (req, res) => {
 
           console.log(`📧 Automatic email sent for call status "${callStatus}" to ${lead.email}`);
         } else {
-          workflowResult.emailSent = false;
-          workflowResult.emailMessage = 'No email template found for automatic sending';
           console.warn(`⚠️ No email template found for call status "${callStatus}"`);
         }
-      } catch (emailError) {
-        console.error('Error sending automatic email:', emailError);
-        workflowResult.emailSent = false;
-        workflowResult.emailMessage = 'Error sending email: ' + emailError.message;
+        } catch (emailError) {
+          console.error('Error sending automatic email:', emailError);
+        }
       }
-    }
 
-    // Callback workflow: Create scheduled reminder for "Call back" status
-    if (callbackTriggers.includes(callStatus) && callbackTime) {
-      try {
+      // Callback workflow: Create scheduled reminder for "Call back" status
+      if (callbackTriggers.includes(callStatus) && callbackTime) {
+        try {
         // Parse callback time (format: HH:MM in UK time)
         const [hours, minutes] = callbackTime.split(':');
         const callbackHour = parseInt(hours, 10);
@@ -5496,9 +5492,6 @@ router.patch('/:id/call-status', auth, async (req, res) => {
         } catch (callbackError) {
           console.error('Error creating callback reminder:', callbackError);
         }
-        }
-      } catch (asyncError) {
-        console.error('Error in async workflow processing:', asyncError);
       }
     });
 
