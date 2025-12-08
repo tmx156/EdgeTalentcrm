@@ -103,6 +103,24 @@ router.post('/submit', async (req, res) => {
              null;
     };
 
+    const getGender = () => {
+      const genderValue = formData['Gender'] ||
+                          formData['gender'] ||
+                          formData['12'] ||          // Field ID 12 = Gender (if applicable)
+                          null;
+      
+      // Normalize gender value to match database constraint (Female/Male)
+      if (!genderValue) return null;
+      
+      const normalized = genderValue.trim();
+      // Handle case variations: "female" -> "Female", "male" -> "Male"
+      if (normalized.toLowerCase() === 'female') return 'Female';
+      if (normalized.toLowerCase() === 'male') return 'Male';
+      
+      // Return as-is if it's already "Female" or "Male"
+      return (normalized === 'Female' || normalized === 'Male') ? normalized : null;
+    };
+
     const fullName = getName().trim();
 
     // Validate required fields
@@ -117,7 +135,7 @@ router.post('/submit', async (req, res) => {
 
     // Store any unprocessed fields in custom_fields
     const processedKeys = [
-      '1', '5', '6', '7', '11', '14', '15',  // Field IDs
+      '1', '5', '6', '7', '11', '12', '14', '15',  // Field IDs (12 = Gender)
       'Name', 'name', 'Full Name', 'First Name', 'Last Name',
       'Email', 'email',
       'Telephone Number', 'Phone', 'phone', 'telephone_number',
@@ -125,6 +143,7 @@ router.post('/submit', async (req, res) => {
       'Post Code', 'Postcode', 'postcode', 'post_code',
       "Parent's Number", 'Parent Number', 'parent_phone', 'parents_number',
       'Upload Photo', 'Photo', 'photo', 'image_url',
+      'Gender', 'gender',  // Gender field
       // Gravity Forms metadata fields
       'id', 'form_id', 'post_id', 'date_created', 'date_updated',
       'is_starred', 'is_read', 'ip', 'source_url', 'user_agent',
@@ -133,6 +152,10 @@ router.post('/submit', async (req, res) => {
       'transaction_type', 'status', 'source_id', 'submission_speeds'
     ];
 
+    // Extract Gender explicitly
+    const gender = getGender();
+    
+    // Store any unprocessed fields in custom_fields (excluding Gender which has its own column)
     const customFields = {};
     Object.keys(formData).forEach(key => {
       if (!processedKeys.includes(key)) {
@@ -154,6 +177,7 @@ router.post('/submit', async (req, res) => {
       postcode: getPostcode(),
       parent_phone: getParentPhone(),
       image_url: getPhotoUrl(),
+      gender: gender || null, // Store in dedicated column
       notes: notes,
       status: 'New', // Default status for new leads
       is_confirmed: false,
@@ -168,34 +192,53 @@ router.post('/submit', async (req, res) => {
       name: leadData.name,
       email: leadData.email,
       phone: leadData.phone,
-      status: leadData.status
+      status: leadData.status,
+      gender: leadData.gender || 'Not provided',
+      genderInLeadData: leadData.hasOwnProperty('gender'),
+      genderValue: leadData.gender
     });
 
     // Insert lead into database
+    console.log('💾 Inserting lead with gender:', leadData.gender);
     const { data: lead, error } = await supabase
       .from('leads')
       .insert(leadData)
-      .select()
+      .select('*') // Select all fields to see what Supabase returns
       .single();
 
     if (error) {
       console.error('❌ Error inserting lead:', error);
+      console.error('❌ Error details:', JSON.stringify(error, null, 2));
+      
+      // Check if error is related to missing gender column
+      if (error.message && error.message.includes('gender')) {
+        console.error('⚠️ Gender column might not exist. Please run the migration: server/migrations/add_gender_column.sql');
+      }
+      
       return res.status(500).json({
         success: false,
         error: 'Failed to create lead',
         message: error.message,
-        details: error.details
+        details: error.details,
+        hint: error.message && error.message.includes('gender') 
+          ? 'Gender column might not exist. Run migration: server/migrations/add_gender_column.sql'
+          : null
       });
     }
 
-    console.log('✅ Lead created successfully:', {
-      id: lead.id,
-      name: lead.name,
-      email: lead.email,
-      phone: lead.phone
-    });
+    console.log('✅ Lead created successfully');
+    console.log('📋 Lead object keys:', Object.keys(lead));
+    console.log('📋 Gender in lead object:', lead.gender);
+    console.log('📋 Gender in leadData:', leadData.gender);
+    console.log('📋 Full lead object (first 500 chars):', JSON.stringify(lead).substring(0, 500));
+    
+    if (!lead.hasOwnProperty('gender')) {
+      console.error('❌ WARNING: Gender property not found in returned lead object!');
+      console.error('   This likely means the gender column does not exist in the database.');
+      console.error('   Please run the migration: server/migrations/add_gender_column.sql');
+    }
 
-    // Return success response
+    // Return success response - always include gender
     res.status(201).json({
       success: true,
       message: 'Lead imported successfully',
@@ -204,6 +247,7 @@ router.post('/submit', async (req, res) => {
         name: lead.name,
         email: lead.email,
         phone: lead.phone,
+        gender: lead.gender !== undefined ? lead.gender : (leadData.gender || null),
         status: lead.status
       }
     });
@@ -238,7 +282,8 @@ router.get('/test', (req, res) => {
       'Email - Field ID: 7',
       'Telephone Number - Field ID: 15',
       'Post Code - Field ID: 5',
-      'Upload Photo - Field ID: 6'
+      'Upload Photo - Field ID: 6',
+      'Gender - Field ID: 12 (Female/Male)'
     ],
     formFieldMapping: {
       '1 or Name': 'Lead full name (REQUIRED)',
@@ -247,7 +292,8 @@ router.get('/test', (req, res) => {
       '11 or Age': 'Lead age',
       '5 or Post Code': 'Lead postal code',
       '14 or Parent\'s Number': 'Parent/guardian phone number',
-      '6 or Upload Photo': 'Photo URL or file upload'
+      '6 or Upload Photo': 'Photo URL or file upload',
+      '12 or Gender': 'Gender (Female/Male)'
     },
     exampleWithFieldIDs: {
       '1': 'John Doe',
@@ -257,6 +303,7 @@ router.get('/test', (req, res) => {
       '5': 'SW1A 1AA',
       '14': '07700900001',
       '6': 'https://example.com/photo.jpg',
+      '12': 'Male',
       'id': '12345',
       'source_url': 'https://edgetalent.co.uk/contact/'
     },
@@ -267,7 +314,8 @@ router.get('/test', (req, res) => {
       'Email': 'john@example.com',
       'Telephone Number': '07700900000',
       'Post Code': 'SW1A 1AA',
-      'Upload Photo': 'https://example.com/photo.jpg'
+      'Upload Photo': 'https://example.com/photo.jpg',
+      'Gender': 'Male'
     }
   });
 });

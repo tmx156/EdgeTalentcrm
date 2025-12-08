@@ -362,7 +362,7 @@ router.get('/', auth, async (req, res) => {
     // Include custom_fields for call_status filtering
     let dataQuery = supabase
       .from('leads')
-      .select('id, name, phone, email, postcode, age, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, has_sale, created_at, assigned_at, booked_at, custom_fields', { count: 'exact' })
+      .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, has_sale, created_at, assigned_at, booked_at, custom_fields', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(from, to);
 

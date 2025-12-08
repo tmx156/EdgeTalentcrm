@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS leads (
     postcode TEXT,
     image_url TEXT,
     parent_phone TEXT,
+    gender TEXT, -- Gender: Female or Male
     notes TEXT,
     status TEXT NOT NULL DEFAULT 'New' CHECK (
         status IN ('New', 'Assigned', 'Contacted', 'Booked', 'Confirmed', 

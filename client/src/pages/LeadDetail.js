@@ -1480,6 +1480,32 @@ const LeadDetail = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* Gender */}
+                  <div className="bg-gradient-to-r from-indigo-50 to-blue-50 rounded-xl p-4">
+                    <div className="flex items-start space-x-4">
+                      <div className="w-12 h-12 rounded-xl bg-indigo-500 flex items-center justify-center flex-shrink-0">
+                        <FiUser className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-indigo-600 uppercase tracking-wide">Gender</p>
+                        {editing ? (
+                          <select
+                            name="gender"
+                            value={formData.gender || ''}
+                            onChange={handleInputChange}
+                            className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-lg font-bold text-gray-900"
+                          >
+                            <option value="">Select gender</option>
+                            <option value="Female">Female</option>
+                            <option value="Male">Male</option>
+                          </select>
+                        ) : (
+                          <p className="text-lg font-bold text-gray-900 mt-1">{lead.gender || 'N/A'}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -2250,6 +2276,12 @@ const LeadDetail = () => {
                     <div className="flex items-center justify-center space-x-2">
                       <FiUser className="h-4 w-4" />
                       <span>{lead.age} years old</span>
+                    </div>
+                  )}
+                  {lead.gender && (
+                    <div className="flex items-center justify-center space-x-2">
+                      <FiUser className="h-4 w-4" />
+                      <span>{lead.gender}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-center space-x-2">
