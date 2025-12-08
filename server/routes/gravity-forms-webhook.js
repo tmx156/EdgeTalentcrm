@@ -106,19 +106,34 @@ router.post('/submit', async (req, res) => {
     const getGender = () => {
       const genderValue = formData['Gender'] ||
                           formData['gender'] ||
-                          formData['12'] ||          // Field ID 12 = Gender (if applicable)
+                          formData['16'] ||           // Field ID 16 = Gender (actual field ID from Gravity Forms)
+                          formData['12'] ||          // Field ID 12 = Gender (alternative)
                           null;
       
       // Normalize gender value to match database constraint (Female/Male)
       if (!genderValue) return null;
       
-      const normalized = genderValue.trim();
-      // Handle case variations: "female" -> "Female", "male" -> "Male"
-      if (normalized.toLowerCase() === 'female') return 'Female';
-      if (normalized.toLowerCase() === 'male') return 'Male';
+      const normalized = genderValue.trim().toUpperCase();
+      
+      // Handle single letter abbreviations: "F" -> "Female", "M" -> "Male"
+      if (normalized === 'F') return 'Female';
+      if (normalized === 'M') return 'Male';
+      
+      // Handle full words: "female" -> "Female", "male" -> "Male"
+      if (normalized === 'FEMALE') return 'Female';
+      if (normalized === 'MALE') return 'Male';
+      
+      // Handle case variations: "Female", "female", etc.
+      const lowerNormalized = normalized.toLowerCase();
+      if (lowerNormalized === 'female') return 'Female';
+      if (lowerNormalized === 'male') return 'Male';
       
       // Return as-is if it's already "Female" or "Male"
-      return (normalized === 'Female' || normalized === 'Male') ? normalized : null;
+      if (normalized === 'FEMALE' || normalized === 'MALE') {
+        return normalized.charAt(0) + normalized.slice(1).toLowerCase();
+      }
+      
+      return null;
     };
 
     const fullName = getName().trim();
@@ -135,7 +150,7 @@ router.post('/submit', async (req, res) => {
 
     // Store any unprocessed fields in custom_fields
     const processedKeys = [
-      '1', '5', '6', '7', '11', '12', '14', '15',  // Field IDs (12 = Gender)
+      '1', '5', '6', '7', '11', '12', '14', '15', '16', '17',  // Field IDs (16 = Gender, 17 = other field)
       'Name', 'name', 'Full Name', 'First Name', 'Last Name',
       'Email', 'email',
       'Telephone Number', 'Phone', 'phone', 'telephone_number',
@@ -195,7 +210,9 @@ router.post('/submit', async (req, res) => {
       status: leadData.status,
       gender: leadData.gender || 'Not provided',
       genderInLeadData: leadData.hasOwnProperty('gender'),
-      genderValue: leadData.gender
+      genderValue: leadData.gender,
+      formData16: formData['16'], // Debug: show what field 16 contains
+      formData17: formData['17']  // Debug: show what field 17 contains
     });
 
     // Insert lead into database
