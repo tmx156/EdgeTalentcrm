@@ -30,7 +30,7 @@
     "recharts": "^2.8.0",
     "socket.io-client": "^4.8.1"
   },
-  "homepage": ".",
+  "homepage": "/",
   "scripts": {
     "start": "react-scripts start",
     "build": "CI=false GENERATE_SOURCEMAP=false react-scripts build",
