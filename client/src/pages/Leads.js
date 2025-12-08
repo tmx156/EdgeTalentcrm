@@ -5,7 +5,7 @@ import { RiRobot2Line } from 'react-icons/ri';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { getCurrentUKTime, getTodayUK } from '../utils/timeUtils';
+import { getCurrentUKTime, getTodayUK, getStartOfDayUK, getEndOfDayUK, ukTimeToUTC } from '../utils/timeUtils';
 import LeadAnalysisModal from '../components/LeadAnalysisModal';
 import LazyImage from '../components/LazyImage';
 import VirtualLeadsList from '../components/VirtualLeadsList';
@@ -29,7 +29,15 @@ const Leads = () => {
     callback: 0,
     notInterested: 0,
     wantsEmail: 0,
-    noAnswer: 0
+    noAnswer: 0,
+    // New call_status-based counts for booker users
+    noAnswerCall: 0,
+    leftMessage: 0,
+    notInterestedCall: 0,
+    callBack: 0,
+    wrongNumber: 0,
+    salesConverted: 0,
+    notQualified: 0
   });
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -149,57 +157,61 @@ const Leads = () => {
 
   // Helper function to calculate date range in GMT/London timezone
   const getDateRange = useCallback(() => {
-    // Get current time in London timezone - use proper Date object
     const now = new Date();
+    const todayUK = getTodayUK(); // Returns YYYY-MM-DD in UK timezone
     
-    // Get today's date string in London timezone (YYYY-MM-DD format)
-    const todayLondonStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' }); // YYYY-MM-DD format
-    
-    // Create Date objects for calculations
-    const todayMidnightLondon = new Date(todayLondonStr + 'T00:00:00.000Z');
-
-    console.log('🕐 Current time:', now.toLocaleString('en-GB', { timeZone: 'Europe/London' }));
-    console.log('📅 Today (London midnight):', todayLondonStr, todayMidnightLondon.toISOString());
+    console.log('🕐 Current UK time:', now.toLocaleString('en-GB', { timeZone: 'Europe/London' }));
+    console.log('📅 Today UK:', todayUK);
 
     switch (dateFilter) {
       case 'today':
-        // Today: from midnight to midnight+24h in London time
-        const startOfToday = todayLondonStr + 'T00:00:00.000Z';
-        const startOfTomorrow = new Date(todayMidnightLondon.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] + 'T00:00:00.000Z';
+        // Today: from start of today to end of today in UK timezone
+        const startOfTodayUK = getStartOfDayUK(now);
+        const endOfTodayUK = getEndOfDayUK(now);
         return {
-          start: startOfToday,
-          end: startOfTomorrow
+          start: ukTimeToUTC(startOfTodayUK).toISOString(),
+          end: ukTimeToUTC(endOfTodayUK).toISOString()
         };
       case 'yesterday':
-        // Yesterday: from yesterday midnight to today midnight in London time
-        const yesterdayDate = new Date(todayMidnightLondon.getTime() - 24 * 60 * 60 * 1000);
-        const startOfYesterday = yesterdayDate.toISOString().split('T')[0] + 'T00:00:00.000Z';
+        // Yesterday: from start of yesterday to end of yesterday in UK timezone
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const startOfYesterdayUK = getStartOfDayUK(yesterday);
+        const endOfYesterdayUK = getEndOfDayUK(yesterday);
         return {
-          start: startOfYesterday,
-          end: todayLondonStr + 'T00:00:00.000Z'
+          start: ukTimeToUTC(startOfYesterdayUK).toISOString(),
+          end: ukTimeToUTC(endOfYesterdayUK).toISOString()
         };
       case 'week':
-        // Last 7 days: from 7 days ago midnight to now
-        const weekAgo = new Date(todayMidnightLondon.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const startOfWeek = weekAgo.toISOString().split('T')[0] + 'T00:00:00.000Z';
+        // Last 7 days: from 7 days ago start of day to now
+        const weekAgo = new Date(now);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const startOfWeekUK = getStartOfDayUK(weekAgo);
         return {
-          start: startOfWeek,
+          start: ukTimeToUTC(startOfWeekUK).toISOString(),
           end: new Date().toISOString() // Current moment
         };
       case 'month':
-        // Last 30 days: from 30 days ago midnight to now
-        const monthAgo = new Date(todayMidnightLondon.getTime() - 30 * 24 * 60 * 60 * 1000);
-        const startOfMonth = monthAgo.toISOString().split('T')[0] + 'T00:00:00.000Z';
+        // Last 30 days: from 30 days ago start of day to now
+        const monthAgo = new Date(now);
+        monthAgo.setDate(monthAgo.getDate() - 30);
+        const startOfMonthUK = getStartOfDayUK(monthAgo);
         return {
-          start: startOfMonth,
+          start: ukTimeToUTC(startOfMonthUK).toISOString(),
           end: new Date().toISOString() // Current moment
         };
       case 'custom':
         if (customDateStart && customDateEnd) {
-          // Custom range: use the dates as-is at midnight
+          // Custom range: parse dates and convert to UTC
+          // Dates are in YYYY-MM-DD format from input
+          const startDate = new Date(customDateStart + 'T00:00:00');
+          const endDate = new Date(customDateEnd + 'T23:59:59');
+          // Convert to UK timezone start/end of day, then to UTC
+          const startUK = getStartOfDayUK(startDate);
+          const endUK = getEndOfDayUK(endDate);
           return {
-            start: customDateStart + 'T00:00:00.000Z',
-            end: customDateEnd + 'T23:59:59.999Z'
+            start: ukTimeToUTC(startUK).toISOString(),
+            end: ukTimeToUTC(endUK).toISOString()
           };
         }
         return null;
@@ -227,16 +239,11 @@ const Leads = () => {
       // Add date filter if applicable
       const dateRange = getDateRange();
       if (dateRange) {
-        // Use assigned_at for Assigned status, created_at for all others
-        if (statusFilter === 'Assigned') {
-          params.assigned_at_start = dateRange.start;
-          params.assigned_at_end = dateRange.end;
-          console.log('📅 Assigned date filter applied:', dateFilter, dateRange);
-        } else {
-          params.created_at_start = dateRange.start;
-          params.created_at_end = dateRange.end;
-          console.log('📅 Created date filter applied:', dateFilter, dateRange);
-        }
+        // Always use assigned_at for "Date Assigned" filter
+        // This tracks when leads were assigned, not when they were created
+        params.assigned_at_start = dateRange.start;
+        params.assigned_at_end = dateRange.end;
+        console.log('📅 Date Assigned filter applied:', dateFilter, dateRange);
       }
 
       const startTime = performance.now();
@@ -300,11 +307,11 @@ const Leads = () => {
       const dateRange = getDateRange();
 
       if (dateRange) {
-        // Always use created_at for stats counters
-        // (assigned_at is only used for the actual leads list when viewing Assigned status)
-        params.created_at_start = dateRange.start;
-        params.created_at_end = dateRange.end;
-        console.log('📊 Fetching counts with date filter:', dateRange);
+        // Use assigned_at for stats counters to match the "Date Assigned" filter
+        // This ensures counts reflect leads assigned in the date range, not created
+        params.assigned_at_start = dateRange.start;
+        params.assigned_at_end = dateRange.end;
+        console.log('📊 Fetching counts with Date Assigned filter:', dateRange);
       }
 
       const response = await axios.get('/api/stats/leads', { params });
@@ -325,7 +332,15 @@ const Leads = () => {
           callback: response.data.callback || 0,
           notInterested: response.data.notInterested || 0,
           wantsEmail: response.data.wantsEmail || 0,
-          noAnswer: response.data.noAnswer || 0
+          noAnswer: response.data.noAnswer || 0,
+          // New call_status-based counts
+          noAnswerCall: response.data.noAnswerCall || 0,
+          leftMessage: response.data.leftMessage || 0,
+          notInterestedCall: response.data.notInterestedCall || 0,
+          callBack: response.data.callBack || 0,
+          wrongNumber: response.data.wrongNumber || 0,
+          salesConverted: response.data.salesConverted || 0,
+          notQualified: response.data.notQualified || 0
         });
       } else {
         console.error('❌ Invalid response data format:', response.data);
@@ -340,7 +355,14 @@ const Leads = () => {
           callback: 0,
           notInterested: 0,
           wantsEmail: 0,
-          noAnswer: 0
+          noAnswer: 0,
+          noAnswerCall: 0,
+          leftMessage: 0,
+          notInterestedCall: 0,
+          callBack: 0,
+          wrongNumber: 0,
+          salesConverted: 0,
+          notQualified: 0
         });
       }
     } catch (error) {
@@ -380,16 +402,11 @@ const Leads = () => {
         // Add date filter if applicable
         const dateRange = getDateRange();
         if (dateRange) {
-          // Use assigned_at for Assigned status, created_at for all others
-          if (statusFilter === 'Assigned') {
-            params.assigned_at_start = dateRange.start;
-            params.assigned_at_end = dateRange.end;
-            console.log('📅 Assigned date filter applied:', dateFilter, dateRange);
-          } else {
-            params.created_at_start = dateRange.start;
-            params.created_at_end = dateRange.end;
-            console.log('📅 Created date filter applied:', dateFilter, dateRange);
-          }
+          // Always use assigned_at for "Date Assigned" filter
+          // This tracks when leads were assigned, not when they were created
+          params.assigned_at_start = dateRange.start;
+          params.assigned_at_end = dateRange.end;
+          console.log('📅 Date Assigned filter applied:', dateFilter, dateRange);
         }
 
         const response = await axios.get('/api/leads', {
@@ -772,8 +789,55 @@ const Leads = () => {
       return;
     }
 
+    // Filter out leads that shouldn't be sent
+    const leadsToCheck = leads.filter(l => selectedLeads.includes(l.id));
+    const invalidLeads = [];
+    const alreadySentLeads = [];
+    
+    leadsToCheck.forEach(l => {
+      // Don't send if already booked
+      if (l.status === 'Booked' || l.date_booked) {
+        invalidLeads.push({ lead: l, reason: 'Already booked' });
+      }
+      // Don't send if no phone number
+      else if (!l.phone || l.phone.trim() === '') {
+        invalidLeads.push({ lead: l, reason: 'No phone number' });
+      }
+      // Track already sent leads
+      else if (l.salesape_sent_at) {
+        alreadySentLeads.push(l);
+      }
+    });
+
+    // Warn about invalid leads
+    if (invalidLeads.length > 0) {
+      const reasons = invalidLeads.map(({ lead, reason }) => `${lead.name} - ${reason}`).join('\n');
+      if (!window.confirm(
+        `⚠️ Some leads cannot be sent:\n\n${reasons}\n\nContinue with remaining ${selectedLeads.length - invalidLeads.length} lead(s)?`
+      )) {
+        return;
+      }
+    }
+
+    // Warn about already sent leads
+    let leadsToSend = [...selectedLeads];
+    if (alreadySentLeads.length > 0) {
+      const names = alreadySentLeads.map(l => l.name).join(', ');
+      if (!window.confirm(
+        `⚠️ ${alreadySentLeads.length} lead(s) were already sent to SalesApe:\n${names}\n\nResend them?`
+      )) {
+        // Remove already sent leads from selection
+        leadsToSend = leadsToSend.filter(id => !alreadySentLeads.some(l => l.id === id));
+        if (leadsToSend.length === 0) {
+          alert('No leads to send after filtering.');
+          return;
+        }
+      }
+    }
+
+    const validCount = leadsToSend.length;
     const confirmed = window.confirm(
-      `Send ${selectedLeads.length} lead${selectedLeads.length === 1 ? '' : 's'} to SalesApe AI for automated contact?`
+      `⚠️ Send ${validCount} lead${validCount === 1 ? '' : 's'} to SalesApe AI?\n\nThis will trigger automated SMS/WhatsApp messages.`
     );
 
     if (!confirmed) {
@@ -785,8 +849,19 @@ const Leads = () => {
       let successCount = 0;
       let errorCount = 0;
 
-      // Send each lead to SalesApe
-      for (const leadId of selectedLeads) {
+      // Filter out invalid leads before sending
+      const validLeadIds = leadsToSend.filter(leadId => {
+        const lead = leads.find(l => l.id === leadId);
+        if (!lead) return false;
+        // Skip if already booked
+        if (lead.status === 'Booked' || lead.date_booked) return false;
+        // Skip if no phone
+        if (!lead.phone || lead.phone.trim() === '') return false;
+        return true;
+      });
+
+      // Send each valid lead to SalesApe
+      for (const leadId of validLeadIds) {
         try {
           await axios.post(
             `/api/salesape-webhook/trigger/${leadId}`,
@@ -883,6 +958,14 @@ const Leads = () => {
       default:
         return 'status-badge status-new';
     }
+  };
+
+  // Format status display for booker users (e.g., "Wants Email" -> "Wrong Number")
+  const formatStatusDisplay = (status) => {
+    if (user?.role === 'booker' && status === 'Wants Email') {
+      return 'Wrong Number';
+    }
+    return status;
   };
 
   const formatDate = (dateString) => {
@@ -1421,10 +1504,13 @@ const Leads = () => {
                   <option value="all">All Status</option>
                   <option value="Assigned">👤 Assigned</option>
                   <option value="Booked">📅 Booked</option>
-                  <option value="Call Back">📞 Call Back</option>
-                  <option value="No Answer">📵 No Answer</option>
-                  <option value="Not Interested">🚫 Not Interested</option>
-                  <option value="Wants Email">📧 Wants Email</option>
+                  <option value="No answer">📵 No answer</option>
+                  <option value="Left Message">💬 Left Message</option>
+                  <option value="Not interested">🚫 Not interested</option>
+                  <option value="Call back">📞 Call back</option>
+                  <option value="Wrong Number">📞 Wrong number</option>
+                  <option value="Sales/converted - purchased">💰 Sales/converted - purchased</option>
+                  <option value="Not Qualified">❌ Not Qualified</option>
                 </>
               ) : (
                 <>
@@ -1447,7 +1533,7 @@ const Leads = () => {
           <div className="flex items-center space-x-2">
             <FiCalendar className="h-5 w-5 text-gray-400" />
             <span className="text-sm font-medium text-gray-700">
-              {statusFilter === 'Assigned' ? 'Date Assigned:' : 'Date Added:'}
+              Date Assigned:
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1662,8 +1748,8 @@ const Leads = () => {
 
         {/* Status Overview Cards */}
       {user?.role === 'booker' ? (
-        // Booker-specific folders
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
+        // Booker-specific folders - All statuses from LeadStatusDropdown
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10 gap-4">
           <div 
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
               statusFilter === 'all' 
@@ -1710,67 +1796,122 @@ const Leads = () => {
             </div>
           </div>
           
+          {/* No answer */}
           <div 
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Call Back' 
-                ? 'border-purple-500 bg-purple-50' 
-                : 'border-gray-200 bg-white hover:border-gray-300'
-            }`}
-            onClick={() => setStatusFilter('Call Back')}
-          >
-            <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">
-                {leadCounts.callback}
-              </div>
-              <div className="text-sm text-gray-600">📞 Call Back</div>
-            </div>
-          </div>
-          
-          <div 
-            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'No Answer' 
+              statusFilter === 'No answer' 
                 ? 'border-yellow-500 bg-yellow-50' 
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
-            onClick={() => setStatusFilter('No Answer')}
+            onClick={() => setStatusFilter('No answer')}
           >
             <div className="text-center">
               <div className="text-2xl font-bold text-yellow-600">
-                {leadCounts.noAnswer}
+                {leadCounts.noAnswerCall}
               </div>
-              <div className="text-sm text-gray-600">📵 No Answer</div>
+              <div className="text-sm text-gray-600">📵 No answer</div>
             </div>
           </div>
           
+          {/* Left Message */}
           <div 
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Not Interested' 
+              statusFilter === 'Left Message' 
+                ? 'border-yellow-500 bg-yellow-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Left Message')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">
+                {leadCounts.leftMessage}
+              </div>
+              <div className="text-sm text-gray-600">💬 Left Message</div>
+            </div>
+          </div>
+          
+          {/* Not interested */}
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Not interested' 
                 ? 'border-red-500 bg-red-50' 
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
-            onClick={() => setStatusFilter('Not Interested')}
+            onClick={() => setStatusFilter('Not interested')}
           >
             <div className="text-center">
               <div className="text-2xl font-bold text-red-600">
-                {leadCounts.notInterested}
+                {leadCounts.notInterestedCall}
               </div>
-              <div className="text-sm text-gray-600">🚫 Not Interested</div>
+              <div className="text-sm text-gray-600">🚫 Not interested</div>
             </div>
           </div>
           
+          {/* Call back */}
           <div 
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Wants Email' 
+              statusFilter === 'Call back' 
+                ? 'border-purple-500 bg-purple-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Call back')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">
+                {leadCounts.callBack}
+              </div>
+              <div className="text-sm text-gray-600">📞 Call back</div>
+            </div>
+          </div>
+          
+          {/* Wrong number */}
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Wrong Number' 
                 ? 'border-teal-500 bg-teal-50' 
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
-            onClick={() => setStatusFilter('Wants Email')}
+            onClick={() => setStatusFilter('Wrong Number')}
           >
             <div className="text-center">
               <div className="text-2xl font-bold text-teal-600">
-                {leadCounts.wantsEmail}
+                {leadCounts.wrongNumber}
               </div>
-              <div className="text-sm text-gray-600">📧 Wants Email</div>
+              <div className="text-sm text-gray-600">📞 Wrong number</div>
+            </div>
+          </div>
+          
+          {/* Sales/converted - purchased */}
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Sales/converted - purchased' 
+                ? 'border-green-500 bg-green-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Sales/converted - purchased')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">
+                {leadCounts.salesConverted}
+              </div>
+              <div className="text-sm text-gray-600">💰 Sales</div>
+            </div>
+          </div>
+          
+          {/* Not Qualified */}
+          <div 
+            className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
+              statusFilter === 'Not Qualified' 
+                ? 'border-red-500 bg-red-50' 
+                : 'border-gray-200 bg-white hover:border-gray-300'
+            }`}
+            onClick={() => setStatusFilter('Not Qualified')}
+          >
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">
+                {leadCounts.notQualified}
+              </div>
+              <div className="text-sm text-gray-600">❌ Not Qualified</div>
             </div>
           </div>
         </div>
@@ -1920,6 +2061,7 @@ const Leads = () => {
           statusFilter={statusFilter}
           getStatusBadgeClass={getStatusBadgeClass}
           formatDate={formatDate}
+          formatStatusDisplay={formatStatusDisplay}
           height={600}
           itemHeight={60}
         />
@@ -1961,7 +2103,7 @@ const Leads = () => {
                   Booker
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {statusFilter === 'Assigned' ? 'Date Assigned' : 'Date Added'}
+                  Date Assigned
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Date Booked
@@ -2050,7 +2192,7 @@ const Leads = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={getStatusBadgeClass(lead.status)}>
-                      {lead.status}
+                      {formatStatusDisplay(lead.status)}
                     </span>
                   </td>
                   {statusFilter === 'Rejected' && (
@@ -2065,10 +2207,7 @@ const Leads = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-500">
-                      {statusFilter === 'Assigned' 
-                        ? (lead.assigned_at ? formatDate(lead.assigned_at) : 'N/A')
-                        : (lead.created_at ? formatDate(lead.created_at) : 'N/A')
-                      }
+                      {lead.assigned_at ? formatDate(lead.assigned_at) : 'N/A'}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

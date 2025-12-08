@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { FiCheckCircle, FiClock } from 'react-icons/fi';
 
 // Time slots configuration (same as SlotCalendar)
@@ -36,17 +36,43 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
 
   const days = getDaysOfWeek();
 
-  // Check if a slot is blocked
-  const isSlotBlocked = (day, timeSlot = null, slotNumber = null) => {
-    if (!blockedSlots || blockedSlots.length === 0) return false;
+  // PERFORMANCE: Index events by date+time+slot once per render
+  const eventsBySlot = useMemo(() => {
+    if (!events || events.length === 0) return new Map();
     
-    const dateStr = day.toISOString().split('T')[0];
+    const index = new Map();
+    events.forEach(event => {
+      if (!event.date_booked) return;
+      const eventDateStr = new Date(event.date_booked).toISOString().split('T')[0];
+      const key = `${eventDateStr}_${event.time_booked || ''}_${event.booking_slot || 1}`;
+      index.set(key, event);
+    });
+    return index;
+  }, [events]);
+
+  // PERFORMANCE: Index blocked slots by date once per render
+  const blockedSlotsByDate = useMemo(() => {
+    if (!blockedSlots || blockedSlots.length === 0) return new Map();
     
-    return blockedSlots.some(block => {
-      // Check if the block is for this date
+    const index = new Map();
+    blockedSlots.forEach(block => {
       const blockDateStr = new Date(block.date).toISOString().split('T')[0];
-      if (blockDateStr !== dateStr) return false;
-      
+      if (!index.has(blockDateStr)) {
+        index.set(blockDateStr, []);
+      }
+      index.get(blockDateStr).push(block);
+    });
+    return index;
+  }, [blockedSlots]);
+
+  // Check if a slot is blocked - OPTIMIZED: Use pre-indexed map
+  const isSlotBlocked = (day, timeSlot = null, slotNumber = null) => {
+    const dateStr = day.toISOString().split('T')[0];
+    const dayBlocks = blockedSlotsByDate.get(dateStr) || [];
+    
+    if (dayBlocks.length === 0) return false;
+    
+    return dayBlocks.some(block => {
       // Full day block
       if (!block.time_slot) {
         // If checking a specific slot number
@@ -73,21 +99,11 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
     });
   };
 
-  // Get events for a specific day, time, and slot
+  // Get events for a specific day, time, and slot - OPTIMIZED: Use pre-indexed map
   const getEventForDayTimeSlot = (day, time, slot) => {
-    if (!events || events.length === 0) return null;
-    
     const dayStr = day.toISOString().split('T')[0];
-    
-    return events.find(event => {
-      if (!event.date_booked) return false;
-      
-      const eventDateStr = new Date(event.date_booked).toISOString().split('T')[0];
-      const eventTime = event.time_booked || '';
-      const eventSlot = event.booking_slot || 1;
-      
-      return eventDateStr === dayStr && eventTime === time && eventSlot === slot;
-    });
+    const key = `${dayStr}_${time}_${slot}`;
+    return eventsBySlot.get(key) || null;
   };
 
   // Get cell content for compact view

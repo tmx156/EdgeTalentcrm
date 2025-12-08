@@ -453,6 +453,111 @@ router.post('/trigger/:leadId', auth, async (req, res) => {
 });
 
 /**
+ * Send calendar link to SalesApe for a lead
+ * POST /api/salesape-webhook/send-calendar-link/:leadId
+ * This allows the CRM to send a calendar/booking link to SalesApe during the conversation
+ */
+router.post('/send-calendar-link/:leadId', auth, async (req, res) => {
+  try {
+    if (!SALESAPE_CONFIG.PAT_CODE) {
+      return res.status(503).json({
+        error: 'SalesApe not configured',
+        message: 'SALESAPE_PAT_CODE environment variable is not set'
+      });
+    }
+
+    const { leadId } = req.params;
+    const { calendarLink, eventType = 'Meeting Booked' } = req.body;
+
+    if (!calendarLink) {
+      return res.status(400).json({
+        error: 'Calendar link is required',
+        message: 'Please provide a calendarLink in the request body'
+      });
+    }
+
+    // Get the lead from database
+    const { data: lead, error: leadError } = await supabase
+      .from('leads')
+      .select('id, name, salesape_record_id')
+      .eq('id', leadId)
+      .single();
+
+    if (leadError || !lead) {
+      return res.status(404).json({
+        error: 'Lead not found',
+        message: `Lead with ID ${leadId} does not exist`
+      });
+    }
+
+    if (!lead.salesape_record_id) {
+      return res.status(400).json({
+        error: 'Lead not in SalesApe',
+        message: 'This lead has not been sent to SalesApe yet'
+      });
+    }
+
+    // Update the Airtable record with calendar link
+    // According to API requirements, we use PATCH to update the record
+    const payload = {
+      fields: {
+        "CRM ID": lead.id,
+        "Event Type": eventType,
+        "Calendar_Link": calendarLink
+      }
+    };
+
+    console.log('📅 Sending calendar link to SalesApe:', {
+      leadId: lead.id,
+      leadName: lead.name,
+      recordId: lead.salesape_record_id,
+      calendarLink: calendarLink
+    });
+
+    const response = await axios.patch(
+      `${SALESAPE_CONFIG.AIRTABLE_URL}/${lead.salesape_record_id}`,
+      payload,
+      {
+        headers: {
+          'Authorization': `Bearer ${SALESAPE_CONFIG.PAT_CODE}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+
+    console.log('✅ Calendar link sent to SalesApe successfully');
+
+    // Emit socket event for real-time update
+    if (global.io) {
+      global.io.emit('salesape_calendar_link_sent', {
+        leadId: lead.id,
+        leadName: lead.name,
+        calendarLink: calendarLink,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Calendar link sent to SalesApe',
+      data: {
+        leadId: lead.id,
+        recordId: lead.salesape_record_id,
+        calendarLink: calendarLink
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error sending calendar link to SalesApe:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Failed to send calendar link',
+      message: error.response?.data?.error?.message || error.message
+    });
+  }
+});
+
+/**
  * Notify SalesApe when a meeting is booked
  * POST /api/salesape-webhook/meeting-booked/:leadId
  * @access Protected - requires authentication
@@ -521,6 +626,7 @@ router.get('/health', (req, res) => {
     endpoints: {
       webhook: '/api/salesape-webhook/update',
       trigger: '/api/salesape-webhook/trigger/:leadId',
+      sendCalendarLink: '/api/salesape-webhook/send-calendar-link/:leadId',
       meetingBooked: '/api/salesape-webhook/meeting-booked/:leadId',
       testLog: '/api/salesape-webhook/test-log',
       health: '/api/salesape-webhook/health'

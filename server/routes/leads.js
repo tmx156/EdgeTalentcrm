@@ -358,9 +358,10 @@ router.get('/', auth, async (req, res) => {
     const to = from + validatedLimit - 1;
 
     // Build Supabase queries (data + count) with consistent filters
+    // Include custom_fields for call_status filtering
     let dataQuery = supabase
       .from('leads')
-      .select('id, name, phone, email, postcode, age, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, has_sale, created_at, assigned_at, booked_at', { count: 'exact' })
+      .select('id, name, phone, email, postcode, age, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, has_sale, created_at, assigned_at, booked_at, custom_fields', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(from, to);
 
@@ -370,9 +371,15 @@ router.get('/', auth, async (req, res) => {
 
     // ROLE-BASED ACCESS CONTROL - Apply FIRST to ensure correct filtering
     if (req.user.role !== 'admin') {
-      dataQuery = dataQuery.eq('booker_id', req.user.id);
-      countQuery = countQuery.eq('booker_id', req.user.id);
-      console.log(`🔒 Role-based filtering: User ${req.user.name} (${req.user.role}) can only see their assigned leads`);
+      // ✅ BOOKER RULE: Once assigned, leads stay with booker regardless of status changes
+      // EXCEPT: Rejected leads are excluded from booker views
+      dataQuery = dataQuery
+        .eq('booker_id', req.user.id)
+        .neq('status', 'Rejected'); // Exclude rejected leads from booker views
+      countQuery = countQuery
+        .eq('booker_id', req.user.id)
+        .neq('status', 'Rejected'); // Exclude rejected leads from booker views
+      console.log(`🔒 Role-based filtering: User ${req.user.name} (${req.user.role}) can only see their assigned leads (excluding rejected)`);
     } else {
       console.log(`👑 Admin access: User ${req.user.name} can see all leads`);
     }
@@ -387,8 +394,31 @@ router.get('/', auth, async (req, res) => {
         dataQuery = dataQuery.eq('has_sale', 1);
         countQuery = countQuery.eq('has_sale', 1);
       } else {
-        dataQuery = dataQuery.eq('status', status);
-        countQuery = countQuery.eq('status', status);
+        // For booker users, check both status and call_status (in custom_fields)
+        // Map new status filters to call_status values
+        const statusToCallStatusMap = {
+          'No answer': 'No answer',
+          'Left Message': 'Left Message',
+          'Not interested': 'Not interested',
+          'Call back': 'Call back',
+          'Wrong Number': 'Wrong number',
+          'Sales/converted - purchased': 'Sales/converted - purchased',
+          'Not Qualified': 'Not Qualified'
+        };
+        
+        const callStatusValue = statusToCallStatusMap[status];
+        
+        if (req.user.role === 'booker' && callStatusValue) {
+          // For booker users filtering by call_status, we'll filter after fetching
+          // since Supabase JSONB filtering can be complex
+          // Set a flag to filter by call_status in JavaScript
+          console.log(`📊 Booker filtering by call_status: ${callStatusValue} (will filter after fetch)`);
+          // Don't apply status filter here - we'll filter by call_status after fetching
+        } else {
+          // Standard status filter
+          dataQuery = dataQuery.eq('status', status);
+          countQuery = countQuery.eq('status', status);
+        }
       }
     }
 
@@ -444,27 +474,82 @@ router.get('/', auth, async (req, res) => {
       throw leadsError;
     }
 
-    // Get total via separate head count to be safe if not returned
-    let total = typeof totalCount === 'number' ? totalCount : 0;
-    if (!total) {
-      const { count, error: countError } = await countQuery;
-      if (countError) throw countError;
-      total = count || 0;
+    // For booker users filtering by call_status, filter the results in JavaScript
+    let filteredLeads = leads || [];
+    if (status && status !== 'all' && status !== 'sales' && req.user.role === 'booker') {
+      const statusToCallStatusMap = {
+        'No answer': 'No answer',
+        'Left Message': 'Left Message',
+        'Not interested': 'Not interested',
+        'Call back': 'Call back',
+        'Wrong Number': 'Wrong number',
+        'Sales/converted - purchased': 'Sales/converted - purchased',
+        'Not Qualified': 'Not Qualified'
+      };
+      
+      const callStatusValue = statusToCallStatusMap[status];
+      if (callStatusValue) {
+        filteredLeads = (leads || []).filter(lead => {
+          try {
+            if (lead.custom_fields) {
+              const customFields = typeof lead.custom_fields === 'string' 
+                ? JSON.parse(lead.custom_fields) 
+                : lead.custom_fields;
+              return customFields?.call_status === callStatusValue;
+            }
+          } catch (e) {
+            return false;
+          }
+          return false;
+        });
+        console.log(`📊 Filtered ${filteredLeads.length} leads by call_status: ${callStatusValue}`);
+      }
     }
 
-    console.log(`🖼️ Debug: Found ${leads?.length || 0} leads from database (total count: ${total})`);
-    if (leads && leads.length > 0) {
+    // Get total count - for call_status filters, use filtered count
+    let total = typeof totalCount === 'number' ? totalCount : 0;
+    if (status && status !== 'all' && status !== 'sales' && req.user.role === 'booker') {
+      const statusToCallStatusMap = {
+        'No answer': 'No answer',
+        'Left Message': 'Left Message',
+        'Not interested': 'Not interested',
+        'Call back': 'Call back',
+        'Wrong Number': 'Wrong number',
+        'Sales/converted - purchased': 'Sales/converted - purchased',
+        'Not Qualified': 'Not Qualified'
+      };
+      const callStatusValue = statusToCallStatusMap[status];
+      if (callStatusValue) {
+        // For call_status filter, count the filtered leads
+        total = filteredLeads.length;
+      } else {
+        if (!total) {
+          const { count, error: countError } = await countQuery;
+          if (countError) throw countError;
+          total = count || 0;
+        }
+      }
+    } else {
+      if (!total) {
+        const { count, error: countError } = await countQuery;
+        if (countError) throw countError;
+        total = count || 0;
+      }
+    }
+
+    console.log(`🖼️ Debug: Found ${filteredLeads?.length || 0} leads from database (total count: ${total})`);
+    if (filteredLeads && filteredLeads.length > 0) {
       console.log(`🖼️ Sample image URLs from database:`);
-      leads.slice(0, 3).forEach(lead => {
+      filteredLeads.slice(0, 3).forEach(lead => {
         console.log(`  ${lead.name}: image_url = "${lead.image_url}"`);
       });
     }
 
     // Bulk fetch bookers in one query
     // Get all user IDs that need to be fetched (bookers, creators, updaters)
-    const bookerIds = [...new Set((leads || []).map(lead => lead.booker_id).filter(Boolean))];
-    const creatorIds = [...new Set((leads || []).map(lead => lead.created_by_user_id).filter(Boolean))];
-    const updaterIds = [...new Set((leads || []).map(lead => lead.updated_by_user_id).filter(Boolean))];
+    const bookerIds = [...new Set((filteredLeads || []).map(lead => lead.booker_id).filter(Boolean))];
+    const creatorIds = [...new Set((filteredLeads || []).map(lead => lead.created_by_user_id).filter(Boolean))];
+    const updaterIds = [...new Set((filteredLeads || []).map(lead => lead.updated_by_user_id).filter(Boolean))];
     const allUserIds = [...new Set([...bookerIds, ...creatorIds, ...updaterIds])];
 
     let usersMap = {};
@@ -481,33 +566,51 @@ router.get('/', auth, async (req, res) => {
     }
 
     // Transform leads to include booker object (optimized for list view)
-    const transformedLeads = (leads || []).map(lead => ({
-      id: lead.id,
-      name: lead.name,
-      phone: lead.phone,
-      postcode: lead.postcode,
-      image_url: lead.image_url,
-      status: lead.status,
-      date_booked: lead.date_booked,
-      is_confirmed: lead.is_confirmed,
-      has_sale: lead.has_sale,
-      created_at: lead.created_at,
-      booker: lead.booker_id && usersMap[lead.booker_id] ? {
-        id: usersMap[lead.booker_id].id,
-        name: usersMap[lead.booker_id].name,
-        email: usersMap[lead.booker_id].email
-      } : null,
-      created_by: lead.created_by_user_id && usersMap[lead.created_by_user_id] ? {
-        id: usersMap[lead.created_by_user_id].id,
-        name: usersMap[lead.created_by_user_id].name,
-        email: usersMap[lead.created_by_user_id].email
-      } : null,
-      updated_by: lead.updated_by_user_id && usersMap[lead.updated_by_user_id] ? {
-        id: usersMap[lead.updated_by_user_id].id,
-        name: usersMap[lead.updated_by_user_id].name,
-        email: usersMap[lead.updated_by_user_id].email
-      } : null
-    }));
+    const transformedLeads = (filteredLeads || []).map(lead => {
+      // Extract call_status from custom_fields for easier access
+      let callStatus = null;
+      if (lead.custom_fields) {
+        try {
+          const customFields = typeof lead.custom_fields === 'string' 
+            ? JSON.parse(lead.custom_fields) 
+            : lead.custom_fields;
+          callStatus = customFields?.call_status || null;
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
+      return {
+        id: lead.id,
+        name: lead.name,
+        phone: lead.phone,
+        postcode: lead.postcode,
+        image_url: lead.image_url,
+        status: lead.status,
+        date_booked: lead.date_booked,
+        is_confirmed: lead.is_confirmed,
+        has_sale: lead.has_sale,
+        created_at: lead.created_at,
+        assigned_at: lead.assigned_at,
+        custom_fields: lead.custom_fields, // Include for filtering
+        call_status: callStatus, // Extracted for easy access
+        booker: lead.booker_id && usersMap[lead.booker_id] ? {
+          id: usersMap[lead.booker_id].id,
+          name: usersMap[lead.booker_id].name,
+          email: usersMap[lead.booker_id].email
+        } : null,
+        created_by: lead.created_by_user_id && usersMap[lead.created_by_user_id] ? {
+          id: usersMap[lead.created_by_user_id].id,
+          name: usersMap[lead.created_by_user_id].name,
+          email: usersMap[lead.created_by_user_id].email
+        } : null,
+        updated_by: lead.updated_by_user_id && usersMap[lead.updated_by_user_id] ? {
+          id: usersMap[lead.updated_by_user_id].id,
+          name: usersMap[lead.updated_by_user_id].name,
+          email: usersMap[lead.updated_by_user_id].email
+        } : null
+      };
+    });
 
     console.log(`[DEBUG] /api/leads returned ${transformedLeads.length} leads (total: ${total}) for user ${req.user.name} (${req.user.role})`);
     
@@ -1998,13 +2101,22 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       console.log(`📊 Setting booked_at and ever_booked for ${lead.name}: ${req.body.booked_at}`);
     }
     
-    // ✅ DAILY ACTIVITY FIX: Don't clear date_booked on cancellation
-    // This preserves the original appointment time for historical tracking
-    // Cancelled bookings will remain visible in daily activities with their original time
+    // ✅ CANCELLATION UPDATE: Clear booking information on cancellation
+    // This allows cancelled leads to be reassigned as new leads later
+    // Booking history will preserve the original appointment details
     if (req.body.status === 'Cancelled') {
-      // Keep date_booked intact - only change status to 'Cancelled'
-      // Calendar won't show it because it filters by status
-      console.log(`📅 Lead cancelled but preserving original date_booked for tracking`);
+      // If booking fields are explicitly set to null in request, allow clearing them
+      // Otherwise, clear them automatically for cancellations
+      if (req.body.date_booked === null || !req.body.hasOwnProperty('date_booked')) {
+        req.body.date_booked = null;
+        req.body.time_booked = null;
+        req.body.booking_slot = null;
+        req.body.is_confirmed = null;
+        req.body.booking_status = null;
+        console.log(`📅 Lead cancelled - clearing all booking information to allow reassignment`);
+      } else {
+        console.log(`📅 Lead cancelled but keeping booking information as requested`);
+      }
     }
     // Update the lead - filter out problematic fields and ensure valid data types
     const { _id, ...updateData } = req.body;
@@ -4547,14 +4659,20 @@ router.patch('/:id/reject', auth, async (req, res) => {
     }
 
     const now = new Date().toISOString();
-    
+
     // Update the lead status
-    // ✅ DAILY ACTIVITY FIX: Don't clear date_booked on rejection (preserve history)
+    // ✅ REJECTION UPDATE: Clear booking information to allow reassignment
+    // Booking history will preserve the original appointment details
     await dbManager.update('leads', req.params.id, {
       status: 'Rejected',
       reject_reason: reason,
-      rejected_at: now
-      // date_booked preserved for tracking
+      rejected_at: now,
+      // Clear booking information to allow lead reassignment
+      date_booked: null,
+      time_booked: null,
+      booking_slot: null,
+      is_confirmed: null,
+      booking_status: null
     });
     
     const updatedLeads = await dbManager.query('leads', {
@@ -5142,11 +5260,14 @@ router.patch('/:id/call-status', auth, async (req, res) => {
 
     // Determine workflow actions based on status
     const emailTriggers = ['Left Message', 'No answer'];
-    const closeTriggers = ['Not interested', 'Not Qualified', 'Wrong number'];
+    const closeTriggers = ['Not interested', 'Not Qualified'];
     const callbackTriggers = ['Call back', 'Sales/converted - purchased'];
 
-    // If status triggers closing, update lead status
-    if (closeTriggers.includes(callStatus)) {
+    // Map call status to lead status
+    // "Wrong number" maps to "Wants Email" for backward compatibility
+    if (callStatus === 'Wrong number') {
+      updateData.status = 'Wants Email';
+    } else if (closeTriggers.includes(callStatus)) {
       updateData.status = 'Rejected';
       updateData.reject_reason = `Call status: ${callStatus}`;
     }

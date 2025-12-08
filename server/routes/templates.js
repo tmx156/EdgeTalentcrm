@@ -92,7 +92,7 @@ router.post('/:id/attachments', auth, upload.single('file'), async (req, res) =>
 });
 
 // @route   GET /api/templates
-// @desc    Get all templates (admin sees all, bookers see only their own)
+// @desc    Get all templates (admin sees all, bookers see only their own except for booking_confirmation)
 // @access  Private
 router.get('/', auth, async (req, res) => {
   try {
@@ -102,12 +102,18 @@ router.get('/', auth, async (req, res) => {
       .from('templates')
       .select('*');
 
-    // Define diary template types that bookers should NOT see
+    // Define diary template types that bookers should NOT see in Templates page
     const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
-    
-    // If bookersOnly flag is set, everyone (including admin) sees only their own templates
-    if (bookersOnly === 'true') {
-      // All users see only their own templates
+
+    // Special case: If requesting active booking_confirmation templates, show to ALL users
+    // This allows all users to see booking templates in the calendar modal
+    const isRequestingBookingConfirmations = type === 'booking_confirmation' && isActive === 'true';
+
+    if (isRequestingBookingConfirmations) {
+      // All users can see active booking_confirmation templates (don't filter by user_id)
+      console.log('📋 Fetching active booking_confirmation templates for all users');
+    } else if (bookersOnly === 'true') {
+      // If bookersOnly flag is set, everyone (including admin) sees only their own templates
       query = query.eq('user_id', req.user.id);
     } else if (req.user.role !== 'admin') {
       // Bookers see ONLY their own templates (no diary templates, no shared templates)
@@ -135,11 +141,11 @@ router.get('/', auth, async (req, res) => {
       return res.status(500).json({ message: 'Server error' });
     }
 
-    // Filter out diary templates for bookers (non-admin users)
+    // Filter out diary templates for bookers (non-admin users) UNLESS requesting booking confirmations
     let filteredTemplates = templates || [];
-    if (req.user.role !== 'admin' && bookersOnly !== 'true') {
-      // Bookers should not see diary templates
-      filteredTemplates = filteredTemplates.filter(t => 
+    if (req.user.role !== 'admin' && bookersOnly !== 'true' && !isRequestingBookingConfirmations) {
+      // Bookers should not see diary templates in the Templates page
+      filteredTemplates = filteredTemplates.filter(t =>
         !diaryTemplateTypes.includes(t.type)
       );
     }
@@ -205,7 +211,7 @@ router.get('/:id', auth, async (req, res) => {
 
 // @route   POST /api/templates
 // @desc    Create new template
-// @access  Private (Admin only)
+// @access  Private (Admin only for booking_confirmation, all users for others)
 router.post('/', auth, async (req, res) => {
   try {
     const {
@@ -226,6 +232,12 @@ router.post('/', auth, async (req, res) => {
     // Validate required fields
     if (!name || !type) {
       return res.status(400).json({ message: 'Name and type are required' });
+    }
+
+    // Only admins can create booking_confirmation, reschedule, or cancellation templates
+    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
+    if (diaryTemplateTypes.includes(type) && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only administrators can create booking/diary templates' });
     }
 
     // Check if template name already exists
@@ -315,7 +327,7 @@ router.post('/', auth, async (req, res) => {
 
 // @route   PUT /api/templates/:id
 // @desc    Update template
-// @access  Private (Admin only)
+// @access  Private (Admin only for booking_confirmation, owners for others)
 router.put('/:id', auth, async (req, res) => {
   try {
     const {
@@ -336,7 +348,7 @@ router.put('/:id', auth, async (req, res) => {
     // Check if template exists
     const { data: existingTemplate, error: checkError } = await supabase
       .from('templates')
-      .select('id, name, user_id')
+      .select('id, name, user_id, type')
       .eq('id', req.params.id)
       .single();
 
@@ -346,6 +358,15 @@ router.put('/:id', auth, async (req, res) => {
         return res.status(404).json({ message: 'Template not found' });
       }
       return res.status(500).json({ message: 'Server error' });
+    }
+
+    // Only admins can edit booking_confirmation, reschedule, or cancellation templates
+    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
+    const isEditingDiaryTemplate = diaryTemplateTypes.includes(existingTemplate.type) ||
+                                   (type && diaryTemplateTypes.includes(type));
+
+    if (isEditingDiaryTemplate && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only administrators can edit booking/diary templates' });
     }
 
     // Check ownership: non-admin users can only edit their own templates
@@ -457,13 +478,13 @@ router.put('/:id', auth, async (req, res) => {
 
 // @route   DELETE /api/templates/:id
 // @desc    Delete template
-// @access  Private
+// @access  Private (Admin only for booking_confirmation, owners for others)
 router.delete('/:id', auth, async (req, res) => {
   try {
     // Check if template exists and get ownership info
     const { data: existingTemplate, error: checkError } = await supabase
       .from('templates')
-      .select('id, user_id')
+      .select('id, user_id, type')
       .eq('id', req.params.id)
       .single();
 
@@ -473,6 +494,12 @@ router.delete('/:id', auth, async (req, res) => {
         return res.status(404).json({ message: 'Template not found' });
       }
       return res.status(500).json({ message: 'Server error' });
+    }
+
+    // Only admins can delete booking_confirmation, reschedule, or cancellation templates
+    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
+    if (diaryTemplateTypes.includes(existingTemplate.type) && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only administrators can delete booking/diary templates' });
     }
 
     // Check ownership: non-admin users can only delete their own templates

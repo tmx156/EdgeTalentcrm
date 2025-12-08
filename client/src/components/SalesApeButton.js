@@ -18,8 +18,21 @@ const SalesApeButton = ({ lead, onSuccess }) => {
       return;
     }
 
+    // Validate lead before sending
+    if (!lead.phone || lead.phone.trim() === '') {
+      setStatus('error');
+      setMessage('Lead must have a phone number to send to SalesApe');
+      return;
+    }
+
+    if (lead.status === 'Booked' || lead.date_booked) {
+      if (!window.confirm(`⚠️ This lead is already booked. Still send to SalesApe?`)) {
+        return;
+      }
+    }
+
     // Confirm before sending
-    if (!window.confirm(`Send ${lead.name} to SalesApe AI for automated contact?`)) {
+    if (!window.confirm(`Send ${lead.name} to SalesApe AI for automated contact?\n\nThis will trigger automated SMS/WhatsApp messages.`)) {
       return;
     }
 

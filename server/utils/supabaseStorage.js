@@ -12,25 +12,117 @@ const supabase = createClient(
 class SupabaseStorageService {
   constructor() {
     this.bucketName = 'template-attachments';
-    this.initializeBucket();
+    this.initialized = false;
+    this.initializationPromise = null;
+    this.maxRetries = 3;
+    this.initializationStarted = false;
+    
+      // DELAYED INITIALIZATION - Wait 5 seconds after server startup
+    // This prevents blocking server startup and allows Supabase services to stabilize
+    // Note: Supabase recently restored projects can take up to 5 minutes to become operational
+    setTimeout(() => {
+      this.initializeBucketWithRetry().catch(() => {
+        // Silently fail - storage initialization is optional
+        // Errors are already logged in initializeBucketWithRetry
+      });
+    }, 5000); // Increased to 5 seconds to allow Supabase services to stabilize
   }
 
-  async initializeBucket() {
+  async initializeBucketWithRetry() {
+    // Prevent multiple simultaneous initializations
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
+    this.initializationPromise = (async () => {
+      for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+        try {
+          if (attempt > 1) {
+            console.log(`🔄 Retrying storage initialization (attempt ${attempt}/${this.maxRetries})...`);
+          }
+          
+          const result = await this.initializeBucket(attempt);
+          
+          if (result.success) {
+            return; // Success - exit
+          }
+          
+          // If it's not a timeout error, don't retry
+          if (!result.isTimeout && attempt < this.maxRetries) {
+            // Wait before retrying non-timeout errors too
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          }
+          
+          // Wait before retrying (exponential backoff for timeouts)
+          if (result.isTimeout && attempt < this.maxRetries) {
+            const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+            console.log(`⏳ Waiting ${waitTime}ms before retry...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          }
+        } catch (error) {
+          const isTimeout = error.message?.includes('timeout') || error.status === 544 || error.statusCode === '544';
+          console.warn(`⚠️ Storage initialization attempt ${attempt} failed:`, error.message || error);
+          
+          if (attempt < this.maxRetries && isTimeout) {
+            const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          break;
+        }
+      }
+      
+      console.warn('⚠️ Storage initialization failed after all retries');
+      console.warn('   This may be due to Supabase services being unhealthy. Check your Supabase dashboard.');
+      console.warn('   Storage features will be unavailable until Supabase services recover. This is non-critical.');
+      this.initialized = false;
+      this.initializationPromise = null; // Clear promise after all retries
+    })();
+
+    return this.initializationPromise;
+  }
+
+  async initializeBucket(attempt = 1) {
     try {
-      // Check if bucket exists
-      const { data: buckets, error } = await supabase.storage.listBuckets();
+      // Use longer timeout: 15s for first attempt, 10s for retries
+      const timeoutMs = attempt === 1 ? 15000 : 10000;
+      
+      // Check if bucket exists with timeout
+      const listBucketsPromise = supabase.storage.listBuckets();
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('TIMEOUT')), timeoutMs);
+      });
+      
+      let listBucketsResult;
+      try {
+        listBucketsResult = await Promise.race([listBucketsPromise, timeoutPromise]);
+      } catch (raceError) {
+        // Handle timeout specifically
+        if (raceError.message === 'TIMEOUT') {
+          return { success: false, isTimeout: true, error: 'Connection timeout' };
+        }
+        throw raceError;
+      }
+      
+      const { data: buckets, error } = listBucketsResult;
 
       if (error) {
-        // Don't spam logs - storage might not be configured
-        if (error.message && !error.message.includes('JWS')) {
-          console.error('❌ Error listing buckets:', error);
-        } else {
-          console.log('ℹ️ Storage not configured - skipping bucket initialization');
+        // Handle specific error types
+        const isTimeout = error.status === 544 || error.statusCode === '544' || 
+                         error.message?.includes('timeout') || error.message?.includes('timed out');
+        
+        if (isTimeout) {
+          return { success: false, isTimeout: true, error: error.message };
         }
-        return;
+        
+        if (error.message && !error.message.includes('JWS')) {
+          console.warn('⚠️ Storage API error:', error.message);
+        }
+        return { success: false, isTimeout: false, error: error.message };
       }
 
-      const bucketExists = buckets.some(bucket => bucket.name === this.bucketName);
+      const bucketExists = buckets?.some(bucket => bucket.name === this.bucketName);
       
       if (!bucketExists) {
         console.log(`📦 Creating bucket: ${this.bucketName}`);
@@ -52,15 +144,34 @@ class SupabaseStorageService {
         });
 
         if (createError) {
-          console.error('❌ Error creating bucket:', createError);
+          // Don't treat "already exists" as an error
+          if (createError.message?.includes('already exists') || createError.message?.includes('duplicate')) {
+            console.log('✅ Bucket already exists (creation skipped)');
+            this.initialized = true;
+            return { success: true };
+          }
+          console.warn('⚠️ Could not create bucket:', createError.message);
+          return { success: false, isTimeout: false, error: createError.message };
         } else {
           console.log('✅ Bucket created successfully');
+          this.initialized = true;
+          return { success: true };
         }
       } else {
-        console.log('✅ Bucket already exists');
+        console.log('✅ Storage initialized successfully - bucket exists');
+        this.initialized = true;
+        return { success: true };
       }
     } catch (error) {
-      console.error('❌ Error initializing bucket:', error);
+      // Handle timeout and connection errors
+      const isTimeout = error.message === 'TIMEOUT' || error.message?.includes('timeout') || 
+                       error.status === 544 || error.statusCode === '544' || 
+                       error.code === 'ECONNABORTED';
+      return { 
+        success: false, 
+        isTimeout: isTimeout, 
+        error: error.message || error.toString() 
+      };
     }
   }
 
@@ -209,7 +320,30 @@ class SupabaseStorageService {
   }
 }
 
-// Create singleton instance
-const storageService = new SupabaseStorageService();
+// Create singleton instance - LAZY INITIALIZATION
+// Don't initialize immediately to avoid blocking server startup
+let storageService = null;
 
-module.exports = storageService;
+function getStorageService() {
+  if (!storageService) {
+    storageService = new SupabaseStorageService();
+  }
+  return storageService;
+}
+
+// Export getter function instead of instance
+// This allows modules to require the file without triggering initialization
+module.exports = new Proxy({}, {
+  get(target, prop) {
+    const service = getStorageService();
+    if (typeof service[prop] === 'function') {
+      return service[prop].bind(service);
+    }
+    return service[prop];
+  },
+  set(target, prop, value) {
+    const service = getStorageService();
+    service[prop] = value;
+    return true;
+  }
+});

@@ -72,6 +72,17 @@ const Calendar = () => {
   const [selectedSlot, setSelectedSlot] = useState(1); // Track selected slot for booking
   const [selectedTime, setSelectedTime] = useState(''); // Track selected time for booking
   const [blockedSlots, setBlockedSlots] = useState([]); // Track blocked slots for calendar display
+  
+  // Available time slots matching the calendar (10:00 - 16:30, every 30 minutes)
+  const AVAILABLE_TIMES = [
+    '10:00', '10:30',
+    '11:00', '11:30',
+    '12:00', '12:30',
+    '13:00', '13:30',
+    '14:00', '14:30',
+    '15:00', '15:30',
+    '16:00', '16:30'
+  ];
 
   // Reject lead modal state
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -220,42 +231,38 @@ const Calendar = () => {
     try {
       console.log(`📅 Fetching calendar events...`);
       
-      // PERFORMANCE: Get visible date range from calendar to only fetch relevant events
-      const calendarApi = calendarRef.current?.getApi();
-      let dateParams = '';
-      let rangeKey = null;
-      let startDate = null;
-      let endDate = null;
+      // FIX: Always fetch ALL bookings with a very wide date range (5 years back to 5 years forward)
+      // This ensures ALL bookings are always visible at any time, like any standard calendar
+      // OPTIMIZED: Wide range but with performance optimizations to prevent slowdown
+      const now = new Date();
+      const startDate = new Date(now);
+      startDate.setFullYear(startDate.getFullYear() - 5); // 5 years back
+      startDate.setMonth(0); // January
+      startDate.setDate(1); // 1st of month
+      startDate.setHours(0, 0, 0, 0);
       
-      if (calendarApi && calendarApi.view) {
-        const view = calendarApi.view;
-        // Only fetch visible calendar dates (no buffer needed for month navigation)
-        startDate = new Date(view.activeStart);
-        endDate = new Date(view.activeEnd);
-      } else {
-        // Fallback: Use current month if calendar not yet initialized
-        const now = new Date();
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-        console.log('📅 Calendar not initialized, using current month range');
-      }
+      const endDate = new Date(now);
+      endDate.setFullYear(endDate.getFullYear() + 5); // 5 years forward
+      endDate.setMonth(11); // December
+      endDate.setDate(31); // 31st of month
+      endDate.setHours(23, 59, 59, 999);
 
-      // Create range key for tracking
-      rangeKey = `${startDate.toISOString()}_${endDate.toISOString()}`;
+      // Use a single "all bookings" key to ensure we only fetch once unless forced
+      const rangeKey = 'ALL_BOOKINGS';
       
-      // Check if this range was already loaded (unless force refresh) - use ref to prevent recreation
+      // Check if all bookings were already loaded (unless force refresh)
       if (!force && loadedRangesRef.current.has(rangeKey)) {
-        console.log('📅 Range already loaded, skipping fetch:', rangeKey);
+        console.log('📅 All bookings already loaded, skipping fetch');
         setIsFetching(false);
         return;
       }
 
-      dateParams = `&start=${startDate.toISOString()}&end=${endDate.toISOString()}`;
-      console.log(`📅 Fetching events for range: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`);
+      const dateParams = `&start=${startDate.toISOString()}&end=${endDate.toISOString()}`;
+      console.log(`📅 Fetching ALL bookings from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} (10 year range)`);
 
-      // Use the new calendar endpoint with date filtering
-      // Increased limit to 600 for better calendar coverage
-      const cacheBuster = `?t=${Date.now()}${dateParams}&limit=600`;
+      // Use the new calendar endpoint with wide date range to get ALL bookings
+      // Increased limit to 10000 to ensure we get all bookings
+      const cacheBuster = force ? `?t=${Date.now()}${dateParams}&limit=10000` : `${dateParams}&limit=10000`;
       const response = await axios.get(`/api/leads/calendar${cacheBuster}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -313,9 +320,11 @@ const Calendar = () => {
           const hasBookingDate = lead.date_booked && lead.date_booked !== null && lead.date_booked !== 'null';
           const isBookedWithoutDate = lead.status === 'Booked' && !lead.date_booked;
           const isNotDeleted = !lead.deleted_at;
+          const isNotCancelled = lead.status !== 'Cancelled' && lead.status !== 'Rejected';
 
           // Allow leads with booking dates OR leads with status "Booked" (even without dates)
-          return (hasBookingDate || isBookedWithoutDate) && isNotDeleted;
+          // Exclude cancelled and rejected leads from calendar
+          return (hasBookingDate || isBookedWithoutDate) && isNotDeleted && isNotCancelled;
         })
         .map(lead => {
           // Parse the booking date more robustly
@@ -440,12 +449,10 @@ const Calendar = () => {
 
       console.log(`📅 Calendar: Final events array has ${finalEvents.length} unique events`);
 
-      // Mark this range as loaded if we have a rangeKey - use ref to prevent recreation
-      if (rangeKey) {
-        loadedRangesRef.current.add(rangeKey);
-        setLoadedRanges(new Set(loadedRangesRef.current)); // Update state for UI if needed
-        console.log(`📅 Marked range as loaded: ${rangeKey}`);
-      }
+      // Mark all bookings as loaded - use ref to prevent recreation
+      loadedRangesRef.current.add(rangeKey);
+      setLoadedRanges(new Set(loadedRangesRef.current)); // Update state for UI if needed
+      console.log(`📅 Marked all bookings as loaded (${finalEvents.length} events)`);
 
       // DIARY-STYLE LOADING: Merge new events with existing ones (no duplicates)
       setEvents(prevEvents => {
@@ -1362,9 +1369,10 @@ const Calendar = () => {
       const confirmationMessage = `Are you sure you want to cancel ${leadName}'s appointment?\n\n` +
         `This will:\n` +
         `• Remove the booking from the calendar\n` +
+        `• Clear all booking information (date, time, slot)\n` +
         `• Move the lead status to "Cancelled"\n` +
-        `• Preserve the original booking date for tracking\n` +
-        `• Update the daily diary\n\n` +
+        `• Save the booking details to history for tracking\n` +
+        `• Allow the lead to be reassigned later\n\n` +
         `This action cannot be undone.`;
 
       if (!window.confirm(confirmationMessage)) {
@@ -1393,12 +1401,18 @@ const Calendar = () => {
       ...selectedEvent.extendedProps.lead
     };
 
-    // For cancellation, set status to Cancelled but preserve the original booking date
+    // For cancellation, set status to Cancelled and clear all booking information
     if (newStatus === 'Cancelled') {
       updateData = {
         ...updateData,
         status: 'Cancelled',
-        cancellation_reason: 'Appointment cancelled via calendar'
+        cancellation_reason: 'Appointment cancelled via calendar',
+        // Clear all booking information - history will preserve these values
+        date_booked: null,
+        time_booked: null,
+        booking_slot: null,
+        is_confirmed: null,
+        booking_status: null
       };
     } else if (newStatus === 'Confirmed') {
       updateData = {
@@ -2293,9 +2307,19 @@ const Calendar = () => {
               // Open booking modal with pre-filled time and slot
               setSelectedTime(time);
               setSelectedSlot(slot);
+              
+              // Parse the time string (e.g., "14:00") and set it on the date
+              const timeParts = time.split(':');
+              const hours = timeParts.length > 0 ? parseInt(timeParts[0], 10) : 0;
+              const minutes = timeParts.length > 1 ? parseInt(timeParts[1], 10) : 0;
+              
+              // Create a new date with the selected time
+              const dateWithTime = new Date(currentDate);
+              dateWithTime.setHours(hours, minutes, 0, 0);
+              
               setSelectedDate({
-                dateStr: currentDate.toISOString(),
-                date: currentDate
+                dateStr: dateWithTime.toISOString(),
+                date: dateWithTime
               });
               setLeadForm({
                 ...leadForm,
@@ -2350,9 +2374,19 @@ const Calendar = () => {
                 // Clicked on a specific slot
                 setSelectedTime(time);
                 setSelectedSlot(slot);
+                
+                // Parse the time string (e.g., "14:00") and set it on the date
+                const timeParts = time.split(':');
+                const hours = timeParts.length > 0 ? parseInt(timeParts[0], 10) : 0;
+                const minutes = timeParts.length > 1 ? parseInt(timeParts[1], 10) : 0;
+                
+                // Create a new date with the selected time
+                const dateWithTime = new Date(day);
+                dateWithTime.setHours(hours, minutes, 0, 0);
+                
                 setSelectedDate({
-                  dateStr: day.toISOString(),
-                  date: day
+                  dateStr: dateWithTime.toISOString(),
+                  date: dateWithTime
                 });
                 setCurrentDate(day);
                 setLeadForm({
@@ -2568,7 +2602,7 @@ const Calendar = () => {
                           >
                             {bookingTemplates.map((template) => (
                               <option key={template._id} value={template._id}>
-                                {template.name} {template.emailAccount === 'secondary' ? '(Secondary)' : '(Primary)'}
+                                {template.name} {template.emailAccount === 'secondary' ? '(Diary@edgetalent.co.uk)' : '(Primary)'}
                               </option>
                             ))}
                           </select>
@@ -2608,61 +2642,44 @@ const Calendar = () => {
                     
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">New Time</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <select
-                          value={selectedDate ? (selectedDate.date ? selectedDate.date.getHours() : selectedDate instanceof Date ? selectedDate.getHours() : 9) : 9}
-                          onChange={(e) => {
-                            if (selectedDate) {
-                              const currentDate = selectedDate.date || selectedDate;
-                              const newDate = new Date(currentDate);
-                              newDate.setHours(parseInt(e.target.value), newDate.getMinutes());
-                              setSelectedDate({ 
-                                dateStr: newDate.toISOString(), 
-                                date: newDate 
-                              });
-                              // Update time_booked in leadForm
-                              const hours = parseInt(e.target.value);
-                              const minutes = newDate.getMinutes();
-                              const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-                              setLeadForm({ ...leadForm, time_booked: timeStr });
-                            }
-                          }}
-                          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          {Array.from({length: 24}, (_, i) => (
-                            <option key={i} value={i}>
-                              {i === 0 ? '12 AM' : i === 12 ? '12 PM' : i > 12 ? `${i-12} PM` : `${i} AM`}
+                      <select
+                        value={leadForm.time_booked || (selectedDate && selectedDate.date ? 
+                          `${String(selectedDate.date.getHours()).padStart(2, '0')}:${String(selectedDate.date.getMinutes()).padStart(2, '0')}` : 
+                          '10:00')}
+                        onChange={(e) => {
+                          const timeStr = e.target.value;
+                          const [hours, minutes] = timeStr.split(':').map(Number);
+                          
+                          if (selectedDate) {
+                            const currentDate = selectedDate.date || selectedDate;
+                            const newDate = new Date(currentDate);
+                            newDate.setHours(hours, minutes, 0, 0);
+                            setSelectedDate({ 
+                              dateStr: newDate.toISOString(), 
+                              date: newDate 
+                            });
+                          }
+                          
+                          // Update time_booked in leadForm
+                          setLeadForm({ ...leadForm, time_booked: timeStr });
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        {AVAILABLE_TIMES.map(time => {
+                          const [hours, minutes] = time.split(':').map(Number);
+                          const hour12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
+                          const ampm = hours >= 12 ? 'PM' : 'AM';
+                          const displayTime = `${hour12}:${String(minutes).padStart(2, '0')} ${ampm}`;
+                          return (
+                            <option key={time} value={time}>
+                              {displayTime}
                             </option>
-                          ))}
-                        </select>
-                        
-                        <select
-                          value={selectedDate ? (selectedDate.date ? selectedDate.date.getMinutes() : selectedDate instanceof Date ? selectedDate.getMinutes() : 0) : 0}
-                          onChange={(e) => {
-                            if (selectedDate) {
-                              const currentDate = selectedDate.date || selectedDate;
-                              const newDate = new Date(currentDate);
-                              newDate.setMinutes(parseInt(e.target.value));
-                              setSelectedDate({ 
-                                dateStr: newDate.toISOString(), 
-                                date: newDate 
-                              });
-                              // Update time_booked in leadForm
-                              const hours = newDate.getHours();
-                              const minutes = parseInt(e.target.value);
-                              const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-                              setLeadForm({ ...leadForm, time_booked: timeStr });
-                            }
-                          }}
-                          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          {Array.from({length: 60}, (_, i) => (
-                            <option key={i} value={i}>
-                              {i.toString().padStart(2, '0')}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                          );
+                        })}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Only times available on the calendar are shown
+                      </p>
                     </div>
 
                     <div>
@@ -3019,7 +3036,7 @@ const Calendar = () => {
                               >
                                 {bookingTemplates.map((template) => (
                                   <option key={template._id} value={template._id}>
-                                    {template.name} {template.emailAccount === 'secondary' ? '(Secondary)' : '(Primary)'}
+                                    {template.name} {template.emailAccount === 'secondary' ? '(Diary@edgetalent.co.uk)' : '(Primary)'}
                                   </option>
                                 ))}
                               </select>

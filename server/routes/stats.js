@@ -78,25 +78,47 @@ router.get('/leads-public', async (req, res) => {
 // @access  Private
 router.get('/leads', auth, async (req, res) => {
   try {
-    const { created_at_start, created_at_end } = req.query;
+    const { created_at_start, created_at_end, assigned_at_start, assigned_at_end } = req.query;
 
     // Simple: Just count leads directly
+    // Include custom_fields for call_status counting
     let query = dbManager.client
       .from('leads')
-      .select('status', { count: 'exact', head: false })
+      .select('status, custom_fields', { count: 'exact', head: false })
       .neq('postcode', 'ZZGHOST'); // Exclude ghost bookings
 
-    // Apply date filter if provided
-    if (created_at_start) {
-      query = query.gte('created_at', created_at_start);
-    }
-    if (created_at_end) {
-      query = query.lte('created_at', created_at_end);
+    // ROLE-BASED: Non-admins only see their assigned leads
+    // Apply this FIRST to ensure correct filtering
+    if (req.user.role !== 'admin') {
+      // ✅ BOOKER RULE: Once assigned, leads stay with booker regardless of status changes
+      // EXCEPT: Rejected leads are excluded from booker stats
+      query = query
+        .eq('booker_id', req.user.id)
+        .neq('status', 'Rejected'); // Exclude rejected leads from booker stats
+      console.log(`🔒 Stats: Filtering for booker ${req.user.id} (${req.user.name}) - excluding rejected leads`);
     }
 
-    // ROLE-BASED: Non-admins only see their assigned leads
-    if (req.user.role !== 'admin') {
-      query = query.eq('booker_id', req.user.id);
+    // Apply date filter - prioritize assigned_at for "Date Assigned" filter
+    if (assigned_at_start && assigned_at_end) {
+      // Use assigned_at for "Date Assigned" filter
+      // Filter by assigned_at date range - this will exclude NULL values (which is correct for date filtering)
+      query = query.gte('assigned_at', assigned_at_start);
+      query = query.lte('assigned_at', assigned_at_end);
+      console.log(`📅 Stats: Using assigned_at filter: ${assigned_at_start} to ${assigned_at_end}`);
+    } else if (created_at_start && created_at_end) {
+      // Fallback to created_at for backward compatibility
+      query = query.gte('created_at', created_at_start);
+      query = query.lte('created_at', created_at_end);
+      console.log(`📅 Stats: Using created_at filter: ${created_at_start} to ${created_at_end}`);
+    } else {
+      // If no date filter is applied, ensure leads with booker_id but NULL assigned_at are included
+      // This is important for booker users to see all their assigned leads, even if assigned_at wasn't set initially
+      if (req.user.role !== 'admin') {
+        // For non-admin users, include leads with booker_id even if assigned_at is NULL
+        // This ensures backward compatibility with leads assigned before assigned_at was tracked
+        query = query.or(`assigned_at.not.is.null,booker_id.eq.${req.user.id}`);
+        console.log(`📅 Stats: Including leads with booker_id but null assigned_at for booker ${req.user.id}`);
+      }
     }
 
     const { data: leads, error, count } = await query;
@@ -107,6 +129,7 @@ router.get('/leads', auth, async (req, res) => {
     }
 
     // Simple count by status
+    // For booker users, also count by call_status in custom_fields
     const result = {
       total: count || 0,
       new: leads?.filter(l => l.status === 'New').length || 0,
@@ -120,6 +143,32 @@ router.get('/leads', auth, async (req, res) => {
       notInterested: leads?.filter(l => l.status === 'Not Interested').length || 0,
       wantsEmail: leads?.filter(l => l.status === 'Wants Email').length || 0
     };
+
+    // For booker users, add call_status-based counts
+    if (req.user.role === 'booker') {
+      // Helper function to get call_status from custom_fields
+      const getCallStatus = (lead) => {
+        try {
+          if (lead.custom_fields) {
+            const customFields = typeof lead.custom_fields === 'string' 
+              ? JSON.parse(lead.custom_fields) 
+              : lead.custom_fields;
+            return customFields?.call_status || null;
+          }
+        } catch (e) {
+          return null;
+        }
+        return null;
+      };
+
+      result.noAnswerCall = leads?.filter(l => getCallStatus(l) === 'No answer').length || 0;
+      result.leftMessage = leads?.filter(l => getCallStatus(l) === 'Left Message').length || 0;
+      result.notInterestedCall = leads?.filter(l => getCallStatus(l) === 'Not interested').length || 0;
+      result.callBack = leads?.filter(l => getCallStatus(l) === 'Call back').length || 0;
+      result.wrongNumber = leads?.filter(l => getCallStatus(l) === 'Wrong number').length || 0;
+      result.salesConverted = leads?.filter(l => getCallStatus(l) === 'Sales/converted - purchased').length || 0;
+      result.notQualified = leads?.filter(l => getCallStatus(l) === 'Not Qualified').length || 0;
+    }
 
     console.log(`✅ Lead counts: Total=${result.total}, New=${result.new}, Booked=${result.booked}`);
 

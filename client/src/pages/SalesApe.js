@@ -1,87 +1,129 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import LiveActivityMonitor from '../components/SalesApe/LiveActivityMonitor';
 import QueueManager from '../components/SalesApe/QueueManager';
 import ConversationViewer from '../components/SalesApe/ConversationViewer';
 import PerformanceAnalytics from '../components/SalesApe/PerformanceAnalytics';
 import LeadStatusCards from '../components/SalesApe/LeadStatusCards';
 import axios from 'axios';
-import io from 'socket.io-client';
+import { useSocket } from '../context/SocketContext';
 
 const SalesApe = () => {
-  const [activeView, setActiveView] = useState('dashboard'); // 'dashboard' or 'cards'
+  const { socket, isConnected } = useSocket();
+  const [activeView, setActiveView] = useState('dashboard');
   const [selectedLead, setSelectedLead] = useState(null);
   const [queueData, setQueueData] = useState([]);
   const [activityData, setActivityData] = useState(null);
   const [analyticsData, setAnalyticsData] = useState(null);
   const [conversationData, setConversationData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [socket, setSocket] = useState(null);
+  const [lastUpdate, setLastUpdate] = useState(null);
+  const [realtimeStatus, setRealtimeStatus] = useState('connected');
 
-  // Initialize WebSocket connection
+  // Optimized queue data with memoization
+  const queueDataMap = useMemo(() => {
+    const map = new Map();
+    queueData.forEach(lead => map.set(lead.id, lead));
+    return map;
+  }, [queueData]);
+
+  // Real-time event handlers with optimized updates
   useEffect(() => {
-    const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:5000', {
-      auth: {
-        token: localStorage.getItem('token')
+    if (!socket || !isConnected) {
+      setRealtimeStatus('disconnected');
+      return;
+    }
+
+    setRealtimeStatus('connected');
+
+    // SalesApe status updates
+    const handleStatusUpdate = (data) => {
+      console.log('📡 Real-time: SalesApe status update', data);
+      setLastUpdate({ type: 'status_update', timestamp: new Date(), data });
+      
+      // Update queue data if this lead is in queue
+      if (queueDataMap.has(data.leadId)) {
+        setQueueData(prev => prev.map(lead => 
+          lead.id === data.leadId 
+            ? { ...lead, ...data }
+            : lead
+        ));
       }
-    });
-
-    newSocket.on('connect', () => {
-      console.log('🔌 Connected to SalesApe real-time updates');
-    });
-
-    // Listen for SalesApe updates
-    newSocket.on('salesape_status_update', (data) => {
-      // Refresh everything to show latest progress
+      
+      // Refresh activity data
       fetchActivityData();
-      fetchQueueData();
+      
       // If this is the selected lead, refresh conversation
-      if (selectedLead && data.leadId === selectedLead.id) {
-        fetchConversation(selectedLead.id);
+      if (selectedLead?.id === data.leadId) {
+        fetchConversation(data.leadId);
       }
-    });
+    };
 
-    newSocket.on('salesape_message', (data) => {
-      // Refresh queue to show progress updates
+    // SalesApe message updates
+    const handleMessage = (data) => {
+      console.log('📡 Real-time: SalesApe message', data);
+      setLastUpdate({ type: 'message', timestamp: new Date(), data });
+      
+      // Refresh queue to show progress
       fetchQueueData();
-      // Refresh activity stats
       fetchActivityData();
+      
       // If this is the selected lead, refresh conversation
-      if (selectedLead && data.leadId === selectedLead.id) {
-        fetchConversation(selectedLead.id);
+      if (selectedLead?.id === data.leadId) {
+        fetchConversation(data.leadId);
       }
-    });
+    };
 
-    newSocket.on('salesape_queue_update', (data) => {
-      // Immediately refresh queue when a lead is added/removed/updated
+    // SalesApe queue updates
+    const handleQueueUpdate = (data) => {
+      console.log('📡 Real-time: SalesApe queue update', data);
+      setLastUpdate({ type: 'queue_update', timestamp: new Date(), data });
+      
+      // Immediately refresh queue
       fetchQueueData();
-      // Also refresh activity data to update stats
       fetchActivityData();
       
       // If this is a status update for the selected lead, refresh conversation
-      if (selectedLead && data.leadId === selectedLead.id && data.action === 'updated') {
-        fetchConversation(selectedLead.id);
+      if (selectedLead?.id === data.leadId && data.action === 'updated') {
+        fetchConversation(data.leadId);
       }
-    });
-
-    setSocket(newSocket);
-
-    return () => {
-      newSocket.close();
     };
-  }, [selectedLead]);
+
+    // Calendar link sent
+    const handleCalendarLinkSent = (data) => {
+      console.log('📡 Real-time: Calendar link sent', data);
+      setLastUpdate({ type: 'calendar_link_sent', timestamp: new Date(), data });
+      
+      // If this is the selected lead, refresh conversation
+      if (selectedLead?.id === data.leadId) {
+        fetchConversation(data.leadId);
+      }
+    };
+
+    // Subscribe to events
+    socket.on('salesape_status_update', handleStatusUpdate);
+    socket.on('salesape_message', handleMessage);
+    socket.on('salesape_queue_update', handleQueueUpdate);
+    socket.on('salesape_calendar_link_sent', handleCalendarLinkSent);
+
+    // Cleanup
+    return () => {
+      socket.off('salesape_status_update', handleStatusUpdate);
+      socket.off('salesape_message', handleMessage);
+      socket.off('salesape_queue_update', handleQueueUpdate);
+      socket.off('salesape_calendar_link_sent', handleCalendarLinkSent);
+    };
+  }, [socket, isConnected, selectedLead, queueDataMap]);
 
   // Fetch initial data
   useEffect(() => {
     fetchAllData();
     
-    // Auto-refresh every 30 seconds to catch real-time progress updates
-    // Reduced from 5 seconds to minimize server load and log noise
-    // Real-time updates via socket events will still work instantly
+    // Auto-refresh every 30 seconds as backup (real-time updates are primary)
     const interval = setInterval(() => {
       fetchQueueData();
       fetchActivityData();
-    }, 30000); // 30 seconds instead of 5
+    }, 30000);
 
     return () => clearInterval(interval);
   }, []);
@@ -149,10 +191,10 @@ const SalesApe = () => {
     }
   };
 
-  const handleLeadSelect = (lead) => {
+  const handleLeadSelect = useCallback((lead) => {
     setSelectedLead(lead);
     fetchConversation(lead.id);
-  };
+  }, []);
 
   const handleAddToQueue = async (leadId) => {
     try {
@@ -176,13 +218,9 @@ const SalesApe = () => {
         { headers: { 'x-auth-token': token } }
       );
 
-      console.log('✅ Remove response:', response.data);
-
-      // ✅ FIX: Force refresh and show success
       await fetchQueueData();
       alert('✅ Lead removed from queue successfully');
 
-      // If this was the selected lead, clear selection
       if (selectedLead?.id === leadId) {
         setSelectedLead(null);
         setConversationData(null);
@@ -193,7 +231,6 @@ const SalesApe = () => {
     }
   };
 
-  // ✅ NEW: Bulk remove all from queue
   const handleRemoveAllFromQueue = async () => {
     if (!window.confirm(`Remove ALL ${queueData.length} leads from queue? This will stop all SalesApe conversations.`)) {
       return;
@@ -204,7 +241,6 @@ const SalesApe = () => {
       let successCount = 0;
       let failCount = 0;
 
-      // Remove all leads one by one
       for (const lead of queueData) {
         try {
           await axios.post('/api/salesape-dashboard/queue/remove',
@@ -218,7 +254,6 @@ const SalesApe = () => {
         }
       }
 
-      // Refresh queue
       await fetchQueueData();
       setSelectedLead(null);
       setConversationData(null);
@@ -275,10 +310,23 @@ const SalesApe = () => {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-              <span className="text-4xl mr-3">🤖</span>
-              SalesApe AI Dashboard
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+                <span className="text-4xl mr-3">🤖</span>
+                SalesApe AI Dashboard
+              </h1>
+              {/* Real-time status indicator */}
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${
+                  realtimeStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+                }`} title={realtimeStatus === 'connected' ? 'Real-time connected' : 'Real-time disconnected'}></div>
+                {lastUpdate && (
+                  <span className="text-xs text-gray-500">
+                    Updated {new Date(lastUpdate.timestamp).toLocaleTimeString()}
+                  </span>
+                )}
+              </div>
+            </div>
             <p className="text-gray-600 mt-1">
               Monitor AI engagement, conversations, and performance in real-time
             </p>
@@ -311,84 +359,92 @@ const SalesApe = () => {
       </div>
 
       {/* Dashboard View */}
-      {activeView === 'dashboard' ? (
-        <div className="space-y-6">
-          {/* Live Activity Monitor */}
+      <AnimatePresence mode="wait">
+        {activeView === 'dashboard' ? (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+            key="dashboard"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="space-y-6"
           >
-            <LiveActivityMonitor 
-              data={activityData}
-              onPause={handlePauseQueue}
-              onResume={handleResumeQueue}
+            {/* Live Activity Monitor */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <LiveActivityMonitor 
+                data={activityData}
+                onPause={handlePauseQueue}
+                onResume={handleResumeQueue}
+              />
+            </motion.div>
+
+            {/* Main Content: Queue + Conversation */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Queue Manager */}
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: 0.1 }}
+                className="lg:col-span-1"
+              >
+                <QueueManager
+                  queue={queueData}
+                  onLeadSelect={handleLeadSelect}
+                  selectedLead={selectedLead}
+                  onAddToQueue={handleAddToQueue}
+                  onRemoveFromQueue={handleRemoveFromQueue}
+                  onRemoveAll={handleRemoveAllFromQueue}
+                  onRefresh={fetchQueueData}
+                />
+              </motion.div>
+
+              {/* Conversation Viewer */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: 0.2 }}
+                className="lg:col-span-2"
+              >
+                <ConversationViewer
+                  lead={selectedLead}
+                  conversation={conversationData}
+                  onRefresh={() => selectedLead && fetchConversation(selectedLead.id)}
+                  onCalendarLinkSent={() => selectedLead && fetchConversation(selectedLead.id)}
+                />
+              </motion.div>
+            </div>
+
+            {/* Performance Analytics */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.3 }}
+            >
+              <PerformanceAnalytics data={analyticsData} />
+            </motion.div>
+          </motion.div>
+        ) : (
+          /* Card View */
+          <motion.div
+            key="cards"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <LeadStatusCards
+              leads={queueData}
+              onLeadSelect={handleLeadSelect}
+              onRemoveFromQueue={handleRemoveFromQueue}
+              onRemoveAll={handleRemoveAllFromQueue}
             />
           </motion.div>
-
-          {/* Main Content: Queue + Conversation */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Queue Manager */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-              className="lg:col-span-1"
-            >
-              <QueueManager
-                queue={queueData}
-                onLeadSelect={handleLeadSelect}
-                selectedLead={selectedLead}
-                onAddToQueue={handleAddToQueue}
-                onRemoveFromQueue={handleRemoveFromQueue}
-                onRemoveAll={handleRemoveAllFromQueue}
-                onRefresh={fetchQueueData}
-              />
-            </motion.div>
-
-            {/* Conversation Viewer */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.3, delay: 0.2 }}
-              className="lg:col-span-2"
-            >
-              <ConversationViewer
-                lead={selectedLead}
-                conversation={conversationData}
-                onRefresh={() => selectedLead && fetchConversation(selectedLead.id)}
-              />
-            </motion.div>
-          </div>
-
-          {/* Performance Analytics */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.3 }}
-          >
-            <PerformanceAnalytics data={analyticsData} />
-          </motion.div>
-        </div>
-      ) : (
-        /* Card View */
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-        >
-          <LeadStatusCards
-            leads={queueData}
-            onLeadSelect={handleLeadSelect}
-            onRemoveFromQueue={handleRemoveFromQueue}
-            onRemoveAll={handleRemoveAllFromQueue}
-          />
-        </motion.div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
 export default SalesApe;
-
-

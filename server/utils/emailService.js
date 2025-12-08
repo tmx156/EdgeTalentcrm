@@ -53,10 +53,12 @@ async function sendEmail(to, subject, text, attachments = [], accountKey = 'prim
     console.log(`📧 [${emailId}] Content type: ${isHtml ? 'HTML' : 'Plain text'}`);
 
     // Send via Gmail API with specified account
+    // Always send as "Edge Talent" regardless of account
     const startTime = Date.now();
     const emailResult = await gmailService.sendEmail(to, subject, text, {
       isHtml,
-      accountKey: accountKey // Pass through the account key
+      accountKey: accountKey, // Pass through the account key
+      fromName: 'Edge Talent' // Always use "Edge Talent" as sender name
     });
 
     const timeTaken = Date.now() - startTime;

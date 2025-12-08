@@ -47,40 +47,6 @@ const Reports = () => {
   const [viewMode, setViewMode] = useState('daily'); // daily or monthly
   const [lastUpdate, setLastUpdate] = useState(null);
 
-  useEffect(() => {
-    if (user?.role === 'admin') {
-      fetchUsers();
-    }
-    fetchReportData();
-  }, [user, fetchUsers, fetchReportData]);
-
-  // Real-time updates
-  useEffect(() => {
-    if (socket) {
-      const handleRealTimeUpdate = (data) => {
-        console.log('📊 Reports: Real-time update received', data);
-        fetchReportData();
-        setLastUpdate(new Date());
-      };
-
-      socket.on('lead_created', handleRealTimeUpdate);
-      socket.on('lead_updated', handleRealTimeUpdate);
-      socket.on('lead_deleted', handleRealTimeUpdate);
-      socket.on('sale_created', handleRealTimeUpdate);
-      socket.on('sale_updated', handleRealTimeUpdate);
-      socket.on('stats_update_needed', handleRealTimeUpdate);
-
-      return () => {
-        socket.off('lead_created', handleRealTimeUpdate);
-        socket.off('lead_updated', handleRealTimeUpdate);
-        socket.off('lead_deleted', handleRealTimeUpdate);
-        socket.off('sale_created', handleRealTimeUpdate);
-        socket.off('sale_updated', handleRealTimeUpdate);
-        socket.off('stats_update_needed', handleRealTimeUpdate);
-      };
-    }
-  }, [socket, fetchReportData]);
-
   const fetchUsers = useCallback(async () => {
     try {
       const response = await axios.get('/api/users');
@@ -266,6 +232,40 @@ const Reports = () => {
     }
     setLoading(false);
   }, [filters]);
+
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      fetchUsers();
+    }
+    fetchReportData();
+  }, [user, fetchUsers, fetchReportData]);
+
+  // Real-time updates
+  useEffect(() => {
+    if (socket) {
+      const handleRealTimeUpdate = (data) => {
+        console.log('📊 Reports: Real-time update received', data);
+        fetchReportData();
+        setLastUpdate(new Date());
+      };
+
+      socket.on('lead_created', handleRealTimeUpdate);
+      socket.on('lead_updated', handleRealTimeUpdate);
+      socket.on('lead_deleted', handleRealTimeUpdate);
+      socket.on('sale_created', handleRealTimeUpdate);
+      socket.on('sale_updated', handleRealTimeUpdate);
+      socket.on('stats_update_needed', handleRealTimeUpdate);
+
+      return () => {
+        socket.off('lead_created', handleRealTimeUpdate);
+        socket.off('lead_updated', handleRealTimeUpdate);
+        socket.off('lead_deleted', handleRealTimeUpdate);
+        socket.off('sale_created', handleRealTimeUpdate);
+        socket.off('sale_updated', handleRealTimeUpdate);
+        socket.off('stats_update_needed', handleRealTimeUpdate);
+      };
+    }
+  }, [socket, fetchReportData]);
 
   // Calculate KPIs using EXACT DAILY ACTIVITY LOGIC from Dashboard
   const calculateKPIs = (leads, sales, users) => {

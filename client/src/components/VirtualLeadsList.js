@@ -8,6 +8,7 @@ const VirtualLeadsList = ({
   onSelectLead, 
   selectedLeads, 
   statusFilter,
+  formatStatusDisplay,
   getStatusBadgeClass,
   formatDate,
   height = 600,
@@ -99,7 +100,7 @@ const VirtualLeadsList = ({
         {/* Status */}
         <div className="w-24 flex-shrink-0">
           <span className={getStatusBadgeClass(lead.status)}>
-            {lead.status}
+            {formatStatusDisplay ? formatStatusDisplay(lead.status) : lead.status}
           </span>
         </div>
 

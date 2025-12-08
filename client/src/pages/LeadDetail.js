@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { FiArrowLeft, FiEdit, FiSave, FiPhone, FiMail, FiMapPin, FiCalendar, FiMessageSquare, FiSend, FiChevronLeft, FiChevronRight, FiChevronUp, FiChevronDown, FiClock, FiUser, FiCheck, FiSettings } from 'react-icons/fi';
+import { FiArrowLeft, FiEdit, FiSave, FiPhone, FiMail, FiMapPin, FiCalendar, FiMessageSquare, FiSend, FiChevronLeft, FiChevronRight, FiChevronUp, FiChevronDown, FiClock, FiUser, FiCheck, FiSettings, FiX } from 'react-icons/fi';
 import axios from 'axios';
 import LeadStatusDropdown from '../components/LeadStatusDropdown';
 import PhotoModal from '../components/PhotoModal';
@@ -346,11 +346,20 @@ const LeadDetail = () => {
   const initializedRef = useRef(false);
   const locationStateRef = useRef(null);
   const isMountedRef = useRef(true);
+  const lastFetchedIdRef = useRef(null);
+
+  // Reset initialization when navigating to a different lead (must run first)
+  useEffect(() => {
+    initializedRef.current = false;
+    locationStateRef.current = null;
+    isMountedRef.current = true;
+    // Don't reset lastFetchedIdRef here - let the fetch effect handle it
+  }, [id]);
 
   useEffect(() => {
     // Only run if we're actually on the lead detail route (exact match)
     const isOnLeadDetailRoute = location.pathname === `/leads/${id}`;
-    
+
     if (!id || !isOnLeadDetailRoute) {
       // If we're not on the lead detail route, reset initialization flag
       // This allows re-initialization when navigating back
@@ -365,7 +374,7 @@ const LeadDetail = () => {
     const currentStateStr = JSON.stringify(location.state);
     const previousStateStr = JSON.stringify(locationStateRef.current);
     const stateChanged = currentStateStr !== previousStateStr;
-    
+
     // Only initialize once per route, or if location.state actually changed
     if (!initializedRef.current || stateChanged) {
       console.log('🔍 LeadDetail: Component initialized', { id, hasState: !!location.state });
@@ -375,24 +384,22 @@ const LeadDetail = () => {
         const { statusFilter, searchTerm, filteredLeads } = location.state;
         console.log('🔍 LeadDetail: Setting up navigation context');
 
-        if (isMountedRef.current) {
-          setFilterContext({
-            statusFilter: statusFilter || 'all',
-            searchTerm: searchTerm || '',
-            filteredLeads: filteredLeads || []
-          });
+        setFilterContext({
+          statusFilter: statusFilter || 'all',
+          searchTerm: searchTerm || '',
+          filteredLeads: filteredLeads || []
+        });
 
-          if (filteredLeads && filteredLeads.length > 0) {
-            setAllLeads(filteredLeads);
-            const index = filteredLeads.findIndex(lead => lead.id === id);
-            setCurrentIndex(index !== -1 ? index : 0);
-            console.log('📍 LeadDetail: Navigation context ready, index:', index);
-          }
+        if (filteredLeads && filteredLeads.length > 0) {
+          setAllLeads(filteredLeads);
+          const index = filteredLeads.findIndex(lead => lead.id === id);
+          setCurrentIndex(index !== -1 ? index : 0);
+          console.log('📍 LeadDetail: Navigation context ready, index:', index);
         }
       }
 
-      // Fallback: if we don't have leads but have an ID, fetch all leads
-      if (id && allLeads.length === 0 && !location.state?.filteredLeads && isMountedRef.current) {
+      // Fallback: if we don't have leads but have an ID, fetch all leads (page refresh case)
+      if (id && allLeads.length === 0 && !location.state?.filteredLeads) {
         console.log('⚠️ LeadDetail: No leads available, fetching all');
         fetchAllLeads();
       }
@@ -400,50 +407,33 @@ const LeadDetail = () => {
       initializedRef.current = true;
       locationStateRef.current = location.state;
     }
+  }, [id, location.pathname, location.state, allLeads.length, fetchAllLeads]);
 
-    // Cleanup function to prevent state updates after unmount
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, [id, location.pathname, allLeads.length, fetchAllLeads]); // Removed location.state, use location.pathname instead
-
-  // Reset initialization when navigating to a different lead
+  // Separate effect for initial data fetching - runs when ID changes
   useEffect(() => {
-    initializedRef.current = false;
-    locationStateRef.current = null;
-    isMountedRef.current = true;
-  }, [id]);
-
-  // Separate effect for initial data fetching
-  useEffect(() => {
-    if (id && !lead) {
+    // Only fetch if we haven't fetched this ID yet or if lead is null (page refresh)
+    if (id && lastFetchedIdRef.current !== id) {
       console.log('📥 LeadDetail: Fetching initial data for lead:', id);
+      lastFetchedIdRef.current = id;
       fetchLead();
       fetchTemplates();
       fetchSale();
       fetchBookingHistory();
       fetchUpcomingCallbacks();
     }
-  }, [id, lead, fetchLead, fetchTemplates, fetchSale, fetchBookingHistory, fetchUpcomingCallbacks]);
+  }, [id, fetchLead, fetchTemplates, fetchSale, fetchBookingHistory, fetchUpcomingCallbacks]);
 
-  // Handle lead ID changes (navigation within the app)
+  // Handle lead list updates (navigation arrows)
   useEffect(() => {
     if (id && allLeads.length > 0) {
       // Update current index if lead exists in our list
       const leadIndex = allLeads.findIndex(lead => lead.id === id);
-      if (leadIndex !== -1) {
+      if (leadIndex !== -1 && leadIndex !== currentIndex) {
         setCurrentIndex(leadIndex);
         console.log('🔄 LeadDetail: Updated index for existing lead:', leadIndex);
       }
-
-      // Fetch data for the new lead
-      fetchLead();
-      fetchTemplates();
-      fetchSale();
-      fetchBookingHistory();
-      fetchUpcomingCallbacks();
     }
-  }, [id, allLeads.length, fetchLead, fetchTemplates, fetchSale, fetchBookingHistory, fetchUpcomingCallbacks]);
+  }, [id, allLeads, currentIndex]);
 
   // Preload adjacent images when leads or current index changes
   useEffect(() => {
@@ -780,6 +770,446 @@ const LeadDetail = () => {
       default:
         return 'status-badge status-new';
     }
+  };
+
+  // Format status display for booker users (e.g., "Wants Email" -> "Wrong Number")
+  const formatStatusDisplay = (status) => {
+    if (user?.role === 'booker' && status === 'Wants Email') {
+      return 'Wrong Number';
+    }
+    return status;
+  };
+
+  // Booker Status Dropdown Component (inline for booker users)
+  const BookerStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
+    const [selectedStatus, setSelectedStatus] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [isOpen, setIsOpen] = useState(false);
+    const [showCallbackModal, setShowCallbackModal] = useState(false);
+    const [callbackTime, setCallbackTime] = useState('');
+    const [callbackNote, setCallbackNote] = useState('');
+    const [pendingStatus, setPendingStatus] = useState(null);
+    const [showNoAnswerModal, setShowNoAnswerModal] = useState(false);
+
+    // Status options matching LeadStatusDropdown
+    const statusOptions = [
+      { value: 'No answer', label: 'No answer', trigger: 'email' },
+      { value: 'Left Message', label: 'Left Message', trigger: 'email' },
+      { value: 'Not interested', label: 'Not interested', trigger: 'close' },
+      { value: 'Call back', label: 'Call back', trigger: 'callback' },
+      { value: 'Wrong number', label: 'Wrong number', trigger: 'close' },
+      { value: 'Sales/converted - purchased', label: 'Sales/converted - purchased', trigger: 'callback' },
+      { value: 'Not Qualified', label: 'Not Qualified', trigger: 'close' }
+    ];
+
+    // Fetch current call_status from lead
+    useEffect(() => {
+      if (lead) {
+        let callStatus = null;
+        if (lead.custom_fields) {
+          try {
+            const customFields = typeof lead.custom_fields === 'string' 
+              ? JSON.parse(lead.custom_fields) 
+              : lead.custom_fields;
+            callStatus = customFields?.call_status || null;
+          } catch (e) {
+            console.warn('Error parsing custom_fields for call_status:', e);
+          }
+        }
+        // Also check if lead has call_status directly
+        if (lead.call_status) {
+          callStatus = lead.call_status;
+        }
+        // Fallback: if status is "Wants Email", show "Wrong number"
+        if (!callStatus && lead.status === 'Wants Email') {
+          callStatus = 'Wrong number';
+        }
+        setSelectedStatus(callStatus || '');
+      }
+    }, [lead]);
+
+    const handleStatusChange = async (status) => {
+      if (loading) return;
+      setIsOpen(false);
+
+      // If status is "Call back", show modal to schedule callback
+      if (status === 'Call back') {
+        setPendingStatus(status);
+        setShowCallbackModal(true);
+        return;
+      }
+
+      // If status is "No answer", show confirmation modal before sending email
+      if (status === 'No answer') {
+        setPendingStatus(status);
+        setShowNoAnswerModal(true);
+        return;
+      }
+
+      // For other statuses, proceed directly
+      await updateStatus(status);
+    };
+
+    const updateStatus = async (status, callbackTime = null, callbackNote = '') => {
+      setLoading(true);
+      setError('');
+
+      try {
+        const response = await axios.patch(`/api/leads/${leadId}/call-status`, {
+          callStatus: status,
+          callbackTime: callbackTime,
+          callbackNote: callbackNote
+        });
+
+        if (response.data.success) {
+          setSelectedStatus(status);
+          
+          // Notify parent component
+          if (onStatusUpdate) {
+            onStatusUpdate(status, response.data);
+          }
+
+          // Map call_status to sidebar filter status
+          // This ensures the lead appears in the correct folder when navigating back
+          const statusToFilterMap = {
+            'No answer': 'No answer',
+            'Left Message': 'Left Message',
+            'Not interested': 'Not interested',
+            'Call back': 'Call back',
+            'Wrong number': 'Wrong Number',
+            'Sales/converted - purchased': 'Sales/converted - purchased',
+            'Not Qualified': 'Not Qualified'
+          };
+
+          const filterStatus = statusToFilterMap[status] || 'all';
+
+          // Show success message
+          const option = statusOptions.find(opt => opt.value === status);
+          if (option) {
+            switch (option.trigger) {
+              case 'email':
+                alert('Status updated. An automatic email will be sent to the client. Redirecting to leads page...');
+                break;
+              case 'close':
+                alert('Status updated. This lead will be closed. Redirecting to leads page...');
+                break;
+              case 'callback':
+                if (callbackTime) {
+                  alert(`Status updated. Callback scheduled for ${callbackTime}. You'll receive a reminder notification. Redirecting to leads page...`);
+                }
+                break;
+            }
+          }
+
+          // Navigate back to leads page with the appropriate status filter
+          // This "moves" the lead to the correct folder
+          setTimeout(() => {
+            navigate('/leads', { 
+              state: { statusFilter: filterStatus },
+              replace: false 
+            });
+          }, 500); // Small delay to allow alert to be seen
+        } else {
+          setError(response.data.message || 'Failed to update status');
+        }
+      } catch (err) {
+        console.error('Error updating call status:', err);
+        setError(err.response?.data?.message || 'Failed to update status');
+      } finally {
+        setLoading(false);
+        setShowCallbackModal(false);
+        setPendingStatus(null);
+        setCallbackTime('');
+        setCallbackNote('');
+      }
+    };
+
+    const handleCallbackSubmit = () => {
+      if (!callbackTime) {
+        setError('Please select a callback time');
+        return;
+      }
+      updateStatus(pendingStatus, callbackTime, callbackNote);
+    };
+
+    // Get current time in UK timezone for default value
+    const getCurrentUKTimeString = () => {
+      const ukTime = getCurrentUKTime();
+      const hours = String(ukTime.getHours()).padStart(2, '0');
+      const minutes = String(ukTime.getMinutes()).padStart(2, '0');
+      return `${hours}:${minutes}`;
+    };
+
+    // Initialize callback time with current UK time
+    useEffect(() => {
+      if (showCallbackModal && !callbackTime) {
+        setCallbackTime(getCurrentUKTimeString());
+      }
+    }, [showCallbackModal]);
+
+    const getStatusColor = (status) => {
+      switch (status) {
+        case 'No answer':
+        case 'Left Message':
+          return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+        case 'Call back':
+        case 'Sales/converted - purchased':
+          return 'bg-blue-100 text-blue-800 border-blue-300';
+        case 'Not interested':
+        case 'Not Qualified':
+        case 'Wrong number':
+          return 'bg-red-100 text-red-800 border-red-300';
+        default:
+          return 'bg-gray-100 text-gray-800 border-gray-300';
+      }
+    };
+
+    return (
+      <div className="mt-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-6 border border-purple-200 shadow-sm">
+        <div className="flex items-center space-x-3 mb-4">
+          <div className="p-2 bg-purple-100 rounded-lg">
+            <FiChevronDown className="h-5 w-5 text-purple-600" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-lg font-semibold text-gray-900">Lead Status</h3>
+            <p className="text-sm text-gray-600">Select the status after placing a call</p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-lg">
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        <div className="relative">
+          <button
+            onClick={() => !loading && setIsOpen(!isOpen)}
+            disabled={loading}
+            className={`
+              w-full px-4 py-3 rounded-lg border-2 text-left font-medium
+              flex items-center justify-between
+              transition-all duration-200
+              ${selectedStatus 
+                ? `${getStatusColor(selectedStatus)} border-current` 
+                : 'bg-white border-gray-300 text-gray-700 hover:border-purple-400'
+              }
+              ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:shadow-md'}
+            `}
+          >
+            <span>{selectedStatus || 'Select status...'}</span>
+            <FiChevronDown 
+              className={`h-5 w-5 transition-transform ${isOpen ? 'transform rotate-180' : ''}`}
+            />
+          </button>
+
+          {isOpen && (
+            <>
+              <div 
+                className="fixed inset-0 z-10" 
+                onClick={() => setIsOpen(false)}
+              />
+              <div className="absolute z-20 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                {statusOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => handleStatusChange(option.value)}
+                    className={`
+                      w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors
+                      flex items-center justify-between
+                      ${selectedStatus === option.value ? 'bg-purple-50' : ''}
+                      ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                    `}
+                    disabled={loading}
+                  >
+                    <span className="font-medium">{option.label}</span>
+                    {selectedStatus === option.value && (
+                      <FiCheck className="h-5 w-5 text-purple-600" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {selectedStatus && (
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>Current Status:</strong> {selectedStatus}
+            </p>
+            {(() => {
+              const option = statusOptions.find(opt => opt.value === selectedStatus);
+              if (option) {
+                switch (option.trigger) {
+                  case 'email':
+                    return (
+                      <p className="text-xs text-blue-600 mt-1">
+                        An automatic email will be sent to the client.
+                      </p>
+                    );
+                  case 'close':
+                    return (
+                      <p className="text-xs text-blue-600 mt-1">
+                        This lead will be closed.
+                      </p>
+                    );
+                  case 'callback':
+                    return (
+                      <p className="text-xs text-blue-600 mt-1">
+                        Please call the client back.
+                      </p>
+                    );
+                  default:
+                    return null;
+                }
+              }
+              return null;
+            })()}
+          </div>
+        )}
+
+        {loading && (
+          <div className="mt-4 text-center">
+            <p className="text-sm text-gray-500">Updating status...</p>
+          </div>
+        )}
+
+        {/* No Answer Confirmation Modal */}
+        {showNoAnswerModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Send No Answer Email?</h3>
+                <button
+                  onClick={() => {
+                    setShowNoAnswerModal(false);
+                    setPendingStatus(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <FiX className="h-5 w-5" />
+                </button>
+              </div>
+
+              <p className="text-sm text-gray-600 mb-6">
+                Do you want to send your "No Answer" template email to <strong>{lead?.name}</strong>?
+              </p>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-lg">
+                  <p className="text-sm text-red-700">{error}</p>
+                </div>
+              )}
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={async () => {
+                    await updateStatus(pendingStatus);
+                    setShowNoAnswerModal(false);
+                  }}
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Yes, Send Email
+                </button>
+                <button
+                  onClick={() => {
+                    setShowNoAnswerModal(false);
+                    setPendingStatus(null);
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Callback Scheduling Modal */}
+        {showCallbackModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Schedule Callback</h3>
+                <button
+                  onClick={() => {
+                    setShowCallbackModal(false);
+                    setPendingStatus(null);
+                    setCallbackTime('');
+                    setCallbackNote('');
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <FiX className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Callback Time (UK Time)
+                  </label>
+                  <input
+                    type="time"
+                    value={callbackTime || getCurrentUKTimeString()}
+                    onChange={(e) => setCallbackTime(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    You'll receive a notification at this time to call back
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Note (Optional)
+                  </label>
+                  <textarea
+                    value={callbackNote}
+                    onChange={(e) => setCallbackNote(e.target.value)}
+                    placeholder="e.g., back 5pm, discuss pricing, follow up on quote"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    rows="3"
+                  />
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-red-100 border border-red-300 rounded-lg">
+                    <p className="text-sm text-red-700">{error}</p>
+                  </div>
+                )}
+
+                <div className="flex space-x-3">
+                  <button
+                    onClick={handleCallbackSubmit}
+                    disabled={loading || !callbackTime}
+                    className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                  >
+                    <FiClock className="h-4 w-4" />
+                    <span>Schedule Callback</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowCallbackModal(false);
+                      setPendingStatus(null);
+                      setCallbackTime('');
+                      setCallbackNote('');
+                    }}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const formatDate = (dateString) => {
@@ -1806,7 +2236,7 @@ const LeadDetail = () => {
                     <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Status:</span>
                       <span className={getStatusBadgeClass(lead.status)}>
-                        {lead.status}
+                        {formatStatusDisplay(lead.status)}
                       </span>
                     </div>
                     <div className="flex justify-between">
@@ -1850,55 +2280,44 @@ const LeadDetail = () => {
                 </button>
               )}
               
-              {/* Add Status Change Dropdown for Bookers */}
+              {/* Lead Status Dropdown for Bookers - Using call-status endpoint */}
               {!editing && user?.role === 'booker' && (
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Change Status:</label>
-                  <select
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    value={lead.status}
-                    onChange={async (e) => {
-                      const newStatus = e.target.value;
-                      if (window.confirm(`Change status to "${newStatus}"?`)) {
-                        setChangingStatus(true);
-                        try {
-                          // Only send the necessary fields to update
-                          const response = await axios.put(`/api/leads/${lead.id}`, { 
-                            name: lead.name,
-                            phone: lead.phone,
-                            email: lead.email,
-                            postcode: lead.postcode,
-                            status: newStatus,
-                            notes: lead.notes,
-                            image_url: lead.image_url
-                          });
-                          
-                          console.log('✅ Status updated successfully:', response.data);
-                          setLead({ ...lead, status: newStatus });
-                          
-                          // Navigate back to leads page with the new status filter
-                          navigate('/leads', { 
-                            state: { statusFilter: newStatus }
-                          });
-                        } catch (err) {
-                          console.error('❌ Status update error:', err);
-                          const errorMessage = err.response?.data?.message || 'Failed to update status. Please try again.';
-                          alert(errorMessage);
-                        } finally {
-                          setChangingStatus(false);
-                        }
+                <BookerStatusDropdown 
+                  leadId={lead.id}
+                  lead={lead}
+                  onStatusUpdate={(status, result) => {
+                    // Update the lead state with new call status
+                    let customFields = {};
+                    try {
+                      if (lead.custom_fields) {
+                        customFields = typeof lead.custom_fields === 'string' 
+                          ? JSON.parse(lead.custom_fields) 
+                          : lead.custom_fields;
                       }
-                    }}
-                    disabled={changingStatus}
-                  >
-                    <option value="Assigned">👤 Assigned</option>
-                    <option value="Booked">📅 Booked</option>
-                    <option value="Call Back">📞 Call Back</option>
-                    <option value="No Answer">📵 No Answer</option>
-                    <option value="Not Interested">🚫 Not Interested</option>
-                    <option value="Wants Email">📧 Wants Email</option>
-                  </select>
-                </div>
+                    } catch (e) {
+                      customFields = {};
+                    }
+                    customFields.call_status = status;
+                    
+                    // Update lead status based on call status mapping
+                    let newLeadStatus = lead.status;
+                    if (status === 'Wrong number') {
+                      newLeadStatus = 'Wants Email'; // Map to database status
+                    } else if (['Not interested', 'Not Qualified'].includes(status)) {
+                      newLeadStatus = 'Rejected';
+                    }
+                    
+                    setLead({ 
+                      ...lead, 
+                      custom_fields: JSON.stringify(customFields),
+                      call_status: status,
+                      status: newLeadStatus
+                    });
+                    
+                    // Refresh lead data
+                    fetchLead();
+                  }}
+                />
               )}
               
               {/* Add Send Booking Confirmation button */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FiPlus, FiEdit, FiTrash2, FiEye, FiSend, FiMail, FiPhone, FiSettings, FiSave, FiX, FiExternalLink } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -16,10 +16,16 @@ const Templates = () => {
   const [leads, setLeads] = useState([]);
   const [selectedLead, setSelectedLead] = useState('');
   const [variables, setVariables] = useState([]);
+  
+  // Refs to track which field is focused for variable insertion
+  const emailBodyRef = useRef(null);
+  const smsBodyRef = useRef(null);
+  const subjectRef = useRef(null);
+  const lastFocusedFieldRef = useRef(null); // Track the last focused field
 
   const [formData, setFormData] = useState({
     name: '',
-    type: 'booking_confirmation',
+    type: user?.role === 'admin' ? 'booking_confirmation' : 'custom',
     subject: '',
     emailBody: '',
     smsBody: '',
@@ -32,13 +38,15 @@ const Templates = () => {
   });
 
   // Utility to group templates by category
-  const categorizeTemplates = (templates) => {
+  const categorizeTemplates = (templates, userRole) => {
     if (!templates || !Array.isArray(templates)) {
       return { 'Diary Templates': [], 'Sale Templates': [], 'Lead Details Templates': [] };
     }
 
+    const isBooker = userRole !== 'admin';
+
     const categories = {
-      'Diary Templates': ['booking_confirmation', 'appointment_reminder', 'no_show', 'reschedule', 'cancellation'],
+      'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation'],
       'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance'],
       'Receipts': ['receipt', 'sale_receipt', 'payment_receipt'],
       'Lead Details Templates': ['custom', 'booker']
@@ -55,6 +63,12 @@ const Templates = () => {
       }
       if (!found) grouped['Diary Templates'].push(t); // fallback to Diary Templates
     });
+
+    // Remove Diary Templates ONLY for bookers (admin should see all)
+    if (isBooker) {
+      delete grouped['Diary Templates'];
+    }
+
     return grouped;
   };
 
@@ -76,13 +90,18 @@ const Templates = () => {
 
   const fetchTemplates = async () => {
     try {
+      console.log('🔄 Fetching templates...');
       const response = await fetch('/api/templates', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        },
+        cache: 'no-store'
       });
       if (response.ok) {
         const data = await response.json();
+        console.log('📥 Fetched templates:', data.length, 'templates');
         setTemplates(data);
       } else {
         console.error('❌ Failed to fetch templates:', response.status, response.statusText);
@@ -128,14 +147,21 @@ const Templates = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     try {
-      const url = editingTemplate 
+      const url = editingTemplate
         ? `/api/templates/${editingTemplate._id}`
         : '/api/templates';
-      
+
       const method = editingTemplate ? 'PUT' : 'POST';
-      
+
+      console.log('📤 Sending template data:', {
+        url,
+        method,
+        templateId: editingTemplate?._id,
+        formData: { ...formData, emailBody: formData.emailBody?.substring(0, 50) + '...', smsBody: formData.smsBody?.substring(0, 50) + '...' }
+      });
+
       const response = await fetch(url, {
         method,
         headers: {
@@ -146,20 +172,26 @@ const Templates = () => {
       });
 
       if (response.ok) {
-        console.log('✅ Template saved successfully');
+        const savedTemplate = await response.json();
+        console.log('✅ Template saved successfully. Response:', {
+          id: savedTemplate._id || savedTemplate.id,
+          name: savedTemplate.name,
+          type: savedTemplate.type
+        });
         setShowModal(false);
         setEditingTemplate(null);
         resetForm();
-        fetchTemplates();
-        
+        await fetchTemplates();
+
         // Show success message
         alert('Template saved successfully! Changes will be applied to future messages.');
       } else {
         const error = await response.json();
+        console.error('❌ Save failed:', error);
         alert(error.message || 'Error saving template');
       }
     } catch (error) {
-      console.error('Error saving template:', error);
+      console.error('❌ Error saving template:', error);
       alert('Error saving template');
     }
   };
@@ -279,7 +311,7 @@ const Templates = () => {
   const resetForm = () => {
     setFormData({
       name: '',
-      type: 'booking_confirmation',
+      type: user?.role === 'admin' ? 'booking_confirmation' : 'custom',
       subject: '',
       emailBody: '',
       smsBody: '',
@@ -293,45 +325,77 @@ const Templates = () => {
   };
 
   const insertVariable = (variable) => {
-    const textarea = document.activeElement;
-    if (textarea && textarea.tagName === 'TEXTAREA') {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const text = textarea.value;
-      const newText = text.substring(0, start) + variable + text.substring(end);
-
-      // Update form data first
-      const fieldName = textarea.name;
-      setFormData(prev => ({
-        ...prev,
-        [fieldName]: newText
-      }));
-
-      // Update the textarea value and cursor position after state update
-      setTimeout(() => {
-        textarea.value = newText;
-        textarea.setSelectionRange(start + variable.length, start + variable.length);
-        textarea.focus();
-
-        // Trigger input event to ensure React knows about the change
-        const event = new Event('input', { bubbles: true });
-        textarea.dispatchEvent(event);
-      }, 0);
+    // Determine which field to insert into
+    let targetField = null;
+    let fieldName = null;
+    
+    // First, check if any field is currently focused
+    const activeElement = document.activeElement;
+    if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
+      targetField = activeElement;
+      fieldName = activeElement.name;
+    } 
+    // Otherwise, use the last focused field
+    else if (lastFocusedFieldRef.current) {
+      targetField = lastFocusedFieldRef.current;
+      fieldName = targetField.name;
     }
+    // If no field was ever focused, default to emailBody if enabled, otherwise smsBody
+    else {
+      if (formData.sendEmail && emailBodyRef.current) {
+        targetField = emailBodyRef.current;
+        fieldName = 'emailBody';
+      } else if (formData.sendSMS && smsBodyRef.current) {
+        targetField = smsBodyRef.current;
+        fieldName = 'smsBody';
+      }
+    }
+    
+    if (!targetField || !fieldName) {
+      // If no valid field found, focus on emailBody or smsBody as fallback
+      if (formData.sendEmail && emailBodyRef.current) {
+        emailBodyRef.current.focus();
+        targetField = emailBodyRef.current;
+        fieldName = 'emailBody';
+      } else if (formData.sendSMS && smsBodyRef.current) {
+        smsBodyRef.current.focus();
+        targetField = smsBodyRef.current;
+        fieldName = 'smsBody';
+      } else {
+        console.warn('No target field available for variable insertion');
+        return;
+      }
+    }
+    
+    // Get cursor position
+    const start = targetField.selectionStart || 0;
+    const end = targetField.selectionEnd || 0;
+    const currentValue = formData[fieldName] || '';
+    
+    // Insert variable at cursor position
+    const newText = currentValue.substring(0, start) + variable + currentValue.substring(end);
+    
+    // Update form data
+    setFormData(prev => ({
+      ...prev,
+      [fieldName]: newText
+    }));
+    
+    // Update cursor position after state update
+    setTimeout(() => {
+      targetField.focus();
+      const newCursorPos = start + variable.length;
+      targetField.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+  
+  // Track when fields are focused
+  const handleFieldFocus = (fieldName, ref) => {
+    lastFocusedFieldRef.current = ref.current;
   };
 
-  if (user?.role !== 'admin') {
-    return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-4">Templates</h1>
-            <p className="text-gray-600">Access denied. Admin only.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Bookers can access but with limited functionality
+  const isBooker = user?.role !== 'admin';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -377,16 +441,28 @@ const Templates = () => {
           </div>
         ) : (
           !loading && (() => {
-            const filteredTemplates = categoryFilter === 'All' ? (templates || []) : (templates || []).filter(t => {
+            // Filter templates: bookers only see their own, and exclude diary templates
+            // ADMIN sees ALL templates including diary templates
+            let availableTemplates = templates || [];
+            if (isBooker) {
+              // Bookers only see their own templates
+              availableTemplates = availableTemplates.filter(t => t.user_id === user?.id);
+              // Exclude diary templates for bookers
+              const diaryTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
+              availableTemplates = availableTemplates.filter(t => !diaryTypes.includes(t.type));
+            }
+            // Admin sees all templates (no filtering needed)
+            
+            const filteredTemplates = categoryFilter === 'All' ? availableTemplates : availableTemplates.filter(t => {
               const cat = Object.entries({
-                'Diary Templates': ['booking_confirmation', 'appointment_reminder', 'no_show', 'reschedule', 'cancellation'],
+                'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation'],
                 'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance'],
                 'Lead Details Templates': ['custom', 'booker']
               }).find(([cat, types]) => types.includes(t.type));
               return cat ? cat[0] === categoryFilter : categoryFilter === 'Diary Templates';
             });
 
-            const categorized = categorizeTemplates(filteredTemplates);
+            const categorized = categorizeTemplates(filteredTemplates, user?.role);
 
             return Object.entries(categorized).map(([cat, group]) =>
               group && group.length > 0 && (
@@ -443,11 +519,6 @@ const Templates = () => {
                             }`}>
                               {template.isActive ? 'Active' : 'Inactive'}
                             </span>
-                            {template.type === 'appointment_reminder' && (
-                              <span className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-                                {template.reminderDays} days
-                              </span>
-                            )}
                           </div>
 
                           <div className="flex items-center gap-2">
@@ -573,11 +644,13 @@ const Templates = () => {
                             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                             required
                           >
-                            <option key="booking_confirmation" value="booking_confirmation">📅 Booking Confirmation</option>
-                            <option key="appointment_reminder" value="appointment_reminder">⏰ Appointment Reminder</option>
-                            <option key="no_show" value="no_show">❌ No Show Follow-up</option>
-                            <option key="reschedule" value="reschedule">🔄 Reschedule</option>
-                            <option key="cancellation" value="cancellation">🚫 Cancellation</option>
+                            {!isBooker && (
+                              <>
+                                <option key="booking_confirmation" value="booking_confirmation">📅 Booking Confirmation</option>
+                                <option key="reschedule" value="reschedule">🔄 Reschedule</option>
+                                <option key="cancellation" value="cancellation">🚫 Cancellation</option>
+                              </>
+                            )}
                             <option key="sale_confirmation" value="sale_confirmation">💰 Sale Confirmation</option>
                             <option key="sale_followup" value="sale_followup">📞 Sale Follow-up</option>
                             <option key="sale_paid_in_full" value="sale_paid_in_full">🎉 Paid in Full - Welcome</option>
@@ -587,24 +660,11 @@ const Templates = () => {
                             <option key="receipt" value="receipt">🧾 Receipt</option>
                             <option key="sale_receipt" value="sale_receipt">🧾 Sale Receipt</option>
                             <option key="payment_receipt" value="payment_receipt">🧾 Payment Receipt</option>
+                            <option key="custom" value="custom">📝 Custom Template</option>
+                            <option key="booker" value="booker">👤 Booker Template</option>
                           </select>
                         </div>
 
-                        {formData.type === 'appointment_reminder' && (
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Reminder Days
-                            </label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="30"
-                              value={formData.reminderDays}
-                              onChange={(e) => setFormData({...formData, reminderDays: parseInt(e.target.value)})}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
-                            />
-                          </div>
-                        )}
 
                         {/* Toggle Switches */}
                         <div className="space-y-3">
@@ -658,8 +718,8 @@ const Templates = () => {
                                 onChange={(e) => setFormData({...formData, emailAccount: e.target.value})}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                               >
-                                <option value="primary">📧 Primary Account ({process.env.REACT_APP_PRIMARY_EMAIL || 'hello@edgetalent.co.uk'})</option>
-                                <option value="secondary">📧 Secondary Account ({process.env.REACT_APP_SECONDARY_EMAIL || 'Secondary Email'})</option>
+                                <option value="primary">📧 Primary Account (hello@edgetalent.co.uk)</option>
+                                <option value="secondary">📧 Diary@edgetalent.co.uk</option>
                               </select>
                               <p className="text-xs text-gray-500 mt-1">
                                 Emails will be sent via Gmail API from the selected account
@@ -843,9 +903,12 @@ const Templates = () => {
                               Subject Line
                             </label>
                             <input
+                              ref={subjectRef}
+                              name="subject"
                               type="text"
                               value={formData.subject}
                               onChange={(e) => setFormData({...formData, subject: e.target.value})}
+                              onFocus={() => handleFieldFocus('subject', subjectRef)}
                               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                               placeholder="Enter email subject"
                               required
@@ -857,9 +920,11 @@ const Templates = () => {
                               Email Body
                             </label>
                             <textarea
+                              ref={emailBodyRef}
                               name="emailBody"
                               value={formData.emailBody}
                               onChange={(e) => setFormData({...formData, emailBody: e.target.value})}
+                              onFocus={() => handleFieldFocus('emailBody', emailBodyRef)}
                               rows={12}
                               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm transition-all resize-none"
                               placeholder="Write your email content here..."
@@ -883,19 +948,21 @@ const Templates = () => {
                           </div>
                         </div>
                         
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            SMS Message
-                          </label>
-                          <textarea
-                            name="smsBody"
-                            value={formData.smsBody}
-                            onChange={(e) => setFormData({...formData, smsBody: e.target.value})}
-                            rows={6}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 font-mono text-sm transition-all resize-none"
-                            placeholder="Write your SMS content here..."
-                            required
-                          />
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              SMS Message
+                            </label>
+                            <textarea
+                              ref={smsBodyRef}
+                              name="smsBody"
+                              value={formData.smsBody}
+                              onChange={(e) => setFormData({...formData, smsBody: e.target.value})}
+                              onFocus={() => handleFieldFocus('smsBody', smsBodyRef)}
+                              rows={6}
+                              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 font-mono text-sm transition-all resize-none"
+                              placeholder="Write your SMS content here..."
+                              required
+                            />
                           <div className="flex justify-between items-center mt-2">
                             <p className="text-xs text-gray-500">
                               Character count: <span className={`font-semibold ${(formData.smsBody || '').length > 160 ? 'text-red-500' : 'text-green-600'}`}>

@@ -140,19 +140,64 @@ async function createShortLinkForContent(content) {
 const processTemplate = (template, lead, bookingDate = null) => {
   let processedTemplate = template;
   
-  // Format booking date and time
-  const bookingDateTime = bookingDate ? new Date(bookingDate) : null;
+  // Format booking date and time in UK timezone (Europe/London) for consistency
+  // If date_booked is midnight (00:00) and time_booked exists, combine them for accurate time display
+  let bookingDateTime = bookingDate ? new Date(bookingDate) : null;
+  
+  // Check if the time is midnight (00:00) UTC and we have a separate time_booked field
+  if (bookingDateTime && lead.time_booked) {
+    const utcHours = bookingDateTime.getUTCHours();
+    const utcMinutes = bookingDateTime.getUTCMinutes();
+    
+    // If time is midnight (00:00) UTC and we have time_booked, use time_booked instead
+    if (utcHours === 0 && utcMinutes === 0) {
+      const timeParts = lead.time_booked.split(':');
+      if (timeParts.length >= 2) {
+        const timeHours = parseInt(timeParts[0], 10);
+        const timeMinutes = parseInt(timeParts[1], 10);
+        
+        if (!isNaN(timeHours) && !isNaN(timeMinutes) && timeHours >= 0 && timeHours < 24) {
+          // time_booked is stored as UK local time (e.g., "14:00" means 2 PM UK time)
+          // Get the date part from bookingDateTime (in UTC)
+          const year = bookingDateTime.getUTCFullYear();
+          const month = bookingDateTime.getUTCMonth();
+          const day = bookingDateTime.getUTCDate();
+          
+          // Create a date string representing UK local time
+          // Format: YYYY-MM-DDTHH:MM:00 (treat as UK time)
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(timeHours).padStart(2, '0')}:${String(timeMinutes).padStart(2, '0')}:00`;
+          
+          // Import fromZonedTime from date-fns-tz
+          const { fromZonedTime } = require('date-fns-tz');
+          
+          // Create a date object assuming this string is in UK timezone
+          // Use fromZonedTime to convert UK local time to UTC
+          const ukLocalDate = new Date(dateStr);
+          bookingDateTime = fromZonedTime(ukLocalDate, 'Europe/London');
+          
+          console.log('🕐 SMS: Combined date_booked with time_booked:', {
+            originalDate: bookingDate,
+            time_booked: lead.time_booked,
+            combinedDateTime: bookingDateTime.toISOString(),
+            ukTime: bookingDateTime.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: true })
+          });
+        }
+      }
+    }
+  }
+  
   const bookingDateStr = bookingDateTime ? bookingDateTime.toLocaleDateString('en-GB', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: 'Europe/London' // Use UK timezone for consistency
   }) : '';
   const bookingTimeStr = bookingDateTime ? bookingDateTime.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
+    hour: 'numeric',
     minute: '2-digit',
-    second: '2-digit',
-    timeZone: 'UTC' // Keep UTC time to match calendar
+    hour12: true, // Use 12-hour format with AM/PM
+    timeZone: 'Europe/London' // Use UK timezone for consistency
   }) : '';
   
   // Common variables
@@ -163,8 +208,8 @@ const processTemplate = (template, lead, bookingDate = null) => {
     '{bookingDate}': bookingDateStr,
     '{bookingTime}': bookingTimeStr,
     '{companyName}': 'Edge Talent',
-    '{currentDate}': new Date().toLocaleDateString(),
-    '{currentTime}': new Date().toLocaleTimeString()
+    '{currentDate}': new Date().toLocaleDateString('en-GB', { timeZone: 'Europe/London' }),
+    '{currentTime}': new Date().toLocaleTimeString('en-GB', { timeZone: 'Europe/London' })
   };
   
   // Replace variables in template
@@ -358,14 +403,60 @@ const sendBookingConfirmation = async (lead, appointmentDate) => {
       return sendSMS(lead.phone, defaultMessage);
     }
     
-    // Create a concise SMS version
-    const bookingDateTime = appointmentDate ? new Date(appointmentDate) : null;
+    // Create a concise SMS version - format in UK timezone (Europe/London) for consistency
+    // If date_booked is midnight (00:00) and time_booked exists, combine them for accurate time display
+    let bookingDateTime = appointmentDate ? new Date(appointmentDate) : null;
+    
+    // Check if the time is midnight (00:00) UTC and we have a separate time_booked field
+    if (bookingDateTime && lead.time_booked) {
+      const utcHours = bookingDateTime.getUTCHours();
+      const utcMinutes = bookingDateTime.getUTCMinutes();
+      
+      // If time is midnight (00:00) UTC and we have time_booked, use time_booked instead
+      if (utcHours === 0 && utcMinutes === 0) {
+        const timeParts = lead.time_booked.split(':');
+        if (timeParts.length >= 2) {
+          const timeHours = parseInt(timeParts[0], 10);
+          const timeMinutes = parseInt(timeParts[1], 10);
+          
+          if (!isNaN(timeHours) && !isNaN(timeMinutes) && timeHours >= 0 && timeHours < 24) {
+            // time_booked is stored as UK local time (e.g., "14:00" means 2 PM UK time)
+            // Get the date part from bookingDateTime (in UTC)
+            const year = bookingDateTime.getUTCFullYear();
+            const month = bookingDateTime.getUTCMonth();
+            const day = bookingDateTime.getUTCDate();
+            
+            // Create a date string representing UK local time
+            // Format: YYYY-MM-DDTHH:MM:00 (treat as UK time)
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(timeHours).padStart(2, '0')}:${String(timeMinutes).padStart(2, '0')}:00`;
+            
+            // Import fromZonedTime from date-fns-tz
+            const { fromZonedTime } = require('date-fns-tz');
+            
+            // Create a date object assuming this string is in UK timezone
+            // Use fromZonedTime to convert UK local time to UTC
+            const ukLocalDate = new Date(dateStr);
+            bookingDateTime = fromZonedTime(ukLocalDate, 'Europe/London');
+            
+            console.log('🕐 SMS sendBookingConfirmation: Combined date_booked with time_booked:', {
+              originalDate: appointmentDate,
+              time_booked: lead.time_booked,
+              combinedDateTime: bookingDateTime.toISOString(),
+              ukTime: bookingDateTime.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: true })
+            });
+          }
+        }
+      }
+    }
+    
     const bookingDateStr = bookingDateTime ? bookingDateTime.toLocaleDateString('en-GB', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      timeZone: 'Europe/London' // Use UK timezone for consistency
     }) : '';
     const bookingTimeStr = bookingDateTime ? bookingDateTime.toLocaleTimeString('en-GB', {
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      timeZone: 'UTC' // Keep UTC time to match calendar
+      hour: 'numeric', minute: '2-digit',
+      hour12: true, // Use 12-hour format with AM/PM
+      timeZone: 'Europe/London' // Use UK timezone for consistency
     }) : '';
 
     // Concise SMS template

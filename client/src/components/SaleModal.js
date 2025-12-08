@@ -543,7 +543,7 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
                   >
                     {receiptTemplates.map(template => (
                       <option key={template._id} value={template._id}>
-                        {template.name} {template.email_account === 'secondary' ? '(Secondary)' : '(Primary)'}
+                        {template.name} {template.email_account === 'secondary' ? '(Diary@edgetalent.co.uk)' : '(Primary)'}
                       </option>
                     ))}
                   </select>

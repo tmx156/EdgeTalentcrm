@@ -24,12 +24,12 @@ const ACCOUNTS = {
     displayName: 'Edge Talent'
   },
   secondary: {
-    email: process.env.GMAIL_EMAIL_2,
+    email: process.env.GMAIL_EMAIL_2 || 'diary@edgetalent.co.uk',
     clientId: process.env.GMAIL_CLIENT_ID_2,
     clientSecret: process.env.GMAIL_CLIENT_SECRET_2,
     refreshToken: process.env.GMAIL_REFRESH_TOKEN_2,
     redirectUri: process.env.GMAIL_REDIRECT_URI_2 || 'http://localhost:5000/api/gmail/oauth2callback2',
-    displayName: 'Secondary Account'
+    displayName: 'Edge Talent'
   }
 };
 

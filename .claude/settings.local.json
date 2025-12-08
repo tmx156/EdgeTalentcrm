@@ -39,7 +39,8 @@
       "Bash(set GENERATE_SOURCEMAP=false)",
       "Bash(git revert:*)",
       "Bash(npx react-scripts build)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(cmd /c \"set CI=false && set GENERATE_SOURCEMAP=false && npm run build\")"
     ],
     "deny": [],
     "ask": []

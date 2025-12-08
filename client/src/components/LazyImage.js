@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const LazyImage = ({ 
   src, 
@@ -17,6 +17,11 @@ const LazyImage = ({
 }) => {
   const [imgSrc, setImgSrc] = useState(src);
   const fallbackSrc = '/images/fallback.jpeg'; // Replace with your actual fallback image path
+
+  // Update imgSrc when src prop changes (fixes image retention bug)
+  useEffect(() => {
+    setImgSrc(src);
+  }, [src]);
 
   const handleError = (e) => {
     console.warn(`🖼️ Image failed to load: ${imgSrc}`);

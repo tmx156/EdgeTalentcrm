@@ -89,7 +89,18 @@ class SalesApeSyncService {
       });
 
       if (!leads || leads.length === 0) {
+        console.log('📋 [SalesApe Sync] No leads with salesape_record_id found to sync');
         return; // No leads to sync, exit quietly
+      }
+
+      console.log(`📋 [SalesApe Sync] Found ${leads.length} leads to sync`);
+      
+      // Log lead names for debugging (first 5)
+      const leadNames = leads.slice(0, 5).map(l => l.name).join(', ');
+      if (leads.length > 5) {
+        console.log(`   Leads being synced: ${leadNames}... (and ${leads.length - 5} more)`);
+      } else {
+        console.log(`   Leads being synced: ${leadNames}`);
       }
 
       let updatedCount = 0;
@@ -99,16 +110,33 @@ class SalesApeSyncService {
       // Sync each lead
       for (const lead of leads) {
         try {
+          // Validate record ID exists before making request
+          if (!lead.salesape_record_id || lead.salesape_record_id.trim() === '') {
+            console.warn(`   ⚠️ Skipping ${lead.name}: No salesape_record_id`);
+            unchangedCount++;
+            continue;
+          }
+
           // Fetch from Airtable
           const response = await axios.get(
             `${SALESAPE_CONFIG.AIRTABLE_URL}/${lead.salesape_record_id}`,
             {
               headers: {
-                'Authorization': `Bearer ${SALESAPE_CONFIG.PAT_CODE}`
+                'Authorization': `Bearer ${SALESAPE_CONFIG.PAT_CODE}`,
+                'Content-Type': 'application/json'
               },
-              timeout: 10000
+              timeout: 10000,
+              validateStatus: (status) => {
+                // Don't throw for 4xx errors, handle them in catch block
+                return status < 500;
+              }
             }
           );
+
+          // Check if request was successful
+          if (response.status !== 200) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
 
           const fields = response.data.fields;
 
@@ -197,11 +225,33 @@ class SalesApeSyncService {
           await new Promise(resolve => setTimeout(resolve, 300));
 
         } catch (error) {
-          // Only log errors if they're not 404s (which means record doesn't exist in Airtable)
-          if (error.response?.status !== 404) {
-            console.error(`   ❌ Error syncing ${lead.name}:`, error.response?.status || error.message);
+          const statusCode = error.response?.status;
+          const errorMessage = error.response?.data?.error?.message || error.message;
+          
+          // Handle different error types
+          if (statusCode === 404) {
+            // Record doesn't exist in Airtable - silently skip (might have been deleted)
+            unchangedCount++;
+          } else if (statusCode === 403) {
+            // Permission denied - likely token doesn't have access or record was moved/deleted
+            console.error(`   ❌ Error syncing ${lead.name}: 403 Forbidden - Access denied`);
+            console.error(`      Record ID: ${lead.salesape_record_id}`);
+            console.error(`      Possible causes:`);
+            console.error(`      1. Airtable token doesn't have access to this record`);
+            console.error(`      2. Record was deleted or moved in Airtable`);
+            console.error(`      3. Token permissions changed`);
+            console.error(`      Error: ${errorMessage || 'Unknown error'}`);
+            errorCount++;
+          } else if (statusCode === 401) {
+            // Unauthorized - token expired or invalid
+            console.error(`   ❌ Error syncing ${lead.name}: 401 Unauthorized - Token may be expired`);
+            console.error(`      Check SALESAPE_PAT_CODE in .env file`);
+            errorCount++;
+          } else {
+            // Other errors
+            console.error(`   ❌ Error syncing ${lead.name}:`, statusCode || errorMessage);
+            errorCount++;
           }
-          errorCount++;
         }
       }
 
@@ -209,9 +259,12 @@ class SalesApeSyncService {
       this.syncCount++;
       this.lastSyncTime = new Date();
 
-      // Only log if there were updates or errors (reduce log noise)
+      // Log sync results
       if (updatedCount > 0 || errorCount > 0) {
-        console.log(`✅ [SalesApe Sync #${this.syncCount}] Complete in ${duration}s - Updated: ${updatedCount} | Errors: ${errorCount}`);
+        console.log(`✅ [SalesApe Sync #${this.syncCount}] Complete in ${duration}s - Updated: ${updatedCount} | Unchanged: ${unchangedCount} | Errors: ${errorCount}`);
+      } else if (this.syncCount % 10 === 0) {
+        // Log every 10th sync even if no updates (to show it's running)
+        console.log(`✅ [SalesApe Sync #${this.syncCount}] Complete in ${duration}s - No updates (${unchangedCount} leads checked)`);
       }
 
     } catch (error) {

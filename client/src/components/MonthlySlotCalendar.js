@@ -1,7 +1,23 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { FiCheckCircle, FiClock } from 'react-icons/fi';
 
 const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClick, onEventClick }) => {
+  // PERFORMANCE: Index events by date once per render instead of filtering repeatedly
+  const eventsByDate = useMemo(() => {
+    if (!events || events.length === 0) return new Map();
+    
+    const index = new Map();
+    events.forEach(event => {
+      if (!event.date_booked) return;
+      const dateStr = new Date(event.date_booked).toISOString().split('T')[0];
+      if (!index.has(dateStr)) {
+        index.set(dateStr, []);
+      }
+      index.get(dateStr).push(event);
+    });
+    return index;
+  }, [events]);
+
   // Get days in month
   const getDaysInMonth = () => {
     const year = currentDate.getFullYear();
@@ -33,17 +49,12 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
     return days;
   };
 
-  // Get bookings for a specific day
+  // Get bookings for a specific day - OPTIMIZED: Use pre-indexed map instead of filtering
   const getBookingsForDay = (day) => {
-    if (!day || !events) return { slot1: [], slot2: [] };
+    if (!day) return { slot1: [], slot2: [] };
     
     const dayStr = day.toISOString().split('T')[0];
-    
-    const dayBookings = events.filter(event => {
-      if (!event.date_booked) return false;
-      const eventDateStr = new Date(event.date_booked).toISOString().split('T')[0];
-      return eventDateStr === dayStr;
-    });
+    const dayBookings = eventsByDate.get(dayStr) || [];
     
     const slot1 = dayBookings.filter(e => e.booking_slot === 1);
     const slot2 = dayBookings.filter(e => e.booking_slot === 2);

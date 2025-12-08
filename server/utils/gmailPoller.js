@@ -171,9 +171,37 @@ class GmailPoller {
       }
 
       const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-      oauth2Client.setCredentials({ refresh_token: refreshToken });
       
-      return google.gmail({ version: 'v1', auth: oauth2Client });
+      try {
+        oauth2Client.setCredentials({ refresh_token: refreshToken });
+      } catch (credError) {
+        if (credError.message && credError.message.includes('invalid_grant')) {
+          console.error(`❌ [${this.accountConfig.displayName}] OAuth token expired or invalid (invalid_grant)`);
+          console.error(`❌ [${this.accountConfig.displayName}] Please re-authenticate this account:`);
+          console.error(`   1. Go to: http://localhost:5000/api/gmail/oauth2${this.accountKey === 'secondary' ? '2' : ''}`);
+          console.error(`   2. Authorize the application`);
+          console.error(`   3. Update GMAIL_REFRESH_TOKEN${this.accountKey === 'secondary' ? '_2' : ''} in .env file`);
+          throw new Error('OAuth token expired - re-authentication required');
+        }
+        throw credError;
+      }
+
+      // Test the token by making a simple API call
+      try {
+        const testGmail = google.gmail({ version: 'v1', auth: oauth2Client });
+        await testGmail.users.getProfile({ userId: 'me' });
+        return testGmail;
+      } catch (testError) {
+        if (testError.message && (testError.message.includes('invalid_grant') || testError.code === 401)) {
+          console.error(`❌ [${this.accountConfig.displayName}] OAuth token expired or invalid`);
+          console.error(`❌ [${this.accountConfig.displayName}] Please re-authenticate this account:`);
+          console.error(`   1. Go to: http://localhost:5000/api/gmail/oauth2${this.accountKey === 'secondary' ? '2' : ''}`);
+          console.error(`   2. Authorize the application`);
+          console.error(`   3. Update GMAIL_REFRESH_TOKEN${this.accountKey === 'secondary' ? '_2' : ''} in .env file`);
+          throw new Error('OAuth token expired - re-authentication required');
+        }
+        throw testError;
+      }
     } catch (error) {
       throw new Error(`Failed to authenticate Gmail API (${this.accountKey}): ${error.message}`);
     }
@@ -218,8 +246,16 @@ class GmailPoller {
       console.log(`✅ [${this.accountConfig.displayName}] Poller started successfully (polling every ${POLL_INTERVAL_MS / 1000}s)`);
 
     } catch (error) {
-      console.error(`❌ [${this.accountConfig.displayName}] Failed to start poller:`, error.message);
+      if (error.message && error.message.includes('invalid_grant')) {
+        console.error(`❌ [${this.accountConfig.displayName}] Failed to start poller: OAuth token expired`);
+        console.error(`❌ [${this.accountConfig.displayName}] ACTION REQUIRED: Re-authenticate this account`);
+        console.error(`   Visit: http://localhost:5000/api/gmail/oauth2${this.accountKey === 'secondary' ? '2' : ''}`);
+        console.error(`   Then update GMAIL_REFRESH_TOKEN${this.accountKey === 'secondary' ? '_2' : ''} in .env`);
+      } else {
+        console.error(`❌ [${this.accountConfig.displayName}] Failed to start poller:`, error.message);
+      }
       this.isRunning = false;
+      this.disabled = true; // Disable poller until re-authenticated
     }
   }
 
@@ -422,11 +458,11 @@ class GmailPoller {
 
     if (!lead) {
       // Skip emails from senders not in CRM (prevents processing spam/unrelated emails)
-      console.log(`📧 [${this.accountConfig.displayName}] ⚠️ No lead found for ${fromEmail}, skipping email (not in CRM)`);
+      console.log(`📧 [${this.accountConfig.displayName}] ⚠️ Skipping email from ${fromEmail} - not a lead in CRM`);
       return 'skipped';
     }
 
-    console.log(`📧 [${this.accountConfig.displayName}] Found lead: ${lead.name} (${lead.email})`)
+    console.log(`📧 [${this.accountConfig.displayName}] ✅ Found lead in CRM: ${lead.name} (${lead.email || fromEmail})`)
 
     // Check for duplicates in database (more reliable than in-memory check)
     const { data: existingByGmailId, error: gmailIdCheckError } = await this.supabase
@@ -895,7 +931,16 @@ class GmailPoller {
       .eq('id', lead.id);
 
     if (updateError) {
-      console.error(`❌ [${this.accountConfig.displayName}] Error updating lead booking history:`, updateError.message);
+      // Check if it's a permission/RLS error
+      if (updateError.code === 'PGRST301' || updateError.message?.includes('permission') || updateError.message?.includes('403')) {
+        console.error(`❌ [${this.accountConfig.displayName}] Permission denied updating lead ${lead.id} (${lead.name})`);
+        console.error(`   This might be an RLS policy issue. Ensure SERVICE ROLE KEY is set correctly.`);
+      } else {
+        console.error(`❌ [${this.accountConfig.displayName}] Error updating lead booking history for ${lead.name}:`, updateError.message);
+      }
+      // Don't throw - continue processing other messages
+    } else {
+      console.log(`✅ [${this.accountConfig.displayName}] Updated booking history for ${lead.name}`);
     }
   }
 

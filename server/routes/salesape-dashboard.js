@@ -31,25 +31,48 @@ router.get('/status', auth, async (req, res) => {
       ? activeLeads.find(l => l.salesape_user_engaged && !l.salesape_goal_hit) || activeLeads[0]
       : null;
 
-    // Get today's stats
+    // Get today's stats - count ALL leads in SalesApe queue, not just created today
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
 
-    const todayLeads = await dbManager.query('leads', {
-      select: 'id, salesape_initial_message_sent, salesape_user_engaged, salesape_goal_hit, salesape_sent_at',
-      gte: { created_at: today.toISOString() }
-    });
+    // Get ALL leads that have been sent to SalesApe (in the queue)
+    // Use Supabase directly to properly filter by salesape_sent_at
+    const { createClient } = require('@supabase/supabase-js');
+    const config = require('../config');
+    const supabase = createClient(
+      config.supabase.url,
+      config.supabase.serviceRoleKey || config.supabase.anonKey
+    );
 
-    // Filter for leads sent to SalesApe today
-    const todaysSalesApeLeads = todayLeads ? todayLeads.filter(l => l.salesape_sent_at && l.salesape_sent_at >= today.toISOString()) : [];
+    // Get all leads in SalesApe queue (have salesape_sent_at) with status info
+    const { data: queueLeads, error: queueError } = await supabase
+      .from('leads')
+      .select('id, salesape_initial_message_sent, salesape_user_engaged, salesape_goal_hit, salesape_sent_at, salesape_last_updated, salesape_status')
+      .not('salesape_sent_at', 'is', null)
+      .limit(500);
 
-    const messagesSent = todaysSalesApeLeads ? todaysSalesApeLeads.filter(l => l.salesape_initial_message_sent).length : 0;
-    const leadsEngaged = todaysSalesApeLeads ? todaysSalesApeLeads.filter(l => l.salesape_user_engaged).length : 0;
-    const bookingsMade = todaysSalesApeLeads ? todaysSalesApeLeads.filter(l => l.salesape_goal_hit).length : 0;
+    if (queueError) {
+      console.error('Error fetching queue leads for stats:', queueError);
+    }
 
+    const allQueueLeads = queueLeads || [];
+
+    // Count messages sent: All leads in queue count as "messages sent" 
+    // (they're in the queue, so SalesApe will send/has sent the initial message)
+    const messagesSent = allQueueLeads.length;
+
+    // Count leads engaged: All leads in queue that are engaged
+    const leadsEngaged = allQueueLeads.filter(l => l.salesape_user_engaged).length;
+    
+    // Count bookings made: All leads in queue where goal was hit
+    const bookingsMade = allQueueLeads.filter(l => l.salesape_goal_hit).length;
+
+    // Calculate rates
     const engagementRate = messagesSent > 0 ? Math.round((leadsEngaged / messagesSent) * 100) : 0;
     const conversionRate = messagesSent > 0 ? Math.round((bookingsMade / messagesSent) * 100) : 0;
-    const responseRate = leadsEngaged > 0 ? Math.round((leadsEngaged / messagesSent) * 100) : 0;
+    const responseRate = messagesSent > 0 ? Math.round((leadsEngaged / messagesSent) * 100) : 0;
 
     // Calculate average response time (mock for now)
     const avgResponseTime = '4m 32s';
@@ -145,6 +168,12 @@ router.get('/queue', auth, async (req, res) => {
     }
 
     console.log(`📋 Queue: Found ${allLeads.length} leads in SalesApe queue`);
+
+    // Log lead names for debugging (helps identify if specific leads are missing)
+    if (allLeads.length > 0) {
+      const leadNames = allLeads.slice(0, 10).map(l => l.name).join(', ');
+      console.log(`   Sample leads in queue: ${leadNames}${allLeads.length > 10 ? `... (${allLeads.length - 10} more)` : ''}`);
+    }
 
     // Map leads with queue_status calculation
     const queueLeads = allLeads.map(lead => ({
@@ -484,6 +513,71 @@ router.post('/queue/resume', auth, async (req, res) => {
     res.json({ message: 'Queue resumed' });
   } catch (error) {
     console.error('Error resuming queue:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+/**
+ * @route   GET /api/salesape-dashboard/diagnostics/:leadName
+ * @desc    Get diagnostic information for a specific lead by name
+ * @access  Private
+ */
+router.get('/diagnostics/:leadName', auth, async (req, res) => {
+  try {
+    const { leadName } = req.params;
+    
+    // Search for leads matching the name (case insensitive, partial match)
+    const leads = await dbManager.query('leads', {
+      select: 'id, name, phone, email, salesape_record_id, salesape_sent_at, salesape_status, salesape_last_updated, salesape_initial_message_sent, salesape_user_engaged, salesape_goal_hit, created_at',
+      ilike: { name: `%${leadName}%` },
+      limit: 10
+    });
+
+    if (!leads || leads.length === 0) {
+      return res.status(404).json({ 
+        message: 'No leads found',
+        searchTerm: leadName
+      });
+    }
+
+    // Get sync service status
+    const syncService = require('../services/salesapeSync');
+    const syncStatus = syncService.getStatus();
+
+    // Format diagnostic info
+    const diagnostics = leads.map(lead => ({
+      id: lead.id,
+      name: lead.name,
+      phone: lead.phone,
+      email: lead.email,
+      salesape: {
+        recordId: lead.salesape_record_id || 'NOT SET',
+        sentAt: lead.salesape_sent_at || 'NOT SENT',
+        status: lead.salesape_status || 'N/A',
+        lastUpdated: lead.salesape_last_updated || 'NEVER',
+        initialMessageSent: lead.salesape_initial_message_sent || false,
+        userEngaged: lead.salesape_user_engaged || false,
+        goalHit: lead.salesape_goal_hit || false
+      },
+      inQueue: !!lead.salesape_sent_at,
+      willSync: !!lead.salesape_record_id,
+      created: lead.created_at
+    }));
+
+    res.json({
+      searchTerm: leadName,
+      found: leads.length,
+      leads: diagnostics,
+      syncService: {
+        enabled: syncStatus.enabled,
+        running: syncStatus.running,
+        syncing: syncStatus.syncing,
+        lastSync: syncStatus.lastSyncTime,
+        syncCount: syncStatus.syncCount
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching diagnostics:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

@@ -27,7 +27,7 @@ const config = {
     username: process.env.BULKSMS_USERNAME || 'tmx2566',
     password: process.env.BULKSMS_PASSWORD || 'Booker100',
     fromNumber: process.env.BULKSMS_FROM_NUMBER || '+447786201100',
-    pollEnabled: true, // Always enabled for SMS reply polling
+    pollEnabled: process.env.BULKSMS_POLL_ENABLED === 'true' || false, // Disabled by default, enable via BULKSMS_POLL_ENABLED=true
     pollInterval: parseInt(process.env.BULKSMS_POLL_INTERVAL_MS) || 300000 // 300s (5 min) - reduced from 60s to prevent DB connection exhaustion
   },
 
