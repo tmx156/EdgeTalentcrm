@@ -757,17 +757,52 @@ const LeadDetail = () => {
   // Removed unused functions: handleCancelAppointment, handleRescheduleAppointment, handleRescheduleSubmit, handleNoAnswerIncrement
 
   const getStatusBadgeClass = (status) => {
-    switch (status?.toLowerCase()) {
+    if (!status) return 'status-badge status-new';
+    
+    const statusLower = status.toLowerCase();
+    switch (statusLower) {
       case 'new':
         return 'status-badge status-new';
+      case 'assigned':
+        return 'status-badge status-assigned';
+      case 'contacted':
+        return 'status-badge status-contacted';
       case 'booked':
         return 'status-badge status-booked';
+      case 'confirmed':
+        return 'status-badge status-confirmed';
       case 'attended':
         return 'status-badge status-attended';
       case 'cancelled':
         return 'status-badge status-cancelled';
+      case 'no answer':
+      case 'noanswer':
+        return 'status-badge status-no-answer';
+      case 'not interested':
+      case 'notinterested':
+        return 'status-badge status-not-interested';
+      case 'sale':
+      case 'sales/converted - purchased':
+        return 'status-badge status-sale';
+      case 'rejected':
+        return 'status-badge status-rejected';
+      case 'call back':
+      case 'callback':
+        return 'status-badge status-call-back';
+      case 'left message':
+      case 'leftmessage':
+        return 'status-badge status-left-message';
+      case 'not qualified':
+      case 'notqualified':
+        return 'status-badge status-not-qualified';
       case 'reschedule':
         return 'status-badge status-reschedule';
+      case 'no show':
+      case 'noshow':
+        return 'status-badge status-no-show';
+      case 'wrong number':
+      case 'wrongnumber':
+        return 'status-badge status-wrong-number';
       default:
         return 'status-badge status-new';
     }

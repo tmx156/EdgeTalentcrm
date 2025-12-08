@@ -4,6 +4,8 @@ const csv = require('csv-parser');
 const xlsx = require('xlsx');
 const fs = require('fs');
 const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
+const config = require('../config');
 const dbManager = require('../database-connection-manager');
 const { auth, adminAuth } = require('../middleware/auth');
 const { analyseLeads } = require('../utils/leadAnalysis');
@@ -1763,7 +1765,6 @@ router.post('/', auth, async (req, res) => {
     };
 
     // Use service role client for lead creation to bypass RLS and allow activity logging
-    const config = require('../config');
     const serviceRoleClient = createClient(
       config.supabase.url,
       config.supabase.serviceRoleKey || config.supabase.anonKey
@@ -1982,6 +1983,13 @@ router.post('/', auth, async (req, res) => {
 // @access  Private
 router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
   try {
+    console.log('🔄 Lead status update request:', {
+      leadId: req.params.id,
+      newStatus: req.body.status,
+      userId: req.user.id,
+      userRole: req.user.role
+    });
+    
     // Normalize incoming fields from various clients (camelCase vs snake_case)
     if (req.body && req.body.dateBooked && !req.body.date_booked) {
       req.body.date_booked = req.body.dateBooked;
@@ -2258,12 +2266,29 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
         console.log(`📅 Lead ${lead.name} assigned_at set to ${supabaseUpdateFields.assigned_at} (booker: ${newBookerId})`);
       }
       
+      // Add detailed logging for status updates
+      console.log('🔄 Starting status update:', {
+        leadId: req.params.id,
+        oldStatus: lead.status,
+        newStatus: supabaseUpdateFields.status,
+        fieldsToUpdate: Object.keys(supabaseUpdateFields)
+      });
+      
       const updateResult = await dbManager.update('leads', supabaseUpdateFields, { id: req.params.id });
       
       if (!updateResult || updateResult.length === 0) {
-        console.error('Update lead error: Failed to update lead');
+        console.error('❌ Update lead error: Failed to update lead', {
+          leadId: req.params.id,
+          fields: supabaseUpdateFields,
+          error: 'No rows updated'
+        });
         return res.status(500).json({ message: 'Failed to update lead' });
       }
+      
+      console.log('✅ Status update successful:', {
+        leadId: req.params.id,
+        newStatus: updateResult[0]?.status
+      });
     }
     
     // Get the updated lead
@@ -2290,9 +2315,11 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       }
     }
     // Add booking history entries based on the type of change
+    // Make these non-blocking to prevent crashes if booking history update fails
     if (isNewBooking) {
       console.log(`📅 Adding INITIAL_BOOKING for lead ${lead.name} (oldStatus: ${oldStatus}, oldDateBooked: ${oldDateBooked})`);
-              await addBookingHistoryEntry(
+      // Non-blocking: Don't await - if it fails, status update still succeeds
+      addBookingHistoryEntry(
           req.params.id,
           'INITIAL_BOOKING',
           currentUser.id,
@@ -2302,7 +2329,10 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
           notes: `Appointment booked for ${lead.name}`
         },
         createLeadSnapshot(updatedLead)
-      );
+      ).catch(err => {
+        console.error('⚠️ Booking history update failed (non-critical):', err.message);
+        // Don't throw - status update should still succeed
+      });
 
       // Trigger booking confirmation (email + optional SMS per template) (NON-BLOCKING)
       if (req.body.date_booked) {
@@ -2379,7 +2409,8 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       }
     } else if (isReschedule || isDateChange) {
       console.log(`📅 Adding RESCHEDULE for lead ${lead.name} (oldDate: ${oldDateBooked}, newDate: ${req.body.date_booked})`);
-              await addBookingHistoryEntry(
+      // Non-blocking: Don't await - if it fails, status update still succeeds
+      addBookingHistoryEntry(
           req.params.id,
           'RESCHEDULE',
           currentUser.id,
@@ -2395,7 +2426,10 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
           notes: `Appointment rescheduled from ${new Date(oldDateBooked).toLocaleString()} to ${new Date(req.body.date_booked).toLocaleString()}. Status reset: ${lead.booking_status || 'none'} → ${req.body.booking_status || 'none'}`
         },
         createLeadSnapshot(updatedLead)
-      );
+      ).catch(err => {
+        console.error('⚠️ Booking history update failed (non-critical):', err.message);
+        // Don't throw - status update should still succeed
+      });
 
       // Also send updated booking confirmation on reschedule (NON-BLOCKING)
       if (req.body.date_booked) {
@@ -2473,7 +2507,8 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       }
     } else if (isCancellation) {
       console.log(`📅 Adding CANCELLATION for lead ${lead.name} - moving to Cancelled`);
-              await addBookingHistoryEntry(
+      // Non-blocking: Don't await - if it fails, status update still succeeds
+      addBookingHistoryEntry(
           req.params.id,
           'CANCELLATION',
           currentUser.id,
@@ -2486,10 +2521,14 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
           notes: `Appointment cancelled and lead moved to Cancelled - was scheduled for ${oldDateBooked ? new Date(oldDateBooked).toLocaleString() : 'unknown date'}`
         },
         createLeadSnapshot(updatedLead)
-      );
+      ).catch(err => {
+        console.error('⚠️ Booking history update failed (non-critical):', err.message);
+        // Don't throw - status update should still succeed
+      });
     } else if (isStatusChange) {
       console.log(`📅 Adding STATUS_CHANGE for lead ${lead.name}: ${oldStatus} → ${req.body.status}`);
-              await addBookingHistoryEntry(
+      // Non-blocking: Don't await - if it fails, status update still succeeds
+      addBookingHistoryEntry(
           req.params.id,
           'STATUS_CHANGE',
           currentUser.id,
@@ -2500,13 +2539,19 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
           notes: `Status changed from ${oldStatus} to ${req.body.status}`
         },
         createLeadSnapshot(updatedLead)
-      );
+      ).catch(err => {
+        console.error('⚠️ Booking history update failed (non-critical):', err.message);
+        // Don't throw - status update should still succeed
+      });
     }
-    // Update user statistics if status changed
+    // Update user statistics if status changed (non-blocking)
     if (oldStatus !== req.body.status && req.body.status && lead.booker) {
-      await updateUserStatistics(lead.booker, {
+      updateUserStatistics(lead.booker, {
         from: oldStatus,
         to: req.body.status
+      }).catch(err => {
+        console.error('⚠️ User statistics update failed (non-critical):', err.message);
+        // Don't throw - status update should still succeed
       });
     }
     // Emit real-time update
@@ -2575,8 +2620,20 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       lead: updatedLead
     });
   } catch (error) {
-    console.error('Update lead error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ STATUS UPDATE FAILED:', {
+      leadId: req.params.id,
+      oldStatus: lead?.status,
+      newStatus: req.body?.status,
+      error: error.message,
+      errorCode: error.code,
+      errorDetails: error.details || error.hint,
+      stack: error.stack?.split('\n')[0] // First line of stack
+    });
+    res.status(500).json({ 
+      message: 'Server error during status update',
+      error: error.message,
+      leadId: req.params.id
+    });
   }
 });
 
