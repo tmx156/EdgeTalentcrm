@@ -25,17 +25,18 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
     { value: 'Not Qualified', label: 'Not Qualified', trigger: 'close' }
   ];
 
-  // Fetch current status from lead (check both call_status and custom_fields)
+  // Fetch current status from lead (use dedicated call_status column)
   useEffect(() => {
     if (lead) {
-      // First check if call_status is directly on lead (for backward compatibility)
+      // Use dedicated call_status column (preferred)
       if (lead.call_status) {
         setSelectedStatus(lead.call_status);
-      } else if (lead.custom_fields) {
-        // Otherwise check custom_fields
+      }
+      // Fallback to custom_fields for backward compatibility (old data)
+      else if (lead.custom_fields) {
         try {
-          const customFields = typeof lead.custom_fields === 'string' 
-            ? JSON.parse(lead.custom_fields) 
+          const customFields = typeof lead.custom_fields === 'string'
+            ? JSON.parse(lead.custom_fields)
             : lead.custom_fields;
           if (customFields && customFields.call_status) {
             setSelectedStatus(customFields.call_status);

@@ -5233,26 +5233,26 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       });
     }
 
-    // Update custom_fields to store call_status
+    // Prepare update data - use dedicated call_status column
+    const updateData = {
+      call_status: callStatus,  // Store in dedicated column (not custom_fields)
+      updated_at: new Date().toISOString()
+    };
+
+    // Also update custom_fields for backward compatibility
     let customFields = {};
     try {
       if (lead.custom_fields) {
-        customFields = typeof lead.custom_fields === 'string' 
-          ? JSON.parse(lead.custom_fields) 
+        customFields = typeof lead.custom_fields === 'string'
+          ? JSON.parse(lead.custom_fields)
           : lead.custom_fields;
       }
     } catch (e) {
       console.warn('Error parsing custom_fields:', e);
       customFields = {};
     }
-
     customFields.call_status = callStatus;
-
-    // Prepare update data
-    const updateData = {
-      custom_fields: JSON.stringify(customFields),
-      updated_at: new Date().toISOString()
-    };
+    updateData.custom_fields = JSON.stringify(customFields);
 
     // Get callback time and note if provided
     const { callbackTime, callbackNote } = req.body;
@@ -5262,14 +5262,16 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     const closeTriggers = ['Not interested', 'Not Qualified'];
     const callbackTriggers = ['Call back', 'Sales/converted - purchased'];
 
-    // Map call status to lead status
-    // "Wrong number" now maps to "Rejected" status (no longer using "Wants Email")
+    // DON'T change the main status column for bookers
+    // Only admins should move leads to "Rejected" status
+    // Bookers just update call_status to track their call outcomes
+    // This keeps leads in the booker's assigned list
     if (callStatus === 'Wrong number') {
-      updateData.status = 'Rejected';
       updateData.reject_reason = 'Wrong number';
+      // Don't set status = 'Rejected' - let admin do that
     } else if (closeTriggers.includes(callStatus)) {
-      updateData.status = 'Rejected';
       updateData.reject_reason = `Call status: ${callStatus}`;
+      // Don't set status = 'Rejected' - let admin do that
     }
 
     // Update the lead
@@ -5289,8 +5291,8 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       req.user.name,
       {
         callStatus: callStatus,
-        workflowTrigger: emailTriggers.includes(callStatus) ? 'email' 
-          : closeTriggers.includes(callStatus) ? 'close' 
+        workflowTrigger: emailTriggers.includes(callStatus) ? 'email'
+          : closeTriggers.includes(callStatus) ? 'close'
           : 'callback',
         updatedBy: req.user.name,
         timestamp: new Date()
@@ -5298,12 +5300,41 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       createLeadSnapshot(updatedLead)
     );
 
-    // Trigger workflows
-    let workflowResult = {};
+    // Return success immediately (don't wait for email/callback processing)
+    // This makes the UI feel instant and responsive
+    const workflowResult = {
+      emailScheduled: emailTriggers.includes(callStatus) && lead.email,
+      callbackScheduled: callbackTriggers.includes(callStatus) && callbackTime
+    };
 
-    // Email workflow: Send automatic email for "Left Message" or "No answer"
-    if (emailTriggers.includes(callStatus) && lead.email) {
+    // Emit real-time update
+    if (global.io) {
+      global.io.emit('lead_updated', {
+        leadId: leadId,
+        action: 'call_status_updated',
+        callStatus: callStatus,
+        updatedBy: req.user.name,
+        workflowResult: workflowResult,
+        timestamp: new Date()
+      });
+    }
+
+    // Send response immediately - don't wait for workflows
+    res.json({
+      success: true,
+      message: 'Call status updated successfully',
+      callStatus: callStatus,
+      workflowResult: workflowResult,
+      lead: updatedLead
+    });
+
+    // NOW process workflows asynchronously (after response sent)
+    // This prevents blocking the user
+    // Wrap in setImmediate to ensure it runs after response is sent
+    setImmediate(async () => {
       try {
+        // Email workflow: Send automatic email for "Left Message" or "No answer"
+        if (emailTriggers.includes(callStatus) && lead.email) {
         // Find the user's specific "no_answer" template (booker-specific)
         const { data: templates, error: templateError } = await supabase
           .from('templates')
@@ -5462,31 +5493,13 @@ router.patch('/:id/call-status', auth, async (req, res) => {
         workflowResult.callbackNote = callbackNote;
 
         console.log(`📞 Callback reminder scheduled for ${callbackTime} UK time (${callbackDateTimeUTC.toISOString()} UTC)`);
-      } catch (callbackError) {
-        console.error('Error creating callback reminder:', callbackError);
-        workflowResult.callbackScheduled = false;
-        workflowResult.callbackError = callbackError.message;
+        } catch (callbackError) {
+          console.error('Error creating callback reminder:', callbackError);
+        }
+        }
+      } catch (asyncError) {
+        console.error('Error in async workflow processing:', asyncError);
       }
-    }
-
-    // Emit real-time update
-    if (global.io) {
-      global.io.emit('lead_updated', {
-        leadId: leadId,
-        action: 'call_status_updated',
-        callStatus: callStatus,
-        updatedBy: req.user.name,
-        workflowResult: workflowResult,
-        timestamp: new Date()
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Call status updated successfully',
-      callStatus: callStatus,
-      workflowResult: workflowResult,
-      lead: updatedLead
     });
 
   } catch (error) {

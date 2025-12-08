@@ -28,7 +28,7 @@ const Leads = () => {
     rejected: 0,
     callback: 0,
     notInterested: 0,
-    wantsEmail: 0,
+    wrongNumber: 0,
     noAnswer: 0,
     // New call_status-based counts for booker users
     noAnswerCall: 0,

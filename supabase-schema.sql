@@ -86,12 +86,16 @@ CREATE TABLE IF NOT EXISTS leads (
     salesape_id TEXT,
     salesape_qualified BOOLEAN DEFAULT FALSE,
     salesape_conversation_id TEXT,
-    custom_fields JSONB
+    custom_fields JSONB,
+
+    -- Booker call status tracking (separate from main status)
+    call_status TEXT  -- Values: No answer, Left Message, Not interested, Call back, Wrong number, Sales/converted - purchased, Not Qualified
 );
 
 -- Indexes for leads
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_leads_booker_id ON leads(booker_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_leads_call_status ON leads(call_status) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_leads_date_booked ON leads(date_booked) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_leads_booked_at ON leads(booked_at) WHERE booked_at IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_leads_assigned_at ON leads(assigned_at) WHERE deleted_at IS NULL;
