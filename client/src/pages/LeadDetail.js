@@ -773,11 +773,9 @@ const LeadDetail = () => {
     }
   };
 
-  // Format status display for booker users (e.g., "Wants Email" -> "Wrong Number")
+  // Format status display for booker users
   const formatStatusDisplay = (status) => {
-    if (user?.role === 'booker' && status === 'Wants Email') {
-      return 'Wrong Number';
-    }
+    // Status display formatting (no longer needed for "Wants Email" as it's been removed)
     return status;
   };
 
@@ -822,8 +820,8 @@ const LeadDetail = () => {
         if (lead.call_status) {
           callStatus = lead.call_status;
         }
-        // Fallback: if status is "Wants Email", show "Wrong number"
-        if (!callStatus && lead.status === 'Wants Email') {
+        // If status is "Wrong number" but no call_status, set it
+        if (!callStatus && lead.status === 'Wrong number') {
           callStatus = 'Wrong number';
         }
         setSelectedStatus(callStatus || '');
@@ -2303,7 +2301,7 @@ const LeadDetail = () => {
                     // Update lead status based on call status mapping
                     let newLeadStatus = lead.status;
                     if (status === 'Wrong number') {
-                      newLeadStatus = 'Wants Email'; // Map to database status
+                      newLeadStatus = 'Rejected'; // Map to Rejected status (no longer using "Wants Email")
                     } else if (['Not interested', 'Not Qualified'].includes(status)) {
                       newLeadStatus = 'Rejected';
                     }

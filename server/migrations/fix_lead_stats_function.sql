@@ -42,7 +42,7 @@ RETURNS TABLE (
   callback_count bigint,
   no_answer_count bigint,
   not_interested_count bigint,
-  wants_email_count bigint
+  wrong_number_count bigint
 )
 LANGUAGE plpgsql
 AS $$
@@ -69,7 +69,7 @@ BEGIN
     COUNT(*) FILTER (WHERE status = 'Call Back')::bigint as callback_count,
     COUNT(*) FILTER (WHERE status = 'No Answer')::bigint as no_answer_count,
     COUNT(*) FILTER (WHERE status = 'Not Interested')::bigint as not_interested_count,
-    COUNT(*) FILTER (WHERE status = 'Wants Email')::bigint as wants_email_count
+    COUNT(*) FILTER (WHERE status = 'Wrong number')::bigint as wrong_number_count
   FROM filtered_leads;
 END;
 $$;

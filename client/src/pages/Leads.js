@@ -331,7 +331,7 @@ const Leads = () => {
           rejected: response.data.rejected || 0,
           callback: response.data.callback || 0,
           notInterested: response.data.notInterested || 0,
-          wantsEmail: response.data.wantsEmail || 0,
+          wrongNumber: response.data.wrongNumber || 0,
           noAnswer: response.data.noAnswer || 0,
           // New call_status-based counts
           noAnswerCall: response.data.noAnswerCall || 0,
@@ -354,7 +354,7 @@ const Leads = () => {
           rejected: 0,
           callback: 0,
           notInterested: 0,
-          wantsEmail: 0,
+          wrongNumber: 0,
           noAnswer: 0,
           noAnswerCall: 0,
           leftMessage: 0,
@@ -960,11 +960,9 @@ const Leads = () => {
     }
   };
 
-  // Format status display for booker users (e.g., "Wants Email" -> "Wrong Number")
+  // Format status display for booker users
   const formatStatusDisplay = (status) => {
-    if (user?.role === 'booker' && status === 'Wants Email') {
-      return 'Wrong Number';
-    }
+    // Status display formatting (no longer needed for "Wants Email" as it's been removed)
     return status;
   };
 

@@ -48,9 +48,9 @@ CREATE TABLE IF NOT EXISTS leads (
         status IN ('New', 'Assigned', 'Contacted', 'Booked', 'Confirmed', 
                   'Attended', 'Cancelled', 'No Answer', 'No answer', 'Not Interested', 'Not interested', 
                   'Sale', 'Sales/converted - purchased',
-                  'Wants Email', 'Rejected', 'Call Back', 'Call back', 
+                  'Rejected', 'Call Back', 'Call back', 
                   'Left Message', 'Not Qualified',
-                  'Reschedule', 'No Show')
+                  'Reschedule', 'No Show', 'Wrong number')
     ),
     date_booked TIMESTAMPTZ, -- When the appointment is scheduled (future date)
     booked_at TIMESTAMPTZ, -- When the booking action was made (tracks conversion)

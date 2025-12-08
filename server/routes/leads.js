@@ -10,11 +10,10 @@ const { analyseLeads } = require('../utils/leadAnalysis');
 const MessagingService = require('../utils/messagingService');
 const { sendSMS, sendAppointmentReminder, sendStatusUpdate, sendCustomMessage } = require('../utils/smsService');
 const { v4: uuidv4 } = require('uuid'); // Added for UUID generation
-const { createClient } = require('@supabase/supabase-js');
 
-// Supabase configuration - use centralized config
-const config = require('../config');
-const supabase = createClient(config.supabase.url, config.supabase.anonKey);
+// Supabase configuration - use singleton client to prevent connection leaks
+const { getSupabaseClient } = require('../config/supabase-client');
+const supabase = getSupabaseClient();
 
 // IMPORTANT: Diary updates should only be triggered by registered users manually
 // All upload processes create leads with status 'New' and no dateBooked to prevent
@@ -5264,9 +5263,10 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     const callbackTriggers = ['Call back', 'Sales/converted - purchased'];
 
     // Map call status to lead status
-    // "Wrong number" maps to "Wants Email" for backward compatibility
+    // "Wrong number" now maps to "Rejected" status (no longer using "Wants Email")
     if (callStatus === 'Wrong number') {
-      updateData.status = 'Wants Email';
+      updateData.status = 'Rejected';
+      updateData.reject_reason = 'Wrong number';
     } else if (closeTriggers.includes(callStatus)) {
       updateData.status = 'Rejected';
       updateData.reject_reason = `Call status: ${callStatus}`;

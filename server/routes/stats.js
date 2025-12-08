@@ -45,7 +45,7 @@ router.get('/leads-public', async (req, res) => {
         callback: 0,
         noAnswer: 0,
         notInterested: 0,
-        wantsEmail: 0
+        wrongNumber: 0
       });
     }
 
@@ -60,7 +60,7 @@ router.get('/leads-public', async (req, res) => {
       callback: parseInt(stats.callback_count) || 0,
       noAnswer: parseInt(stats.no_answer_count) || 0,
       notInterested: parseInt(stats.not_interested_count) || 0,
-      wantsEmail: parseInt(stats.wants_email_count) || 0
+      wrongNumber: parseInt(stats.wrong_number_count) || 0
     };
 
     const duration = Date.now() - startTime;
@@ -141,7 +141,7 @@ router.get('/leads', auth, async (req, res) => {
       callback: leads?.filter(l => l.status === 'Call Back').length || 0,
       noAnswer: leads?.filter(l => l.status === 'No Answer').length || 0,
       notInterested: leads?.filter(l => l.status === 'Not Interested').length || 0,
-      wantsEmail: leads?.filter(l => l.status === 'Wants Email').length || 0
+      wrongNumber: leads?.filter(l => l.status === 'Wrong number').length || 0
     };
 
     // For booker users, add call_status-based counts

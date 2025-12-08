@@ -21,7 +21,7 @@ const dbManager = require('../database-connection-manager');
 const SALESAPE_CONFIG = {
   AIRTABLE_URL: 'https://api.airtable.com/v0/appoT1TexUksGanE8/tblTJGg187Ub84aXf',
   PAT_CODE: process.env.SALESAPE_PAT_CODE || process.env.SALESAPE_PAT,
-  SYNC_INTERVAL: parseInt(process.env.SALESAPE_SYNC_INTERVAL) || 120000, // 2 minutes default
+  SYNC_INTERVAL: parseInt(process.env.SALESAPE_SYNC_INTERVAL) || 600000, // 10 minutes - increased from 2 min to prevent DB overload
   ENABLED: process.env.SALESAPE_SYNC_ENABLED !== 'false' // Enabled by default
 };
 

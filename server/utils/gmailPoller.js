@@ -1,5 +1,4 @@
 const { google } = require('googleapis');
-const { createClient } = require('@supabase/supabase-js');
 const { randomUUID } = require('crypto');
 const fs = require('fs').promises;
 const fsSync = require('fs'); // For synchronous operations like existsSync
@@ -7,6 +6,7 @@ const path = require('path');
 const config = require('../config');
 const supabaseStorage = require('./supabaseStorage');
 const GmailEmailExtractor = require('./gmailEmailExtractor');
+const { getSupabaseClient } = require('../config/supabase-client');
 
 /**
  * Gmail API Poller - Multi-Account Support
@@ -15,15 +15,9 @@ const GmailEmailExtractor = require('./gmailEmailExtractor');
  */
 
 // --- Configuration ---
-// Use SERVICE ROLE KEY for backend operations to bypass RLS policies
-const SUPABASE_URL = process.env.SUPABASE_URL || config.supabase.url;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || config.supabase.serviceRoleKey;
+// Use singleton Supabase client to prevent connection leaks
 
-if (!SUPABASE_KEY) {
-  console.error('❌ SUPABASE_SERVICE_ROLE_KEY is not set! Gmail poller will not work.');
-}
-
-const POLL_INTERVAL_MS = parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 60000; // 1 minute
+const POLL_INTERVAL_MS = parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 600000; // 10 minutes - reduced from 1 min to prevent DB overload
 
 // Account configurations (matching gmailService.js pattern)
 const ACCOUNTS = {
@@ -142,21 +136,9 @@ class GmailPoller {
   }
 
   getSupabase() {
-    if (!SUPABASE_KEY) {
-      const error = new Error('❌ SUPABASE_SERVICE_ROLE_KEY is not set in environment variables!');
-      console.error(error.message);
-      console.error('⚠️  Gmail poller will not be able to access the database');
-      // Return a dummy client to prevent crashes - operations will fail gracefully
-      return createClient(SUPABASE_URL || 'https://invalid.supabase.co', 'invalid-key');
-    }
-    if (!SUPABASE_URL) {
-      const error = new Error('❌ SUPABASE_URL is not set in environment variables!');
-      console.error(error.message);
-      return createClient('https://invalid.supabase.co', SUPABASE_KEY || 'invalid-key');
-    }
-    const client = createClient(SUPABASE_URL, SUPABASE_KEY);
-    console.log(`✅ [${this.accountConfig?.displayName || 'GmailPoller'}] Supabase client initialized with SERVICE ROLE KEY`);
-    return client;
+    // Use singleton Supabase client instead of creating new connections
+    console.log(`✅ [${this.accountConfig?.displayName || 'GmailPoller'}] Using singleton Supabase client`);
+    return getSupabaseClient();
   }
 
   /**

@@ -783,7 +783,7 @@ const Calendar = () => {
     // Reduced polling frequency to prevent overloading
     pollingInterval = setInterval(() => {
       debouncedFetch(); // Use debounced fetch
-    }, 120000); // Poll every 2 minutes for better performance
+    }, 300000); // Poll every 5 minutes - increased from 2 min to prevent DB overload
 
     return () => {
       // Clean up subscriptions

@@ -2,12 +2,11 @@
 const path = require('path');
 const { sendEmail: sendActualEmail } = require('./emailService');
 const { sendSMS: sendActualSMS } = require('./smsService');
-const { createClient } = require('@supabase/supabase-js');
 const { fromZonedTime } = require('date-fns-tz');
 
-// Supabase configuration - use centralized config
-const config = require('../config');
-const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
+// Supabase configuration - use singleton client to prevent connection leaks
+const { getSupabaseClient } = require('../config/supabase-client');
+const supabase = getSupabaseClient();
 
 // const getDb = () => {
 //   return new Database(path.join(__dirname, '..', 'local-crm.db'));

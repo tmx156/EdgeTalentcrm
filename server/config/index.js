@@ -28,7 +28,7 @@ const config = {
     password: process.env.BULKSMS_PASSWORD || 'Booker100',
     fromNumber: process.env.BULKSMS_FROM_NUMBER || '+447786201100',
     pollEnabled: process.env.BULKSMS_POLL_ENABLED === 'true' || false, // Disabled by default, enable via BULKSMS_POLL_ENABLED=true
-    pollInterval: parseInt(process.env.BULKSMS_POLL_INTERVAL_MS) || 300000 // 300s (5 min) - reduced from 60s to prevent DB connection exhaustion
+    pollInterval: parseInt(process.env.BULKSMS_POLL_INTERVAL_MS) || 600000 // 600s (10 min) - increased to prevent DB overload
   },
 
   // Email Configuration (Legacy SMTP - being phased out)
@@ -46,7 +46,7 @@ const config = {
     clientSecret: process.env.GMAIL_CLIENT_SECRET || null,
     refreshToken: process.env.GMAIL_REFRESH_TOKEN || null,
     redirectUri: process.env.GMAIL_REDIRECT_URI || 'http://localhost:5000/api/gmail/oauth2callback',
-    pollInterval: parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 300000 // 5 minutes - reduced from 60s to prevent DB connection exhaustion
+    pollInterval: parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 600000 // 10 minutes - increased to prevent DB overload
   },
 
   // Client Configuration
