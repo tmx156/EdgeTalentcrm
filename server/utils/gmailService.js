@@ -117,6 +117,116 @@ function createHtmlEmailMessage(to, subject, html, from, fromName) {
 }
 
 /**
+ * Create email message with attachments
+ * @param {string} to - Recipient email address
+ * @param {string} subject - Email subject
+ * @param {string} text - Email body (plain text or HTML)
+ * @param {string} from - Sender email address
+ * @param {string} fromName - Sender display name
+ * @param {Array} attachments - Array of attachment objects with {path, filename} or {buffer, filename, contentType}
+ * @param {boolean} isHtml - Whether the text is HTML
+ * @returns {Promise<string>} Base64-encoded email message
+ */
+async function createEmailMessageWithAttachments(to, subject, text, from, fromName, attachments = [], isHtml = false) {
+  const boundary = '----=_Part_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+  const rootBoundary = '----=_Root_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+
+  const emailLines = [
+    `From: ${fromName} <${from}>`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/mixed; boundary="${rootBoundary}"`,
+    ''
+  ];
+
+  // Add message body part
+  emailLines.push(`--${rootBoundary}`);
+  if (isHtml) {
+    emailLines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+    emailLines.push('');
+    emailLines.push(`--${boundary}`);
+    emailLines.push('Content-Type: text/plain; charset=utf-8');
+    emailLines.push('');
+    emailLines.push('This is an HTML email. Please use an email client that supports HTML.');
+    emailLines.push('');
+    emailLines.push(`--${boundary}`);
+    emailLines.push('Content-Type: text/html; charset=utf-8');
+    emailLines.push('');
+    emailLines.push(text);
+    emailLines.push('');
+    emailLines.push(`--${boundary}--`);
+  } else {
+    emailLines.push('Content-Type: text/plain; charset=utf-8');
+    emailLines.push('');
+    emailLines.push(text);
+  }
+
+  // Add attachments
+  for (const attachment of attachments) {
+    try {
+      let fileBuffer;
+      let filename;
+      let contentType = 'application/octet-stream';
+
+      if (attachment.buffer) {
+        // Attachment provided as buffer
+        fileBuffer = attachment.buffer;
+        filename = attachment.filename || 'attachment';
+        contentType = attachment.contentType || contentType;
+      } else if (attachment.path) {
+        // Attachment provided as file path
+        filename = attachment.filename || path.basename(attachment.path);
+        fileBuffer = await fs.readFile(attachment.path);
+        
+        // Detect content type from filename
+        const ext = path.extname(filename).toLowerCase();
+        const mimeTypes = {
+          '.pdf': 'application/pdf',
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+          '.doc': 'application/msword',
+          '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          '.xls': 'application/vnd.ms-excel',
+          '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          '.zip': 'application/zip',
+          '.txt': 'text/plain'
+        };
+        if (mimeTypes[ext]) {
+          contentType = mimeTypes[ext];
+        }
+      } else {
+        console.warn(`⚠️ Skipping invalid attachment: ${JSON.stringify(attachment)}`);
+        continue;
+      }
+
+      // Encode attachment in base64
+      const encodedAttachment = fileBuffer.toString('base64');
+
+      // Add attachment part
+      emailLines.push(`--${rootBoundary}`);
+      emailLines.push(`Content-Type: ${contentType}; name="${filename}"`);
+      emailLines.push('Content-Disposition: attachment; filename="' + filename + '"');
+      emailLines.push('Content-Transfer-Encoding: base64');
+      emailLines.push('');
+      // Split base64 into 76-character lines (RFC 2045)
+      emailLines.push(encodedAttachment.match(/.{1,76}/g).join('\r\n'));
+    } catch (error) {
+      console.error(`❌ Error processing attachment ${attachment.filename || attachment.path}:`, error.message);
+      // Continue with other attachments
+    }
+  }
+
+  // Close root boundary
+  emailLines.push(`--${rootBoundary}--`);
+
+  const email = emailLines.join('\r\n');
+  return Buffer.from(email).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
  * Send an email using Gmail API
  * @param {string} to - Recipient email address
  * @param {string} subject - Email subject
@@ -125,11 +235,12 @@ function createHtmlEmailMessage(to, subject, html, from, fromName) {
  * @param {boolean} options.isHtml - Whether the text is HTML
  * @param {string} options.fromName - Sender display name (default: account's display name)
  * @param {string} options.accountKey - Which account to use: 'primary' or 'secondary' (default: 'primary')
+ * @param {Array} options.attachments - Array of attachment objects with {path, filename} or {buffer, filename, contentType}
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
 async function sendEmail(to, subject, text, options = {}) {
   const emailId = Math.random().toString(36).substring(2, 8);
-  const { isHtml = false, accountKey = 'primary', fromName } = options;
+  const { isHtml = false, accountKey = 'primary', fromName, attachments = [] } = options;
 
   // Get account configuration
   const account = ACCOUNTS[accountKey];
@@ -143,6 +254,13 @@ async function sendEmail(to, subject, text, options = {}) {
   console.log(`📧 [${emailId}] Sending email via Gmail API (${accountKey}): ${subject} → ${to}`);
   console.log(`📧 [${emailId}] From: ${senderName} <${senderEmail}>`);
 
+  if (attachments && attachments.length > 0) {
+    console.log(`📎 [${emailId}] Attachments: ${attachments.length} file(s)`);
+    attachments.forEach((att, idx) => {
+      console.log(`📎 [${emailId}]   ${idx + 1}. ${att.filename || att.path || 'Unknown'} (${att.path ? 'file path' : 'buffer'})`);
+    });
+  }
+
   if (!to || !subject || !text) {
     const errorMsg = `📧 [${emailId}] Missing required fields: ${!to ? 'to, ' : ''}${!subject ? 'subject, ' : ''}${!text ? 'body' : ''}`.replace(/, $/, '');
     console.error(errorMsg);
@@ -153,9 +271,17 @@ async function sendEmail(to, subject, text, options = {}) {
     const gmail = await getGmailClient(accountKey);
 
     // Create the email message
-    const encodedMessage = isHtml
-      ? createHtmlEmailMessage(to, subject, text, senderEmail, senderName)
-      : createEmailMessage(to, subject, text, senderEmail, senderName);
+    let encodedMessage;
+    if (attachments && attachments.length > 0) {
+      // Use multipart/mixed for emails with attachments
+      encodedMessage = await createEmailMessageWithAttachments(to, subject, text, senderEmail, senderName, attachments, isHtml);
+      console.log(`📧 [${emailId}] Created multipart/mixed message with ${attachments.length} attachment(s)`);
+    } else {
+      // Use simple message format for emails without attachments
+      encodedMessage = isHtml
+        ? createHtmlEmailMessage(to, subject, text, senderEmail, senderName)
+        : createEmailMessage(to, subject, text, senderEmail, senderName);
+    }
 
     console.log(`📧 [${emailId}] Sending email via Gmail API (${accountKey})...`);
 
@@ -168,6 +294,9 @@ async function sendEmail(to, subject, text, options = {}) {
     });
 
     console.log(`✅ [${emailId}] Email sent successfully via Gmail API (${accountKey}) - ID: ${response.data.id}`);
+    if (attachments && attachments.length > 0) {
+      console.log(`📎 [${emailId}] ✅ ${attachments.length} attachment(s) included`);
+    }
 
     return {
       success: true,
@@ -180,6 +309,9 @@ async function sendEmail(to, subject, text, options = {}) {
 
   } catch (error) {
     console.error(`❌ [${emailId}] Gmail API send failed (${accountKey}):`, error.message);
+    if (error.errors) {
+      console.error(`❌ [${emailId}] Error details:`, JSON.stringify(error.errors, null, 2));
+    }
 
     return {
       success: false,

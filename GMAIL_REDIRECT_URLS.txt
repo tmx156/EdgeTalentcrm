@@ -10,8 +10,8 @@ Copy these redirect URLs and add them to your OAuth2 credentials in Google Cloud
 1. LOCAL DEVELOPMENT (for testing):
    http://localhost:5000/api/gmail/oauth2callback
 
-2. PRODUCTION (Railway - update with your actual domain):
-   https://your-railway-app.up.railway.app/api/gmail/oauth2callback
+2. PRODUCTION (Railway - Edge Talent CRM):
+   https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback
 
 ================================================================================
 

@@ -33,10 +33,9 @@ async function sendEmail(to, subject, text, attachments = [], accountKey = 'prim
   console.log(`📧 [${emailId}] Sending email via Gmail API (${accountKey}): ${subject} → ${to}`);
   console.log(`📧 [${emailId}] Email Account: ${accountKey} (${accountEmail})`);
 
-  // Note about attachments
+  // Log attachments if present
   if (attachments && attachments.length > 0) {
-    console.warn(`⚠️ [${emailId}] Attachments not yet supported in Gmail API - ${attachments.length} attachments will be ignored`);
-    console.warn(`⚠️ [${emailId}] TODO: Implement attachment support in gmailService.js`);
+    console.log(`📎 [${emailId}] Attachments: ${attachments.length} file(s) will be included`);
   }
 
   if (!to || !subject || !text) {
@@ -58,7 +57,8 @@ async function sendEmail(to, subject, text, attachments = [], accountKey = 'prim
     const emailResult = await gmailService.sendEmail(to, subject, text, {
       isHtml,
       accountKey: accountKey, // Pass through the account key
-      fromName: 'Edge Talent' // Always use "Edge Talent" as sender name
+      fromName: 'Edge Talent', // Always use "Edge Talent" as sender name
+      attachments: attachments || [] // Pass attachments to Gmail API
     });
 
     const timeTaken = Date.now() - startTime;

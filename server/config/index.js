@@ -45,7 +45,25 @@ const config = {
     clientId: process.env.GMAIL_CLIENT_ID || null,
     clientSecret: process.env.GMAIL_CLIENT_SECRET || null,
     refreshToken: process.env.GMAIL_REFRESH_TOKEN || null,
-    redirectUri: process.env.GMAIL_REDIRECT_URI || 'http://localhost:5000/api/gmail/oauth2callback',
+    // Automatically detect redirect URI based on environment
+    // Priority: 1. Explicit GMAIL_REDIRECT_URI, 2. Railway domain, 3. Localhost
+    redirectUri: (() => {
+      if (process.env.GMAIL_REDIRECT_URI) {
+        return process.env.GMAIL_REDIRECT_URI;
+      }
+      // Check if we're on Railway (production)
+      const railwayDomain = process.env.RAILWAY_PUBLIC_DOMAIN || 
+                           process.env.RAILWAY_STATIC_URL ||
+                           (process.env.NODE_ENV === 'production' && process.env.RAILWAY_ENVIRONMENT ? 
+                            `https://${process.env.RAILWAY_ENVIRONMENT}.up.railway.app` : null);
+      if (railwayDomain) {
+        // Remove protocol if present and add https
+        const domain = railwayDomain.replace(/^https?:\/\//, '');
+        return `https://${domain}/api/gmail/oauth2callback`;
+      }
+      // Fallback to localhost for development
+      return 'http://localhost:5000/api/gmail/oauth2callback';
+    })(),
     pollInterval: parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 600000 // 10 minutes - increased to prevent DB overload
   },
 

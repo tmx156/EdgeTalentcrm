@@ -99,6 +99,36 @@ GMAIL_PASS=your-gmail-app-password
 
 ---
 
+## 🔐 Gmail OAuth2 Configuration (For Gmail API)
+
+**Required for Gmail API integration (hello@edgetalent.co.uk):**
+
+```
+GMAIL_CLIENT_ID=your-google-oauth-client-id
+```
+
+```
+GMAIL_CLIENT_SECRET=your-google-oauth-client-secret
+```
+
+```
+GMAIL_REFRESH_TOKEN=your-refresh-token-from-oauth-flow
+```
+
+```
+GMAIL_EMAIL=hello@edgetalent.co.uk
+```
+
+```
+GMAIL_REDIRECT_URI=https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback
+```
+
+**⚠️ Important:** 
+- The `GMAIL_REDIRECT_URI` must match exactly what's configured in Google Cloud Console
+- See `GOOGLE-OAUTH-RAILWAY-SETUP.md` for complete setup instructions
+
+---
+
 ## ✅ Quick Setup Checklist
 
 1. [ ] Set `SUPABASE_URL`
