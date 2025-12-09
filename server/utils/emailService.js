@@ -82,18 +82,75 @@ async function sendEmail(to, subject, text, attachments = [], accountKey = 'prim
         fromEmail: emailResult.fromEmail
       };
     } else {
+      // Check if it's an invalid_grant error and we're using secondary account
+      // Automatically fallback to primary account
+      if (accountKey === 'secondary' && emailResult.isInvalidGrant) {
+        console.log(`⚠️ [${emailId}] Secondary account token expired, falling back to primary account...`);
+        
+        try {
+          const fallbackResult = await gmailService.sendEmail(to, subject, text, {
+            isHtml,
+            accountKey: 'primary',
+            fromName: 'Edge Talent',
+            attachments: attachments || []
+          });
+
+          if (fallbackResult.success) {
+            console.log('\n' + '✅'.repeat(40));
+            console.log(`✅ EMAIL SENT SUCCESSFULLY via Gmail API (primary - fallback)`);
+            console.log('✅'.repeat(40));
+            console.log(`✅ Message ID: ${fallbackResult.messageId || 'N/A'}`);
+            console.log(`✅ Account:    primary (${fallbackResult.fromEmail})`);
+            console.log(`✅ Provider:   Gmail API`);
+            console.log(`⚠️  Note: Secondary account token expired, used primary account as fallback`);
+            console.log('='.repeat(80) + '\n');
+
+            return {
+              success: true,
+              messageId: fallbackResult.messageId,
+              response: `Email sent via Gmail API (primary - fallback from secondary)`,
+              provider: 'gmail-api',
+              accountKey: 'primary',
+              fromEmail: fallbackResult.fromEmail,
+              fallbackUsed: true,
+              originalError: emailResult.error
+            };
+          }
+        } catch (fallbackError) {
+          console.error(`❌ [${emailId}] Fallback to primary account also failed:`, fallbackError.message);
+        }
+      }
+
       console.log('\n' + '❌'.repeat(40));
       console.log(`❌ EMAIL SEND FAILED via Gmail API (${accountKey})`);
       console.log('❌'.repeat(40));
       console.log(`❌ Error: ${emailResult.error || 'Unknown error'}`);
       console.log(`❌ Code:  ${emailResult.code || 'N/A'}`);
+      
+      if (emailResult.isInvalidGrant) {
+        const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN 
+          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, '')}`
+          : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
+            'https://edgetalentcrm-production.up.railway.app';
+        
+        const authEndpoint = accountKey === 'secondary' 
+          ? `${railwayUrl}/api/gmail/auth2`
+          : `${railwayUrl}/api/gmail/auth`;
+        
+        const tokenVar = accountKey === 'secondary' ? 'GMAIL_REFRESH_TOKEN_2' : 'GMAIL_REFRESH_TOKEN';
+        
+        console.log(`❌ ACTION REQUIRED: Re-authenticate at ${authEndpoint}`);
+        console.log(`❌ Then update ${tokenVar} in Railway environment variables`);
+      }
+      
       console.log('='.repeat(80) + '\n');
 
       return {
         success: false,
         error: emailResult.error || 'Unknown Gmail API error',
         code: emailResult.code,
-        accountKey: accountKey
+        accountKey: accountKey,
+        isInvalidGrant: emailResult.isInvalidGrant || false
       };
     }
 

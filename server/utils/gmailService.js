@@ -43,6 +43,8 @@ Object.keys(ACCOUNTS).forEach(key => {
 /**
  * Get authenticated Gmail client for a specific account
  * @param {string} accountKey - 'primary' or 'secondary'
+ * @returns {Promise<Object>} Gmail API client
+ * @throws {Error} If authentication fails with invalid_grant, includes re-auth instructions
  */
 async function getGmailClient(accountKey = 'primary') {
   try {
@@ -61,9 +63,46 @@ async function getGmailClient(accountKey = 'primary') {
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
     oauth2Client.setCredentials({ refresh_token: refreshToken });
 
-    return google.gmail({ version: 'v1', auth: oauth2Client });
+    // Test the token by making a simple API call to verify it's valid
+    const testGmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    
+    try {
+      await testGmail.users.getProfile({ userId: 'me' });
+      return testGmail;
+    } catch (testError) {
+      // Check if it's an invalid_grant error (token expired/revoked)
+      if (testError.code === 400 && (
+        testError.message?.includes('invalid_grant') || 
+        testError.response?.data?.error === 'invalid_grant' ||
+        testError.message?.includes('Token has been expired or revoked')
+      )) {
+        const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN 
+          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, '')}`
+          : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
+            'https://edgetalentcrm-production.up.railway.app';
+        
+        const authEndpoint = accountKey === 'secondary' 
+          ? `${railwayUrl}/api/gmail/auth2`
+          : `${railwayUrl}/api/gmail/auth`;
+        
+        const tokenVar = accountKey === 'secondary' ? 'GMAIL_REFRESH_TOKEN_2' : 'GMAIL_REFRESH_TOKEN';
+        
+        const errorMsg = `OAuth token expired or revoked for ${account.email}. ` +
+          `Please re-authenticate: ${authEndpoint}. ` +
+          `Then update ${tokenVar} in Railway environment variables.`;
+        
+        console.error(`❌ [${account.displayName}] ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+      // Re-throw other errors
+      throw testError;
+    }
 
   } catch (error) {
+    // If it's already our formatted error, re-throw it
+    if (error.message?.includes('OAuth token expired or revoked')) {
+      throw error;
+    }
     throw new Error(`Failed to authenticate Gmail API (${accountKey}): ${error.message}`);
   }
 }
@@ -309,6 +348,38 @@ async function sendEmail(to, subject, text, options = {}) {
 
   } catch (error) {
     console.error(`❌ [${emailId}] Gmail API send failed (${accountKey}):`, error.message);
+    
+    // Check if it's an invalid_grant error
+    const isInvalidGrant = error.code === 400 && (
+      error.message?.includes('invalid_grant') || 
+      error.response?.data?.error === 'invalid_grant' ||
+      error.message?.includes('Token has been expired or revoked')
+    );
+
+    if (isInvalidGrant) {
+      const account = ACCOUNTS[accountKey];
+      const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN 
+        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, '')}`
+        : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
+          'https://edgetalentcrm-production.up.railway.app';
+      
+      const authEndpoint = accountKey === 'secondary' 
+        ? `${railwayUrl}/api/gmail/auth2`
+        : `${railwayUrl}/api/gmail/auth`;
+      
+      const tokenVar = accountKey === 'secondary' ? 'GMAIL_REFRESH_TOKEN_2' : 'GMAIL_REFRESH_TOKEN';
+      
+      console.error(`❌ [${emailId}] OAuth token expired for ${account.email}`);
+      console.error(`❌ [${emailId}] ACTION REQUIRED: Re-authenticate at ${authEndpoint}`);
+      console.error(`❌ [${emailId}] Then update ${tokenVar} in Railway environment variables`);
+      
+      // Note: Automatic fallback to primary account is handled in emailService.js
+      // to avoid recursive calls and maintain proper error handling
+      if (accountKey === 'secondary') {
+        console.log(`💡 [${emailId}] Fallback to primary account will be attempted by emailService`);
+      }
+    }
+
     if (error.errors) {
       console.error(`❌ [${emailId}] Error details:`, JSON.stringify(error.errors, null, 2));
     }
@@ -318,7 +389,8 @@ async function sendEmail(to, subject, text, options = {}) {
       error: error.message,
       code: error.code,
       details: error.errors,
-      accountKey: accountKey
+      accountKey: accountKey,
+      isInvalidGrant: isInvalidGrant || false
     };
   }
 }

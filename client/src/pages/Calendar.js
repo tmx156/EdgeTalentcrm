@@ -3,7 +3,7 @@ import {
   FiCalendar, FiClock, FiMapPin, FiUser, FiX, FiPhone, FiMail,
   FiFileText, FiActivity, FiCheckCircle,
   FiExternalLink, FiCheck, FiSettings, FiEdit, FiMessageSquare,
-  FiChevronDown, FiChevronUp, FiChevronLeft, FiChevronRight, FiSearch, FiDownload
+  FiChevronDown, FiChevronUp, FiChevronLeft, FiChevronRight, FiSearch, FiDownload, FiSend
 } from 'react-icons/fi';
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
@@ -1332,6 +1332,50 @@ const Calendar = () => {
       minute: '2-digit',
       hour12: true 
     })}`;
+  };
+
+  const handleResendWelcomePack = async () => {
+    if (!selectedEvent || !selectedEvent.extendedProps?.lead) {
+      alert('No lead data available for this event.');
+      return;
+    }
+
+    const leadId = selectedEvent.extendedProps.lead.id || selectedEvent.id;
+    const leadName = selectedEvent.extendedProps.lead.name || selectedEvent.title.split(' - ')[0];
+
+    if (!leadId) {
+      alert('Unable to identify lead ID.');
+      return;
+    }
+
+    // Confirm action
+    if (!window.confirm(`Resend welcome pack to ${leadName}?\n\nThis will send the booking confirmation email and SMS using the selected template.`)) {
+      return;
+    }
+
+    try {
+      const response = await axios.post(`/api/leads/${leadId}/resend-welcome-pack`, {
+        templateId: selectedTemplateId || (bookingTemplates.length > 0 ? bookingTemplates[0]._id : null)
+      });
+
+      if (response.data.success) {
+        const channels = [];
+        if (response.data.emailSent) channels.push('Email');
+        if (response.data.smsSent) channels.push('SMS');
+        
+        alert(`✅ Welcome pack resent successfully via ${channels.join(' and ')}!`);
+        
+        // Refresh events to update booking history
+        setTimeout(() => {
+          fetchEvents();
+        }, 1000);
+      } else {
+        alert(`❌ Failed to resend welcome pack: ${response.data.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error resending welcome pack:', error);
+      alert(`❌ Error resending welcome pack: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+    }
   };
 
   const handleEventStatusChange = async (newStatus) => {
@@ -3049,6 +3093,23 @@ const Calendar = () => {
                               ⚠️ No active booking templates found
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* Resend Welcome Pack Button */}
+                      {selectedEvent.extendedProps?.lead?.date_booked && (
+                        <div className="mt-3 pt-3 border-t border-gray-200">
+                          <button
+                            onClick={handleResendWelcomePack}
+                            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg"
+                            title="Resend welcome pack (booking confirmation email and SMS)"
+                          >
+                            <FiSend className="h-4 w-4" />
+                            <span className="text-sm font-medium">Resend Welcome Pack</span>
+                          </button>
+                          <p className="text-xs text-gray-500 mt-1 text-center">
+                            Sends booking confirmation via email and SMS
+                          </p>
                         </div>
                       )}
                     </div>

@@ -41,7 +41,8 @@
       "Bash(npx react-scripts build)",
       "Bash(powershell:*)",
       "Bash(cmd /c \"set CI=false && set GENERATE_SOURCEMAP=false && npm run build\")",
-      "Bash(railway up:*)"
+      "Bash(railway up:*)",
+      "Bash(del \"c:\\Users\\Tin\\CRM -Alan\\server\\verify_blocks.js\")"
     ],
     "deny": [],
     "ask": []

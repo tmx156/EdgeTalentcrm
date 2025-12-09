@@ -4950,6 +4950,108 @@ router.post('/:id/send-booking-confirmation', auth, async (req, res) => {
   }
 });
 
+// @route   POST /api/leads/:id/resend-welcome-pack
+// @desc    Resend welcome pack (booking confirmation with email and SMS)
+// @access  Private (All authenticated users)
+router.post('/:id/resend-welcome-pack', auth, async (req, res) => {
+  try {
+    const { templateId } = req.body;
+    
+    if (!req.params.id) {
+      return res.status(400).json({ message: 'Invalid lead ID' });
+    }
+
+    // Get lead
+    const { data: lead, error: leadError } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (leadError || !lead) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+
+    // Check if lead has a booking date
+    if (!lead.date_booked) {
+      return res.status(400).json({ message: 'Lead does not have a booking date' });
+    }
+
+    // Get template if provided, otherwise use first active booking confirmation template
+    let template = null;
+    if (templateId) {
+      const { data: templateData, error: templateError } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('id', templateId)
+        .eq('type', 'booking_confirmation')
+        .eq('is_active', true)
+        .single();
+      
+      if (!templateError && templateData) {
+        template = templateData;
+      }
+    }
+
+    // If no template provided or found, get first active booking confirmation template
+    if (!template) {
+      const { data: templates, error: templatesError } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('type', 'booking_confirmation')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      if (!templatesError && templates && templates.length > 0) {
+        template = templates[0];
+      }
+    }
+
+    if (!template) {
+      return res.status(404).json({ message: 'No active booking confirmation template found' });
+    }
+
+    // Send booking confirmation (welcome pack) with both email and SMS
+    const bookingDate = lead.date_booked ? new Date(lead.date_booked) : new Date();
+    
+    const result = await MessagingService.sendBookingConfirmation(
+      lead.id,
+      req.user.id,
+      bookingDate,
+      {
+        templateId: template.id,
+        sendEmail: true,
+        sendSms: true,
+        emailAccount: template.email_account || 'primary'
+      }
+    );
+
+    if (result && (result.emailSent || result.smsSent)) {
+      res.json({
+        success: true,
+        message: `Welcome pack resent successfully via ${result.emailSent ? 'Email' : ''}${result.emailSent && result.smsSent ? ' and ' : ''}${result.smsSent ? 'SMS' : ''}`,
+        emailSent: result.emailSent || false,
+        smsSent: result.smsSent || false
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to resend welcome pack',
+        error: result?.error || 'Unknown error'
+      });
+    }
+
+  } catch (error) {
+    console.error('Resend welcome pack error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error',
+      error: error.message 
+    });
+  }
+});
+
 // @route   POST /api/leads/:id/send-email
 // @desc    Send an email to a lead
 // @access  Private

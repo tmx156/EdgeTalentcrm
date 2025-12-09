@@ -701,13 +701,36 @@ class MessagingService {
       
       // Actually send the email using the email service
       const startTime = Date.now();
-      const emailResult = await sendActualEmail(
+      let emailResult = await sendActualEmail(
         message.recipient_email,
         message.subject,
         message.email_body,
         message.attachments || [],
         emailAccount // Pass the email account key
       );
+      
+      // If secondary account fails with invalid_grant, try primary account as fallback
+      if (!emailResult.success && emailAccount === 'secondary' && emailResult.isInvalidGrant) {
+        console.log(`⚠️ [MSG-${messageId}] Secondary account token expired, attempting fallback to primary account...`);
+        
+        try {
+          emailResult = await sendActualEmail(
+            message.recipient_email,
+            message.subject,
+            message.email_body,
+            message.attachments || [],
+            'primary' // Fallback to primary account
+          );
+          
+          if (emailResult.success) {
+            console.log(`✅ [MSG-${messageId}] Successfully sent via primary account (fallback)`);
+            // Update emailAccount to reflect the account actually used
+            emailAccount = 'primary';
+          }
+        } catch (fallbackError) {
+          console.error(`❌ [MSG-${messageId}] Fallback to primary account also failed:`, fallbackError.message);
+        }
+      }
       
       const timeTaken = Date.now() - startTime;
       
@@ -717,13 +740,33 @@ class MessagingService {
         console.log('✅'.repeat(40));
         console.log(`✅ Message ID: ${emailResult.messageId || 'N/A'}`);
         console.log(`✅ Response:   ${emailResult.response || 'No response'}`);
+        console.log(`✅ Account:    ${emailResult.fallbackUsed ? 'primary (fallback)' : emailAccount}`);
         console.log(`✅ Time Taken: ${timeTaken}ms`);
+        if (emailResult.fallbackUsed) {
+          console.log(`⚠️  Note: Secondary account token expired, used primary account`);
+        }
       } else {
         console.log('\n' + '❌'.repeat(40));
         console.log('❌ EMAIL SEND FAILED');
         console.log('❌'.repeat(40));
         console.log(`❌ Error: ${emailResult.error || 'Unknown error'}`);
         console.log(`❌ Code:  ${emailResult.code || 'N/A'}`);
+        
+        if (emailResult.isInvalidGrant) {
+          const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN 
+            ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, '')}`
+            : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
+              'https://edgetalentcrm-production.up.railway.app';
+          
+          const authEndpoint = emailAccount === 'secondary' 
+            ? `${railwayUrl}/api/gmail/auth2`
+            : `${railwayUrl}/api/gmail/auth`;
+          
+          const tokenVar = emailAccount === 'secondary' ? 'GMAIL_REFRESH_TOKEN_2' : 'GMAIL_REFRESH_TOKEN';
+          
+          console.log(`❌ ACTION REQUIRED: Re-authenticate ${emailAccount} account at ${authEndpoint}`);
+          console.log(`❌ Then update ${tokenVar} in Railway environment variables`);
+        }
       }
       
       // Update message status based on actual email result using Supabase
