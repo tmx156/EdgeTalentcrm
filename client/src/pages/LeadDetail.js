@@ -1643,7 +1643,14 @@ const LeadDetail = () => {
                   <h3 className="text-lg font-medium text-gray-900">Notes</h3>
                   {!editing && (
                     <button
-                      onClick={() => setEditing(true)}
+                      onClick={() => {
+                        // Ensure formData.notes is initialized with current lead notes when entering edit mode
+                        setFormData(prev => ({
+                          ...prev,
+                          notes: lead?.notes || ''
+                        }));
+                        setEditing(true);
+                      }}
                       className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
                     >
                       <FiEdit className="h-3 w-3" />
@@ -1681,7 +1688,14 @@ const LeadDetail = () => {
                           <span>Save Notes</span>
                         </button>
                         <button
-                          onClick={() => setEditing(false)}
+                          onClick={() => {
+                            // Reset formData.notes to original lead notes when canceling
+                            setFormData(prev => ({
+                              ...prev,
+                              notes: lead?.notes || ''
+                            }));
+                            setEditing(false);
+                          }}
                           className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 text-sm font-medium"
                         >
                           Cancel
