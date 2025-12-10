@@ -491,6 +491,37 @@ const LeadDetail = () => {
     }
   };
 
+  // Separate handler for saving notes - uses dedicated PATCH route that allows ALL users to edit notes
+  const handleSaveNotes = async () => {
+    try {
+      const oldNotes = lead.notes || '';
+      const newNotes = formData.notes || '';
+
+      // Use the dedicated notes endpoint that allows all authenticated users to edit notes
+      const response = await axios.patch(`/api/leads/${id}/notes`, {
+        notes: newNotes,
+        oldNotes: oldNotes
+      });
+      
+      // Use the server response data
+      const updatedLead = response.data.lead || response.data;
+      setLead(updatedLead);
+      setFormData(prev => ({
+        ...prev,
+        notes: updatedLead.notes || ''
+      }));
+      setEditing(false);
+
+      // Booking history is already added by the backend endpoint
+      // Set refresh trigger for Calendar
+      localStorage.setItem('calendarRefreshTrigger', 'true');
+    } catch (error) {
+      console.error('Error updating notes:', error);
+      const errorMessage = error.response?.data?.message || 'Failed to save notes. Please try again.';
+      alert(errorMessage);
+    }
+  };
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -1681,7 +1712,7 @@ const LeadDetail = () => {
                       </div>
                       <div className="flex space-x-2">
                         <button
-                          onClick={handleSave}
+                          onClick={handleSaveNotes}
                           className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium flex items-center space-x-1"
                         >
                           <FiCheck className="h-3 w-3" />
