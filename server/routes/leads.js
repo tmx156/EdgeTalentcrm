@@ -2012,27 +2012,9 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
     }
 
     const lead = leads[0];
-    // ROLE-BASED ACCESS CONTROL for lead updates
-    // Admin can update any lead
-    // Viewer can update any lead (admin-level access for status changes)
-    // Booker can update Confirmed/Unconfirmed status AND send booking confirmations on any booking
-    if (req.user.role !== 'admin' && req.user.role !== 'viewer') {
-      // For bookers, check permissions based on status change type
-      if (req.user.role === 'booker') {
-        const isConfirmationChange = (req.body.is_confirmed !== undefined) ||
-                                   (req.body.status === 'Booked' && (req.body.is_confirmed === true || req.body.is_confirmed === false));
-        const isAssignedLead = lead.booker_id && lead.booker_id.toString() === req.user.id.toString();
-        const isBookingConfirmationOnly = req.body.sendEmail || req.body.sendSms; // Allow sending confirmations
-
-        // Allow if: confirmation change, assigned lead, or just sending booking confirmation
-        if (!isConfirmationChange && !isAssignedLead && !isBookingConfirmationOnly) {
-          return res.status(403).json({ message: 'Access denied. You can only change Confirmed/Unconfirmed status on any booking, send booking confirmations, or update leads assigned to you.' });
-        }
-      } else {
-        // Any other role is denied
-        return res.status(403).json({ message: 'Access denied. Insufficient permissions.' });
-      }
-    }
+    // ALL AUTHENTICATED USERS CAN UPDATE LEAD DETAILS
+    // Removed role-based restrictions to allow all users (admin, viewer, booker) to update any lead
+    console.log(`✅ Access granted: ${req.user.name} (${req.user.role}) can update lead ${lead.name}`);
     // Capture original values for history tracking
     const oldStatus = lead.status;
     const oldDateBooked = lead.date_booked;
