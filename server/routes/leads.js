@@ -2030,13 +2030,17 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       isReschedule: oldStatus === 'Booked' && req.body.status === 'Booked' && oldDateBooked && req.body.date_booked && new Date(oldDateBooked).getTime() !== new Date(req.body.date_booked).getTime(),
       hasDateChange: oldDateBooked && req.body.date_booked && new Date(oldDateBooked).getTime() !== new Date(req.body.date_booked).getTime()
     });
-    // Track changes for booking history
+    // Track changes for booking history - only for significant changes
     const isStatusChange = oldStatus !== req.body.status && req.body.status;
     const isDateChange = oldDateBooked && req.body.date_booked && new Date(oldDateBooked).getTime() !== new Date(req.body.date_booked).getTime();
     const isReschedule = oldStatus === 'Booked' && req.body.status === 'Booked' && oldDateBooked && req.body.date_booked && new Date(oldDateBooked).getTime() !== new Date(req.body.date_booked).getTime();
     const isNewBooking = (oldStatus === 'New' || !oldDateBooked) && req.body.date_booked && req.body.status === 'Booked';
     // Handle cancellation - set to Cancelled and clear booking date
     const isCancellation = req.body.status === 'Cancelled' || (req.body.status === 'New' && oldStatus === 'Booked' && !req.body.date_booked);
+    
+    // Check if this is just a simple field update (name, phone, email, etc.) - skip history and performance updates
+    const isSimpleFieldUpdate = !isStatusChange && !isDateChange && !isNewBooking && !isReschedule && !isCancellation && 
+                                 !req.body.date_booked && !req.body.time_booked && !req.body.booking_slot;
 
     // ✅ BLOCKED SLOTS CHECK: Prevent booking on blocked days/times
     if (req.body.date_booked) {
@@ -2288,8 +2292,9 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
 
     const updatedLead = updatedLeadResult[0];
 
-    // ✅ SCOREBOARD FIX: Update daily performance metrics after lead update
-    if (updatedLead.booker_id) {
+    // ✅ SCOREBOARD FIX: Update daily performance metrics only for significant changes (status, booking dates)
+    // Skip for simple field updates (name, phone, email, etc.) to improve performance
+    if (updatedLead.booker_id && !isSimpleFieldUpdate) {
       try {
         const bookerAnalytics = require('./booker-analytics');
         await bookerAnalytics.updateDailyPerformance(updatedLead.booker_id);

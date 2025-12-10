@@ -517,7 +517,7 @@ async function updateDailyPerformance(userId, date = new Date().toISOString().sp
 
     // Get leads for this user and date
     const leads = await dbManager.query('leads', {
-      select: 'id, status, assigned_at, booked_at, last_contacted_at, has_sale, sales',
+      select: 'id, status, assigned_at, booked_at, has_sale, sales',
       eq: { booker_id: userId }
     });
 
@@ -526,9 +526,8 @@ async function updateDailyPerformance(userId, date = new Date().toISOString().sp
       l.assigned_at && new Date(l.assigned_at) >= startOfDay && new Date(l.assigned_at) <= endOfDay
     ).length;
 
-    const leadsContactedToday = leads.filter(l =>
-      l.last_contacted_at && new Date(l.last_contacted_at) >= startOfDay && new Date(l.last_contacted_at) <= endOfDay
-    ).length;
+    // Removed last_contacted_at - column doesn't exist in database
+    const leadsContactedToday = 0; // Not tracking contacted leads currently
 
     const leadsBookedToday = leads.filter(l =>
       l.status === 'Booked' && l.booked_at && new Date(l.booked_at) >= startOfDay && new Date(l.booked_at) <= endOfDay
