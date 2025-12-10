@@ -1982,6 +1982,7 @@ router.post('/', auth, async (req, res) => {
 // @desc    Update lead
 // @access  Private
 router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
+  let lead = null; // Declare lead outside try block for error handling
   try {
     console.log('🔄 Lead status update request:', {
       leadId: req.params.id,
@@ -2011,7 +2012,7 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       return res.status(404).json({ message: 'Lead not found' });
     }
 
-    const lead = leads[0];
+    lead = leads[0];
     // ALL AUTHENTICATED USERS CAN UPDATE LEAD DETAILS
     // Removed role-based restrictions to allow all users (admin, viewer, booker) to update any lead
     console.log(`✅ Access granted: ${req.user.name} (${req.user.role}) can update lead ${lead.name}`);
@@ -2127,6 +2128,7 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
                     key === 'bookingStatus' ? 'booking_status' :
                     key === 'everBooked' ? 'ever_booked' :
                     key === 'bookedAt' ? 'booked_at' :
+                    key === 'booker' ? 'booker_id' : // Map 'booker' to 'booker_id'
                     key;
 
       // Convert Date objects to ISO strings
@@ -2527,8 +2529,8 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       });
     }
     // Update user statistics if status changed (non-blocking)
-    if (oldStatus !== req.body.status && req.body.status && lead.booker) {
-      updateUserStatistics(lead.booker, {
+    if (oldStatus !== req.body.status && req.body.status && lead.booker_id) {
+      updateUserStatistics(lead.booker_id, {
         from: oldStatus,
         to: req.body.status
       }).catch(err => {
