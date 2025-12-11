@@ -24,6 +24,7 @@ import Sales from './pages/Sales';
 import Messages from './pages/MessagesNew'; // Updated to use premium Gmail-style design
 import SalesApe from './pages/SalesApe';
 import BlockedSlots from './pages/BlockedSlots';
+import PublicBooking from './pages/PublicBooking';
 
 // Create browser history
 const history = createBrowserHistory();
@@ -68,6 +69,11 @@ function App() {
                     <Login />
                   </PublicRoute>
                 } 
+              />
+              {/* Public booking page - no authentication required */}
+              <Route 
+                path="/book/:leadId" 
+                element={<PublicBooking />} 
               />
               <Route
                 path="/*"

@@ -71,6 +71,18 @@ async function sendLeadToSalesApe(lead) {
       throw error;
     }
 
+    // Generate the public booking link for this lead
+    // Use CLIENT_URL from config, or Railway domain, or fallback
+    const config = require('../config');
+    let baseUrl = config.CLIENT_URL || 'http://localhost:3000';
+    
+    // If on Railway, use the public domain
+    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+      baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, '')}`;
+    }
+    
+    const bookingLink = `${baseUrl}/book/${lead.id}`;
+
     // Format lead data for SalesApe's requirements
     const payload = {
       fields: {
@@ -80,9 +92,12 @@ async function sendLeadToSalesApe(lead) {
         "Phone Number": lead.phone || '',
         "CRM ID": String(lead.id), // Must be a string
         "Context": lead.notes || `Lead from ${lead.source || 'CRM'}`,
-        "Base Details": [SALESAPE_CONFIG.BASE_DETAILS_ID]
+        "Base Details": [SALESAPE_CONFIG.BASE_DETAILS_ID],
+        "Calendar_Link": bookingLink // CRM booking page link for the AI to share
       }
     };
+
+    console.log('📅 Including booking link for SalesApe:', bookingLink);
 
     console.log('📤 Sending lead to SalesApe:', {
       name: lead.name,

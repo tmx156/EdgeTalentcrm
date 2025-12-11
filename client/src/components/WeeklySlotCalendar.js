@@ -1,22 +1,23 @@
 import React, { useMemo } from 'react';
 import { FiCheckCircle, FiClock } from 'react-icons/fi';
 
-// Time slots configuration (same as SlotCalendar)
+// Time slots configuration matching updated schedule
+// 🔵 = Male, 🩷 = Female, 💛🔵 = Child/Male (striped), ⚫ = Blank/Unavailable
 const TIME_SLOTS = [
-  { time: '10:00', type: 'male', emoji: '🔵' },
-  { time: '10:30', type: 'male', emoji: '🔵' },
-  { time: '11:00', type: 'female', emoji: '🩷' },
-  { time: '11:30', type: 'female', emoji: '🩷' },
-  { time: '12:00', type: 'family', emoji: '💛' },
-  { time: '12:30', type: 'family', emoji: '💛' },
-  { time: '13:00', type: 'family', emoji: '💛' },
-  { time: '13:30', type: 'family', emoji: '💛' },
-  { time: '14:00', type: 'family', emoji: '💛' },
-  { time: '14:30', type: 'family', emoji: '💛' },
-  { time: '15:00', type: 'available', emoji: '' },
-  { time: '15:30', type: 'available', emoji: '' },
-  { time: '16:00', type: 'available', emoji: '' },
-  { time: '16:30', type: 'available', emoji: '' }
+  { time: '10:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'female', slot2Emoji: '🩷' },
+  { time: '10:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
+  { time: '11:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
+  { time: '11:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷' },
+  { time: '12:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'male', slot2Emoji: '🔵' },
+  { time: '12:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷' },
+  { time: '13:00', slot1Type: 'blank', slot1Emoji: '⚫', slot2Type: 'blank', slot2Emoji: '⚫' },
+  { time: '13:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
+  { time: '14:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
+  { time: '14:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
+  { time: '15:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷' },
+  { time: '15:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
+  { time: '16:00', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵' },
+  { time: '16:30', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵' }
 ];
 
 const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, onEventClick }) => {
@@ -230,40 +231,40 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                       <div className="grid grid-cols-2 gap-1 h-full">
                         {/* Slot 1 */}
                         <div
-                          className={`compact-cell ${getCellBackground(slot1Event, day, slotConfig.time, 1)} rounded ${isSlotBlocked(day, slotConfig.time, 1) ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200`}
+                          className={`compact-cell ${getCellBackground(slot1Event, day, slotConfig.time, 1)} rounded ${isSlotBlocked(day, slotConfig.time, 1) || slotConfig.slot1Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isSlotBlocked(day, slotConfig.time, 1)) return; // Don't allow clicks on blocked slots
+                            if (isSlotBlocked(day, slotConfig.time, 1) || slotConfig.slot1Type === 'blank') return; // Don't allow clicks on blocked/blank slots
                             if (slot1Event) {
                               onEventClick(slot1Event);
                             } else {
                               onDayClick(day, slotConfig.time, 1);
                             }
                           }}
-                          title={isSlotBlocked(day, slotConfig.time, 1) ? 'Blocked' : (slot1Event ? `${slot1Event.name} - Slot 1` : `Book ${slotConfig.time} Slot 1`)}
+                          title={isSlotBlocked(day, slotConfig.time, 1) ? 'Blocked' : slotConfig.slot1Type === 'blank' ? 'Unavailable' : (slot1Event ? `${slot1Event.name} - Slot 1` : `Book ${slotConfig.time} Slot 1 (${slotConfig.slot1Type})`)}
                         >
                           {isSlotBlocked(day, slotConfig.time, 1) ? (
                             <span className="text-xs">🔒</span>
-                          ) : slot1Event ? getCellContent(slot1Event) : slotConfig.emoji && <span className="text-xs">{slotConfig.emoji}</span>}
+                          ) : slot1Event ? getCellContent(slot1Event) : slotConfig.slot1Emoji && <span className="text-xs">{slotConfig.slot1Emoji}</span>}
                         </div>
 
                         {/* Slot 2 */}
                         <div
-                          className={`compact-cell ${getCellBackground(slot2Event, day, slotConfig.time, 2)} rounded ${isSlotBlocked(day, slotConfig.time, 2) ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200`}
+                          className={`compact-cell ${getCellBackground(slot2Event, day, slotConfig.time, 2)} rounded ${isSlotBlocked(day, slotConfig.time, 2) || slotConfig.slot2Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (isSlotBlocked(day, slotConfig.time, 2)) return; // Don't allow clicks on blocked slots
+                            if (isSlotBlocked(day, slotConfig.time, 2) || slotConfig.slot2Type === 'blank') return; // Don't allow clicks on blocked/blank slots
                             if (slot2Event) {
                               onEventClick(slot2Event);
                             } else {
                               onDayClick(day, slotConfig.time, 2);
                             }
                           }}
-                          title={isSlotBlocked(day, slotConfig.time, 2) ? 'Blocked' : (slot2Event ? `${slot2Event.name} - Slot 2` : `Book ${slotConfig.time} Slot 2`)}
+                          title={isSlotBlocked(day, slotConfig.time, 2) ? 'Blocked' : slotConfig.slot2Type === 'blank' ? 'Unavailable' : (slot2Event ? `${slot2Event.name} - Slot 2` : `Book ${slotConfig.time} Slot 2 (${slotConfig.slot2Type})`)}
                         >
                           {isSlotBlocked(day, slotConfig.time, 2) ? (
                             <span className="text-xs">🔒</span>
-                          ) : slot2Event ? getCellContent(slot2Event) : slotConfig.emoji && <span className="text-xs">{slotConfig.emoji}</span>}
+                          ) : slot2Event ? getCellContent(slot2Event) : slotConfig.slot2Emoji && <span className="text-xs">{slotConfig.slot2Emoji}</span>}
                         </div>
                       </div>
                     </div>

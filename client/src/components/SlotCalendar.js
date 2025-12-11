@@ -2,21 +2,63 @@ import React, { useMemo } from 'react';
 import { FiCheckCircle, FiClock, FiUser } from 'react-icons/fi';
 
 // Time slots configuration matching the visual design
+// Striped pattern for child/male slots: bg-gradient-to-r from-yellow-100 to-blue-100
 const TIME_SLOTS = [
-  { time: '10:00', type: 'male', color: 'bg-blue-100', borderColor: 'border-blue-200', label: 'Male Bookings' },
-  { time: '10:30', type: 'male', color: 'bg-blue-100', borderColor: 'border-blue-200', label: 'Male Bookings' },
-  { time: '11:00', type: 'female', color: 'bg-pink-100', borderColor: 'border-pink-200', label: 'Female Bookings' },
-  { time: '11:30', type: 'female', color: 'bg-pink-100', borderColor: 'border-pink-200', label: 'Female Bookings' },
-  { time: '12:00', type: 'family', color: 'bg-yellow-100', borderColor: 'border-yellow-200', label: 'Family Bookings' },
-  { time: '12:30', type: 'family', color: 'bg-yellow-100', borderColor: 'border-yellow-200', label: 'Family Bookings' },
-  { time: '13:00', type: 'family', color: 'bg-yellow-100', borderColor: 'border-yellow-200', label: 'Family Bookings' },
-  { time: '13:30', type: 'family', color: 'bg-yellow-100', borderColor: 'border-yellow-200', label: 'Family Bookings' },
-  { time: '14:00', type: 'family', color: 'bg-yellow-100', borderColor: 'border-yellow-200', label: 'Family Bookings' },
-  { time: '14:30', type: 'family', color: 'bg-yellow-100', borderColor: 'border-yellow-200', label: 'Family Bookings' },
-  { time: '15:00', type: 'available', color: 'bg-white', borderColor: 'border-gray-200', label: 'Available' },
-  { time: '15:30', type: 'available', color: 'bg-white', borderColor: 'border-gray-200', label: 'Available' },
-  { time: '16:00', type: 'available', color: 'bg-white', borderColor: 'border-gray-200', label: 'Available' },
-  { time: '16:30', type: 'available', color: 'bg-white', borderColor: 'border-gray-200', label: 'Available' }
+  // 10:00 - Slot 1: child/male (striped), Slot 2: female
+  { time: '10:00', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Child/Male',
+                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female' },
+
+  // 10:30 - Slot 1: child/male (striped), Slot 2: child/male (striped)
+  { time: '10:30', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Child/Male',
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Child/Male' },
+
+  // 11:00 - Slot 1: female, Slot 2: child/male (striped)
+  { time: '11:00', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Child/Male' },
+
+  // 11:30 - Slot 1: female, Slot 2: female
+  { time: '11:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
+                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female' },
+
+  // 12:00 - Slot 1: child/male (striped), Slot 2: male
+  { time: '12:00', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Child/Male',
+                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male' },
+
+  // 12:30 - Slot 1: female, Slot 2: female
+  { time: '12:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
+                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female' },
+
+  // 13:00 - Slot 1: blank, Slot 2: blank
+  { time: '13:00', slot1Type: 'blank', slot1Color: 'bg-gray-50', slot1BorderColor: 'border-gray-300', slot1Label: 'Unavailable',
+                    slot2Type: 'blank', slot2Color: 'bg-gray-50', slot2BorderColor: 'border-gray-300', slot2Label: 'Unavailable' },
+
+  // 13:30 - Slot 1: female, Slot 2: male/child (striped)
+  { time: '13:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child' },
+
+  // 14:00 - Slot 1: male/child (striped), Slot 2: male/child (striped)
+  { time: '14:00', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Male/Child',
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child' },
+
+  // 14:30 - Slot 1: female, Slot 2: male/child (striped)
+  { time: '14:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child' },
+
+  // 15:00 - Slot 1: female, Slot 2: female
+  { time: '15:00', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
+                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female' },
+
+  // 15:30 - Slot 1: male/child (striped), Slot 2: male/child (striped) - No female after 3:30pm
+  { time: '15:30', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Male/Child',
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child' },
+
+  // 16:00 - Slot 1: male, Slot 2: male
+  { time: '16:00', slot1Type: 'male', slot1Color: 'bg-blue-100', slot1BorderColor: 'border-blue-200', slot1Label: 'Male',
+                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male' },
+
+  // 16:30 - Slot 1: male, Slot 2: male
+  { time: '16:30', slot1Type: 'male', slot1Color: 'bg-blue-100', slot1BorderColor: 'border-blue-200', slot1Label: 'Male',
+                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male' }
 ];
 
 const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, onEventClick }) => {
@@ -114,20 +156,23 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
   };
 
   // Get cell background based on booking status and blocked state
-  const getCellBackground = (slotConfig, event, time, slot) => {
+  const getCellBackground = (slotConfig, event, time, slotNumber) => {
     // Check if slot is blocked first - blocked slots are always grey
-    if (isSlotBlocked(time, slot)) {
+    if (isSlotBlocked(time, slotNumber)) {
       return 'bg-gray-300 opacity-60'; // Greyed out for blocked slots
     }
-    
-    if (!event) return slotConfig.color;
-    
+
+    // Get the appropriate color for this specific slot
+    const slotColor = slotNumber === 1 ? slotConfig.slot1Color : slotConfig.slot2Color;
+
+    if (!event) return slotColor;
+
     // Booked slots get a slightly darker shade
     if (event.has_sale) return 'bg-blue-200'; // Sale made
     if (event.is_confirmed) return 'bg-green-50'; // Confirmed
     if (event.booking_status === 'Arrived') return 'bg-red-50'; // Arrived
     if (event.booking_status === 'Left') return 'bg-gray-100'; // Left
-    
+
     return 'bg-orange-50'; // Unconfirmed
   };
 
@@ -148,15 +193,19 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
         <div className="flex flex-wrap gap-4 text-sm">
           <div className="flex items-center">
             <div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded mr-2"></div>
-            <span>Male Bookings</span>
+            <span>Male</span>
           </div>
           <div className="flex items-center">
             <div className="w-4 h-4 bg-pink-100 border border-pink-200 rounded mr-2"></div>
-            <span>Female Bookings</span>
+            <span>Female</span>
           </div>
           <div className="flex items-center">
-            <div className="w-4 h-4 bg-yellow-100 border border-yellow-200 rounded mr-2"></div>
-            <span>Family Bookings</span>
+            <div className="w-4 h-4 bg-gradient-to-r from-yellow-100 to-blue-100 border border-yellow-300 rounded mr-2"></div>
+            <span>Child/Male</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-4 bg-gray-50 border border-gray-300 rounded mr-2"></div>
+            <span>Unavailable</span>
           </div>
           <div className="flex items-center">
             <FiCheckCircle className="w-4 h-4 text-green-600 mr-2" />
@@ -195,9 +244,9 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
 
               {/* Slot 1 */}
               <div
-                className={`p-4 border-r border-gray-300 ${getCellBackground(slotConfig, slot1Event, slotConfig.time, 1)} ${slotConfig.borderColor} ${isSlotBlocked(slotConfig.time, 1) ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center`}
+                className={`p-4 border-r border-gray-300 ${getCellBackground(slotConfig, slot1Event, slotConfig.time, 1)} ${slotConfig.slot1BorderColor} ${isSlotBlocked(slotConfig.time, 1) || slotConfig.slot1Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center`}
                 onClick={() => {
-                  if (isSlotBlocked(slotConfig.time, 1)) return; // Don't allow clicks on blocked slots
+                  if (isSlotBlocked(slotConfig.time, 1) || slotConfig.slot1Type === 'blank') return; // Don't allow clicks on blocked/blank slots
                   slot1Event ? onEventClick(slot1Event) : onSlotClick(slotConfig.time, 1, slotConfig);
                 }}
               >
@@ -205,6 +254,12 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                   <div className="text-center w-full">
                     <div className="font-semibold text-gray-600 flex items-center justify-center">
                       <span className="text-xs">🔒 Blocked</span>
+                    </div>
+                  </div>
+                ) : slotConfig.slot1Type === 'blank' ? (
+                  <div className="text-center w-full">
+                    <div className="font-semibold text-gray-500 flex items-center justify-center">
+                      <span className="text-xs">Unavailable</span>
                     </div>
                   </div>
                 ) : slot1Event ? (
@@ -226,9 +281,9 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
 
               {/* Slot 2 */}
               <div
-                className={`p-4 ${getCellBackground(slotConfig, slot2Event, slotConfig.time, 2)} ${slotConfig.borderColor} ${isSlotBlocked(slotConfig.time, 2) ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center`}
+                className={`p-4 ${getCellBackground(slotConfig, slot2Event, slotConfig.time, 2)} ${slotConfig.slot2BorderColor} ${isSlotBlocked(slotConfig.time, 2) || slotConfig.slot2Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center`}
                 onClick={() => {
-                  if (isSlotBlocked(slotConfig.time, 2)) return; // Don't allow clicks on blocked slots
+                  if (isSlotBlocked(slotConfig.time, 2) || slotConfig.slot2Type === 'blank') return; // Don't allow clicks on blocked/blank slots
                   slot2Event ? onEventClick(slot2Event) : onSlotClick(slotConfig.time, 2, slotConfig);
                 }}
               >
@@ -236,6 +291,12 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                   <div className="text-center w-full">
                     <div className="font-semibold text-gray-600 flex items-center justify-center">
                       <span className="text-xs">🔒 Blocked</span>
+                    </div>
+                  </div>
+                ) : slotConfig.slot2Type === 'blank' ? (
+                  <div className="text-center w-full">
+                    <div className="font-semibold text-gray-500 flex items-center justify-center">
+                      <span className="text-xs">Unavailable</span>
                     </div>
                   </div>
                 ) : slot2Event ? (

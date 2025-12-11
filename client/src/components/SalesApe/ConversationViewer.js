@@ -19,20 +19,14 @@ const ConversationViewer = ({ lead, conversation, onRefresh, onCalendarLinkSent 
     scrollToBottom();
   }, [conversation]);
 
-  // Generate a simple calendar/booking link
+  // Generate CRM booking link for public booking page
   const generateCalendarLink = () => {
     if (!lead) return '';
     
-    // Generate a calendar link that opens the calendar page with this lead pre-selected
-    // Format: /calendar?leadId={leadId}&name={name}&phone={phone}
+    // Generate a booking link to the public booking page
+    // This allows clients to book appointments without logging in
     const baseUrl = window.location.origin;
-    const params = new URLSearchParams({
-      leadId: lead.id,
-      name: lead.name || '',
-      phone: lead.phone || '',
-      email: lead.email || ''
-    });
-    const bookingLink = `${baseUrl}/calendar?${params.toString()}`;
+    const bookingLink = `${baseUrl}/book/${lead.id}`;
     return bookingLink;
   };
 

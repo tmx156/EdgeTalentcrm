@@ -479,6 +479,9 @@ app.use('/api/salesape-dashboard', salesapeDashboardRoutes);
 // Blocked Slots API (for calendar availability management)
 app.use('/api/blocked-slots', blockedSlotsRoutes);
 app.use('/api/callback-reminders', callbackRemindersRoutes);
+// Public Booking API (for client self-service booking)
+const publicBookingRoutes = require('./routes/public-booking');
+app.use('/api/public/booking', publicBookingRoutes);
 // Gmail API Authentication Routes
 app.use('/api/gmail', gmailAuthRoutes);
 // Gmail Push Notification Webhook Routes

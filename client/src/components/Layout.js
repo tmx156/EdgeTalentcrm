@@ -5,7 +5,6 @@ import { useSocket } from '../context/SocketContext';
 import axios from 'axios';
 import ConnectionStatus from './ConnectionStatus';
 import MessageModal from './MessageModal';
-import EdgeTalentLogo from '../EDGE TALENT 500x500 px BLK RED LOGOff.png';
 import {
   FiHome,
   FiUsers,
@@ -27,6 +26,9 @@ import {
   FiPhone
 } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
+
+// Logo is now served from public/images folder
+const EdgeTalentLogo = '/images/edge-talent-logo.png';
 
 const Layout = ({ children }) => {
   const notificationsEnabled = String(process.env.REACT_APP_NOTIFICATIONS_ENABLED || 'true').toLowerCase() !== 'false';
