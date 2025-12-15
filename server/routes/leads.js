@@ -5372,6 +5372,8 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     // Valid status options
     const validStatuses = [
       'No answer',
+      'No Answer x2',
+      'No Answer x3',
       'Left Message',
       'Not interested',
       'Call back',
@@ -5428,7 +5430,8 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     const { callbackTime, callbackNote } = req.body;
 
     // Determine workflow actions based on status
-    const emailTriggers = ['Left Message', 'No answer'];
+    // Only send email for first "No answer" - not for x2/x3
+    const emailTriggers = ['Left Message', 'No answer']; // Note: 'No Answer x2' and 'No Answer x3' are NOT in emailTriggers
     const closeTriggers = ['Not interested', 'Not Qualified'];
     const callbackTriggers = ['Call back', 'Sales/converted - purchased'];
 
@@ -5478,6 +5481,34 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     // This prevents blocking the user
     // Wrap in setImmediate to ensure it runs after response is sent
     setImmediate(async () => {
+      // Check booking history BEFORE adding new entry (to determine if email should be sent)
+      let shouldSendEmail = true;
+      if (callStatus === 'No answer' && emailTriggers.includes(callStatus) && lead.email) {
+        try {
+          const history = lead.booking_history || [];
+          const parsedHistory = Array.isArray(history) ? history : 
+            (typeof history === 'string' ? JSON.parse(history) : []);
+          
+          // Check if "No answer" (or x2/x3) has been selected before
+          const hasNoAnswerBefore = parsedHistory.some(entry => 
+            entry.action === 'CALL_STATUS_UPDATE' && 
+            entry.details?.callStatus && 
+            (entry.details.callStatus === 'No answer' || 
+             entry.details.callStatus === 'No Answer x2' || 
+             entry.details.callStatus === 'No Answer x3')
+          );
+          
+          if (hasNoAnswerBefore) {
+            console.log(`📧 Skipping email for "No answer" - already sent before for lead ${lead.id}`);
+            shouldSendEmail = false; // Don't send email if "No answer" was selected before
+          }
+        } catch (historyError) {
+          console.warn('Error checking booking history for "No answer":', historyError);
+          // Continue with email send if history check fails (safer to send than not)
+          shouldSendEmail = true;
+        }
+      }
+
       // Add to booking history (async - don't block response)
       try {
         await addBookingHistoryEntry(
@@ -5487,7 +5518,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
           req.user.name,
           {
             callStatus: callStatus,
-            workflowTrigger: emailTriggers.includes(callStatus) ? 'email'
+            workflowTrigger: emailTriggers.includes(callStatus) && shouldSendEmail ? 'email'
               : closeTriggers.includes(callStatus) ? 'close'
               : 'callback',
             updatedBy: req.user.name,
@@ -5499,8 +5530,8 @@ router.patch('/:id/call-status', auth, async (req, res) => {
         console.error('Error adding booking history:', historyError);
       }
 
-      // Email workflow: Send automatic email for "Left Message" or "No answer"
-      if (emailTriggers.includes(callStatus) && lead.email) {
+      // Email workflow: Send automatic email for "Left Message" or "No answer" (only first time for "No answer")
+      if (emailTriggers.includes(callStatus) && lead.email && shouldSendEmail) {
         try {
         // Find the user's specific "no_answer" template (booker-specific)
         const { data: templates, error: templateError } = await supabase

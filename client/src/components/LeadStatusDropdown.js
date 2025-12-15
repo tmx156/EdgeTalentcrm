@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FiChevronDown, FiCheck, FiClock, FiX } from 'react-icons/fi';
 import axios from 'axios';
 import { getCurrentUKTime, getTodayUK, formatUKTime, ukTimeToUTC } from '../utils/timeUtils';
@@ -13,9 +13,39 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
   const [callbackNote, setCallbackNote] = useState('');
   const [pendingStatus, setPendingStatus] = useState(null);
   const [showNoAnswerModal, setShowNoAnswerModal] = useState(false);
+  const [hasNoAnswerBefore, setHasNoAnswerBefore] = useState(false);
+  const [noAnswerCount, setNoAnswerCount] = useState(0);
 
-  // Status options with workflow triggers
-  const statusOptions = [
+  // Check if "No answer" has been selected before by checking booking history
+  useEffect(() => {
+    if (lead && lead.booking_history) {
+      try {
+        const history = typeof lead.booking_history === 'string' 
+          ? JSON.parse(lead.booking_history) 
+          : lead.booking_history;
+        
+        if (Array.isArray(history)) {
+          // Count how many times "No answer" (or x2/x3) has been selected
+          const noAnswerEntries = history.filter(entry => 
+            entry.action === 'CALL_STATUS_UPDATE' && 
+            entry.details?.callStatus && 
+            (entry.details.callStatus === 'No answer' || 
+             entry.details.callStatus === 'No Answer x2' || 
+             entry.details.callStatus === 'No Answer x3')
+          );
+          
+          const hasNoAnswer = noAnswerEntries.length > 0;
+          setHasNoAnswerBefore(hasNoAnswer);
+          setNoAnswerCount(noAnswerEntries.length);
+        }
+      } catch (e) {
+        console.warn('Error parsing booking_history:', e);
+      }
+    }
+  }, [lead]);
+
+  // Base status options with workflow triggers
+  const baseStatusOptions = [
     { value: 'No answer', label: 'No answer', trigger: 'email' },
     { value: 'Left Message', label: 'Left Message', trigger: 'email' },
     { value: 'Not interested', label: 'Not interested', trigger: 'close' },
@@ -24,6 +54,25 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
     { value: 'Sales/converted - purchased', label: 'Sales/converted - purchased', trigger: 'callback' },
     { value: 'Not Qualified', label: 'Not Qualified', trigger: 'close' }
   ];
+
+  // Dynamically build status options - add x2/x3 if "No answer" was selected before
+  const statusOptions = useMemo(() => {
+    const options = [...baseStatusOptions];
+    
+    if (hasNoAnswerBefore) {
+      // Find the index of "No answer" and insert x2/x3 after it
+      const noAnswerIndex = options.findIndex(opt => opt.value === 'No answer');
+      if (noAnswerIndex !== -1) {
+        // Insert x2 and x3 options after "No answer"
+        options.splice(noAnswerIndex + 1, 0,
+          { value: 'No Answer x2', label: 'No Answer x2', trigger: null }, // No email trigger
+          { value: 'No Answer x3', label: 'No Answer x3', trigger: null }  // No email trigger
+        );
+      }
+    }
+    
+    return options;
+  }, [hasNoAnswerBefore]);
 
   // Fetch current status from lead (use dedicated call_status column)
   useEffect(() => {
@@ -60,10 +109,16 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
       return;
     }
 
-    // If status is "No answer", show confirmation modal before sending email
+    // If status is "No answer", show confirmation modal before sending email (only first time)
     if (status === 'No answer') {
       setPendingStatus(status);
       setShowNoAnswerModal(true);
+      return;
+    }
+
+    // For "No Answer x2" or "No Answer x3", proceed directly (no email)
+    if (status === 'No Answer x2' || status === 'No Answer x3') {
+      await updateStatus(status);
       return;
     }
 
@@ -150,6 +205,8 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'No answer':
+      case 'No Answer x2':
+      case 'No Answer x3':
       case 'Left Message':
         return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'Call back':
