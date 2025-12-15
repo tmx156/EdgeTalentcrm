@@ -122,6 +122,7 @@ server/email_debug_logs/
 !RAILWAY-*.md
 !railway-*.md
 !*-setup.md
+!docs/*.md
 
 # Sample data
 *.csv
