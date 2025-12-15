@@ -72,16 +72,12 @@ async function sendLeadToSalesApe(lead) {
     }
 
     // Generate the public booking link for this lead
-    // Use CLIENT_URL from config, or Railway domain, or fallback
-    const config = require('../config');
-    let baseUrl = config.CLIENT_URL || 'http://localhost:3000';
+    // Use the dedicated booking domain (edgetalentdiary.co.uk)
+    const bookingDomain = process.env.BOOKING_DOMAIN || 'www.edgetalentdiary.co.uk';
     
-    // If on Railway, use the public domain
-    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
-      baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, '')}`;
-    }
-    
-    const bookingLink = `${baseUrl}/book/${lead.id}`;
+    // Use short booking code if available, otherwise fall back to UUID
+    const bookingIdentifier = lead.booking_code || lead.id;
+    const bookingLink = `https://${bookingDomain}/book/${bookingIdentifier}`;
 
     // Format lead data for SalesApe's requirements
     const payload = {
@@ -93,11 +89,12 @@ async function sendLeadToSalesApe(lead) {
         "CRM ID": String(lead.id), // Must be a string
         "Context": lead.notes || `Lead from ${lead.source || 'CRM'}`,
         "Base Details": [SALESAPE_CONFIG.BASE_DETAILS_ID],
-        "Calendar_Link": bookingLink // CRM booking page link for the AI to share
+        "Calendar_Link": bookingLink // Clean, short booking URL for the AI to share
       }
     };
 
     console.log('📅 Including booking link for SalesApe:', bookingLink);
+    console.log('📋 Booking code:', lead.booking_code || '(using UUID fallback)');
 
     console.log('📤 Sending lead to SalesApe:', {
       name: lead.name,

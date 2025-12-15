@@ -12,6 +12,7 @@ const { analyseLeads } = require('../utils/leadAnalysis');
 const MessagingService = require('../utils/messagingService');
 const { sendSMS, sendAppointmentReminder, sendStatusUpdate, sendCustomMessage } = require('../utils/smsService');
 const { v4: uuidv4 } = require('uuid'); // Added for UUID generation
+const { generateBookingCode, getBookingUrl } = require('../utils/bookingCodeGenerator');
 
 // Supabase configuration - use singleton client to prevent connection leaks
 const { getSupabaseClient } = require('../config/supabase-client');
@@ -1735,6 +1736,16 @@ router.post('/', auth, async (req, res) => {
       id: leadId // Ensure we have a proper ID for SQLite
     };
 
+    // Generate short booking code for public booking links
+    let bookingCode = null;
+    try {
+      bookingCode = await generateBookingCode(leadData.name);
+      console.log(`📋 Generated booking code: ${bookingCode} for lead ${leadData.name}`);
+    } catch (bookingCodeError) {
+      console.error('⚠️ Failed to generate booking code:', bookingCodeError);
+      // Continue without booking code - not critical
+    }
+
     // Insert the new lead using Supabase
     const leadToInsert = {
       id: leadData.id,
@@ -1760,6 +1771,8 @@ router.post('/', auth, async (req, res) => {
       booked_at: leadData.status === 'Booked' ? new Date().toISOString() : null,
       // ✅ BOOKING HISTORY FIX: Set ever_booked flag to track booking history for stats
       ever_booked: leadData.status === 'Booked' ? true : false,
+      // ✅ SHORT BOOKING CODE: For cleaner public booking URLs
+      booking_code: bookingCode,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -4153,6 +4166,14 @@ router.post('/bulk-create', auth, adminAuth, async (req, res) => {
           continue;
         }
 
+        // Generate booking code for public booking link
+        let bookingCode = null;
+        try {
+          bookingCode = await generateBookingCode(leadData.name);
+        } catch (bcError) {
+          console.warn(`⚠️ Failed to generate booking code for ${leadData.name}:`, bcError.message);
+        }
+
         // Prepare lead data with proper ID and booker assignment
         const leadToInsert = {
           id: uuidv4(),
@@ -4168,6 +4189,7 @@ router.post('/bulk-create', auth, adminAuth, async (req, res) => {
           date_booked: null, // Never set dateBooked for uploaded leads
           is_confirmed: 0, // Convert boolean to integer for database compatibility
           booking_status: null,
+          booking_code: bookingCode, // Clean booking slug for public links
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };

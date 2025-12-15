@@ -3,6 +3,10 @@
  * 
  * These endpoints allow clients to book appointments without authentication
  * Used for SalesAPE calendar link integration
+ * 
+ * Supports both UUID-based and short booking code URLs:
+ * - /book/{uuid} - Original format
+ * - /book/{booking_code} - Short code format (e.g., /book/TAN7X4K)
  */
 
 const express = require('express');
@@ -26,24 +30,44 @@ const SALESAPE_CONFIG = {
 };
 
 /**
- * @route   GET /api/public/booking/lead/:leadId
+ * Helper function to find a lead by ID or booking code
+ * @param {string} identifier - UUID or booking code
+ * @returns {Promise<{lead: object|null, error: string|null}>}
+ */
+async function findLeadByIdentifier(identifier, selectFields = '*') {
+  // Check if it's a UUID (36 chars with dashes)
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+  
+  let query = supabase.from('leads').select(selectFields);
+  
+  if (isUUID) {
+    query = query.eq('id', identifier);
+  } else {
+    // It's a booking code - make it case-insensitive
+    query = query.ilike('booking_code', identifier);
+  }
+  
+  const { data: lead, error } = await query.single();
+  
+  return { lead, error };
+}
+
+/**
+ * @route   GET /api/public/booking/lead/:identifier
  * @desc    Get lead information for booking (public, no auth required)
+ * @param   identifier - Either UUID or short booking code
  * @access  Public
  */
-router.get('/lead/:leadId', async (req, res) => {
+router.get('/lead/:identifier', async (req, res) => {
   try {
-    const { leadId } = req.params;
+    const { identifier } = req.params;
 
-    const { data: lead, error } = await supabase
-      .from('leads')
-      .select('id, name, email, phone')
-      .eq('id', leadId)
-      .single();
+    const { lead, error } = await findLeadByIdentifier(identifier, 'id, name, email, phone, booking_code');
 
     if (error || !lead) {
       return res.status(404).json({
         success: false,
-        message: 'Lead not found'
+        message: 'Booking not found. Please check your link and try again.'
       });
     }
 
@@ -161,13 +185,14 @@ router.get('/availability', async (req, res) => {
 });
 
 /**
- * @route   POST /api/public/booking/book/:leadId
+ * @route   POST /api/public/booking/book/:identifier
  * @desc    Book an appointment (public, no auth required)
+ * @param   identifier - Either UUID or short booking code
  * @access  Public
  */
-router.post('/book/:leadId', async (req, res) => {
+router.post('/book/:identifier', async (req, res) => {
   try {
-    const { leadId } = req.params;
+    const { identifier } = req.params;
     const { date, time, datetime, name, email } = req.body;
 
     if (!date || !time) {
@@ -177,19 +202,18 @@ router.post('/book/:leadId', async (req, res) => {
       });
     }
 
-    // Get the lead
-    const { data: lead, error: leadError } = await supabase
-      .from('leads')
-      .select('*')
-      .eq('id', leadId)
-      .single();
+    // Get the lead by ID or booking code
+    const { lead, error: leadError } = await findLeadByIdentifier(identifier);
 
     if (leadError || !lead) {
       return res.status(404).json({
         success: false,
-        message: 'Lead not found'
+        message: 'Booking not found. Please check your link and try again.'
       });
     }
+    
+    // Use the actual lead ID for all subsequent operations
+    const leadId = lead.id;
 
     // Check if slot is still available
     const { data: conflicts, error: conflictError } = await supabase

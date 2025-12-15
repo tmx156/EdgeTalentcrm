@@ -10,6 +10,7 @@ const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const { v4: uuidv4 } = require('uuid');
+const { generateBookingCode, getBookingUrl } = require('../utils/bookingCodeGenerator');
 
 // Initialize Supabase
 const supabase = createClient(
@@ -183,6 +184,16 @@ router.post('/submit', async (req, res) => {
     const sourceUrl = formData.source_url || '';
     const notes = `Lead imported from Gravity Forms${submissionId ? ` (ID: ${submissionId})` : ''}${sourceUrl ? ` from ${sourceUrl}` : ''} on ${new Date().toLocaleString('en-GB')}`;
 
+    // Generate a clean booking code slug (e.g., "tanya-booking")
+    let bookingCode = null;
+    try {
+      bookingCode = await generateBookingCode(fullName);
+      console.log(`📋 Generated booking code: ${bookingCode} for ${fullName}`);
+    } catch (bookingCodeError) {
+      console.error('⚠️ Failed to generate booking code:', bookingCodeError.message);
+      // Continue without booking code - not critical
+    }
+
     const leadData = {
       id: uuidv4(),
       name: fullName,
@@ -198,6 +209,7 @@ router.post('/submit', async (req, res) => {
       is_confirmed: false,
       has_sale: 0,
       ever_booked: false,
+      booking_code: bookingCode, // Clean booking slug for public booking links
       custom_fields: Object.keys(customFields).length > 0 ? customFields : null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -255,7 +267,9 @@ router.post('/submit', async (req, res) => {
       console.error('   Please run the migration: server/migrations/add_gender_column.sql');
     }
 
-    // Return success response - always include gender
+    // Return success response - always include gender and booking link
+    const bookingUrl = lead.booking_code ? getBookingUrl(lead.booking_code) : null;
+    
     res.status(201).json({
       success: true,
       message: 'Lead imported successfully',
@@ -265,7 +279,9 @@ router.post('/submit', async (req, res) => {
         email: lead.email,
         phone: lead.phone,
         gender: lead.gender !== undefined ? lead.gender : (leadData.gender || null),
-        status: lead.status
+        status: lead.status,
+        booking_code: lead.booking_code,
+        booking_url: bookingUrl
       }
     });
 
