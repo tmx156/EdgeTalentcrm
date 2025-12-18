@@ -30,12 +30,15 @@ NODE_OPTIONS=--max-old-space-size=2048
 
 #### Optional Variables (for SMS/Email features)
 ```env
-# BulkSMS Configuration
-BULKSMS_USERNAME=tmx2566
-BULKSMS_PASSWORD=Booker100
-BULKSMS_FROM_NUMBER=+447786201100
-BULKSMS_POLL_ENABLED=true
-BULKSMS_POLL_INTERVAL_MS=60000
+# The SMS Works Configuration
+# Option 1: Pre-generated JWT token (simpler, but expires)
+SMS_WORKS_JWT_TOKEN=your_pre_generated_jwt_token
+# Option 2: API Key + Secret (recommended - auto-refreshes JWT)
+SMS_WORKS_API_KEY=your_api_key
+SMS_WORKS_API_SECRET=your_api_secret
+SMS_WORKS_SENDER_ID=447786200517  # Optional: Your sender ID (numeric, without +)
+# Note: Incoming SMS handled via webhook at /api/sms/webhook
+# Configure webhook URL in The SMS Works dashboard: https://your-app.railway.app/api/sms/webhook
 
 # Email Configuration (Gmail)
 EMAIL_USER=your-email@gmail.com

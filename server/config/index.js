@@ -22,13 +22,15 @@ const config = {
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzQyMjUyNiwiZXhwIjoyMDc4OTk4NTI2fQ.VT-JI3OAZ_ecZO28mW7YUmVXKltk3ENXwSe_yvnK2kQ'
   },
 
-  // SMS Configuration (BulkSMS) - Check credentials
+  // SMS Configuration (The SMS Works) - Check credentials
   sms: {
-    username: process.env.BULKSMS_USERNAME || 'tmx2566',
-    password: process.env.BULKSMS_PASSWORD || 'Booker100',
-    fromNumber: process.env.BULKSMS_FROM_NUMBER || '+447786201100',
-    pollEnabled: process.env.BULKSMS_POLL_ENABLED === 'true' || false, // Disabled by default, enable via BULKSMS_POLL_ENABLED=true
-    pollInterval: parseInt(process.env.BULKSMS_POLL_INTERVAL_MS) || 600000 // 600s (10 min) - increased to prevent DB overload
+    // Option 1: Pre-generated JWT token (if you have one)
+    jwtToken: process.env.SMS_WORKS_JWT_TOKEN || null,
+    // Option 2: API Key + Secret to generate JWT dynamically (preferred)
+    apiKey: process.env.SMS_WORKS_API_KEY || null,
+    apiSecret: process.env.SMS_WORKS_API_SECRET || null,
+    senderId: process.env.SMS_WORKS_SENDER_ID || process.env.BULKSMS_FROM_NUMBER || '+447786201100', // Fallback to old env var for migration
+    // Note: The SMS Works uses webhooks for incoming messages, no polling needed
   },
 
   // Email Configuration (Legacy SMTP - being phased out)

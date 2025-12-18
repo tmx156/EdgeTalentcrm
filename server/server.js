@@ -15,11 +15,8 @@ const dbManager = require('./database-connection-manager');
 
 // Backward compatibility: Set environment variables from config
 // This ensures existing code still works during transition
-process.env.BULKSMS_USERNAME = config.sms.username;
-process.env.BULKSMS_PASSWORD = config.sms.password;
-process.env.BULKSMS_FROM_NUMBER = config.sms.fromNumber;
-process.env.BULKSMS_POLL_ENABLED = config.sms.pollEnabled.toString();
-process.env.BULKSMS_POLL_INTERVAL_MS = config.sms.pollInterval.toString();
+// NOTE: BulkSMS has been replaced with The SMS Works (uses webhooks, no polling)
+process.env.SMS_WORKS_SENDER_ID = config.sms.senderId;
 
 process.env.EMAIL_USER = config.email.user;
 process.env.EMAIL_PASSWORD = config.email.password;
@@ -776,18 +773,21 @@ testDatabaseConnection().then(() => {
     // DISABLED: Start the message scheduler
     // scheduler.start();
 
-    // SMS auto-sync note
-    console.log('📡 Using BulkSMS for inbound polling');
+    // SMS Configuration
+    console.log('📡 Using The SMS Works for SMS sending');
+    console.log('📡 Incoming SMS handled via webhook at /api/sms/webhook');
+    console.log('📡 Configure your webhook URL in The SMS Works dashboard to receive incoming messages');
 
-    // Start BulkSMS reply poller for offline/online inbound without webhooks
-    try {
-      const { startBulkSmsPolling } = require('./utils/bulkSmsPoller');
-      if (typeof startBulkSmsPolling === 'function') {
-        startBulkSmsPolling();
-      }
-    } catch (e) {
-      console.error('❌ Failed to start BulkSMS reply poller:', e?.message || e);
-    }
+    // Note: The SMS Works uses webhooks for incoming messages, no polling needed
+    // If you need polling for legacy BulkSMS support, uncomment below:
+    // try {
+    //   const { startBulkSmsPolling } = require('./utils/bulkSmsPoller');
+    //   if (typeof startBulkSmsPolling === 'function') {
+    //     startBulkSmsPolling();
+    //   }
+    // } catch (e) {
+    //   console.error('❌ Failed to start BulkSMS reply poller:', e?.message || e);
+    // }
 
     // GMAIL API: Start Gmail monitoring (Push Notifications or Polling)
     // Wrap in try-catch to prevent server crash if Gmail setup fails

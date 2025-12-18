@@ -289,7 +289,7 @@ function buildDeterministicId(sender, text, timestampIso) {
 }
 
 // @route   POST /api/sms/webhook
-// @desc    Webhook to receive SMS replies from provider (idempotent)
+// @desc    Webhook to receive SMS replies from provider (The SMS Works, BulkSMS, etc.) - idempotent
 // @access  Public (called by provider)
 router.post('/webhook', async (req, res) => {
   try {
@@ -298,7 +298,7 @@ router.post('/webhook', async (req, res) => {
     if (!global.__recentInboundSms) {
       global.__recentInboundSms = new Map();
 
-      // Try to restore from BulkSMS poller persistent file
+      // Try to restore from SMS poller persistent file (legacy BulkSMS support)
       try {
         const fs = require('fs');
         const path = require('path');
@@ -333,10 +333,11 @@ router.post('/webhook', async (req, res) => {
       rawBody: req.rawBody ? req.rawBody.toString() : 'N/A'
     });
 
-    const text = body.text || body.Body || body.message || body.messageText || body.sms || body.content;
-    const sender = body.sender || body.From || body.from || body.phone || body.msisdn;
+    // Support multiple webhook formats: The SMS Works, BulkSMS, Twilio, etc.
+    const text = body.text || body.Body || body.message || body.messageText || body.sms || body.content || body.body;
+    const sender = body.sender || body.From || body.from || body.phone || body.msisdn || body.source;
     const providerId = body.messageId || body.id || body.message_id || body.MessageSid || body.sid; // accept Twilio-style too
-    const timestamp = body.timestamp || body.receivedAt || body.createdAt || body.dateTime || body.date || body.SmsTimestamp;
+    const timestamp = body.timestamp || body.receivedAt || body.createdAt || body.dateTime || body.date || body.SmsTimestamp || body.received_at;
 
     console.log('📱 SMS Webhook extracted:', {
       text: text || 'EMPTY',

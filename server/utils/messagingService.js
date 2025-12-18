@@ -8,6 +8,51 @@ const { fromZonedTime } = require('date-fns-tz');
 const { getSupabaseClient } = require('../config/supabase-client');
 const supabase = getSupabaseClient();
 
+/**
+ * 100% RELIABLE time formatter - NO Date objects, NO locale functions
+ * Converts 24-hour time string (e.g., "14:30") to 12-hour format (e.g., "2:30 pm")
+ * 
+ * @param {string} timeStr - Time in "HH:MM" format (e.g., "12:30", "14:00", "09:30")
+ * @returns {string} - Time in 12-hour format (e.g., "12:30 pm", "2:00 pm", "9:30 am")
+ */
+function formatTime24to12(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') {
+    return '';
+  }
+  
+  const parts = timeStr.split(':');
+  if (parts.length < 2) {
+    return timeStr; // Return as-is if invalid format
+  }
+  
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  
+  if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return timeStr; // Return as-is if invalid values
+  }
+  
+  // Simple 24-hour to 12-hour conversion
+  let displayHour;
+  let period;
+  
+  if (hours === 0) {
+    displayHour = 12;
+    period = 'am';
+  } else if (hours < 12) {
+    displayHour = hours;
+    period = 'am';
+  } else if (hours === 12) {
+    displayHour = 12;
+    period = 'pm';
+  } else {
+    displayHour = hours - 12;
+    period = 'pm';
+  }
+  
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${period}`;
+}
+
 // const getDb = () => {
 //   return new Database(path.join(__dirname, '..', 'local-crm.db'));
 // }; // Removed - using Supabase only
@@ -119,49 +164,8 @@ class MessagingService {
       };
     }
 
-    // Common variables
-    // Format booking date and time in UK timezone (Europe/London) for consistency
-    // If date_booked is midnight (00:00) and time_booked exists, combine them for accurate time display
-    let bookingDateTime = bookingDate ? new Date(bookingDate) : null;
-    
-    // Check if the time is midnight (00:00) and we have a separate time_booked field
-    if (bookingDateTime && lead.time_booked) {
-      const utcHours = bookingDateTime.getUTCHours();
-      const utcMinutes = bookingDateTime.getUTCMinutes();
-      
-      // If time is midnight (00:00) UTC and we have time_booked, use time_booked instead
-      if (utcHours === 0 && utcMinutes === 0) {
-        const timeParts = lead.time_booked.split(':');
-        if (timeParts.length >= 2) {
-          const timeHours = parseInt(timeParts[0], 10);
-          const timeMinutes = parseInt(timeParts[1], 10);
-          
-          if (!isNaN(timeHours) && !isNaN(timeMinutes) && timeHours >= 0 && timeHours < 24) {
-            // time_booked is stored as UK local time (e.g., "14:00" means 2 PM UK time)
-            // Get the date part from bookingDateTime (in UTC)
-            const year = bookingDateTime.getUTCFullYear();
-            const month = bookingDateTime.getUTCMonth();
-            const day = bookingDateTime.getUTCDate();
-            
-            // Create a date string representing UK local time
-            // Format: YYYY-MM-DDTHH:MM:00 (treat as UK time)
-            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(timeHours).padStart(2, '0')}:${String(timeMinutes).padStart(2, '0')}:00`;
-            
-            // Create a date object assuming this string is in UK timezone
-            // Use fromZonedTime to convert UK local time to UTC
-            const ukLocalDate = new Date(dateStr);
-            bookingDateTime = fromZonedTime(ukLocalDate, 'Europe/London');
-            
-            console.log('🕐 Combined date_booked with time_booked:', {
-              originalDate: bookingDate,
-              time_booked: lead.time_booked,
-              combinedDateTime: bookingDateTime.toISOString(),
-              ukTime: bookingDateTime.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit' })
-            });
-          }
-        }
-      }
-    }
+    // Format booking date in UK timezone
+    const bookingDateTime = bookingDate ? new Date(bookingDate) : null;
     
     const bookingDateStr = bookingDateTime ? bookingDateTime.toLocaleDateString('en-GB', {
       timeZone: 'Europe/London',
@@ -170,12 +174,17 @@ class MessagingService {
       month: 'long',
       day: 'numeric'
     }) : '';
-    const bookingTimeStr = bookingDateTime ? bookingDateTime.toLocaleTimeString('en-GB', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: true, // Use 12-hour format with AM/PM
-      timeZone: 'Europe/London' // Use UK timezone for consistency
-    }) : '';
+    
+    // 🔧 100% RELIABLE TIME FORMATTING
+    // Use time_booked field DIRECTLY - no Date conversions, no locale functions
+    // time_booked stores exactly what the user selected (e.g., "12:30", "14:00")
+    const bookingTimeStr = lead.time_booked ? formatTime24to12(lead.time_booked) : '';
+    
+    console.log('🕐 MessagingService Template Processing:', {
+      time_booked: lead.time_booked,
+      formatted_time: bookingTimeStr,
+      date_booked: bookingDate
+    });
 
     const variables = {
       '{leadName}': lead.name || 'Valued Customer',

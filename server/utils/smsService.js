@@ -1,6 +1,52 @@
 const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
+const jwt = require('jsonwebtoken');
+
+/**
+ * 100% RELIABLE time formatter - NO Date objects, NO locale functions
+ * Converts 24-hour time string (e.g., "14:30") to 12-hour format (e.g., "2:30 pm")
+ * 
+ * @param {string} timeStr - Time in "HH:MM" format (e.g., "12:30", "14:00", "09:30")
+ * @returns {string} - Time in 12-hour format (e.g., "12:30 pm", "2:00 pm", "9:30 am")
+ */
+function formatTime24to12(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') {
+    return '';
+  }
+  
+  const parts = timeStr.split(':');
+  if (parts.length < 2) {
+    return timeStr; // Return as-is if invalid format
+  }
+  
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  
+  if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return timeStr; // Return as-is if invalid values
+  }
+  
+  // Simple 24-hour to 12-hour conversion
+  let displayHour;
+  let period;
+  
+  if (hours === 0) {
+    displayHour = 12;
+    period = 'am';
+  } else if (hours < 12) {
+    displayHour = hours;
+    period = 'am';
+  } else if (hours === 12) {
+    displayHour = 12;
+    period = 'pm';
+  } else {
+    displayHour = hours - 12;
+    period = 'pm';
+  }
+  
+  return `${displayHour}:${String(minutes).padStart(2, '0')} ${period}`;
+}
 
 // Initialize Supabase using centralized config (with env overrides)
 const supabaseUrl = process.env.SUPABASE_URL || config.supabase.url;
@@ -10,43 +56,102 @@ const supabaseKey =
   config.supabase.anonKey;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// SMS Service Configuration - BulkSMS
+// SMS Service Configuration - The SMS Works
 const SMS_CONFIG = {
-  provider: 'bulksms',
-  bulksms: {
-    username: process.env.BULKSMS_USERNAME,
-    password: process.env.BULKSMS_PASSWORD,
-    // Replyable sender ID - must be verified in BulkSMS dashboard
-    fromNumber: process.env.BULKSMS_FROM_NUMBER || '447786200517'
+  provider: 'thesmsworks',
+  thesmsworks: {
+    // Option 1: Pre-generated JWT token (if you have one)
+    jwtToken: process.env.SMS_WORKS_JWT_TOKEN,
+    // Option 2: API Key + Secret to generate JWT dynamically
+    apiKey: process.env.SMS_WORKS_API_KEY,
+    apiSecret: process.env.SMS_WORKS_API_SECRET,
+    senderId: process.env.SMS_WORKS_SENDER_ID || process.env.BULKSMS_FROM_NUMBER || '447786200517' // Fallback to old env var
   }
 };
 
-// Initialize BulkSMS client status
-let bulksmsConfigured = false;
+// Initialize The SMS Works client status
+let smsWorksConfigured = false;
+let cachedJwtToken = null;
+let jwtTokenExpiry = null;
 
-// Ensure we always send a purely numeric originator (BulkSMS often requires MSISDN without '+')
-function sanitizeNumericOriginator(originator) {
-  if (!originator) return undefined;
-  const digitsOnly = String(originator).replace(/\D/g, '');
-  return digitsOnly.length > 0 ? digitsOnly : undefined;
+/**
+ * Generate JWT token from API Key and Secret
+ * JWT expires after 1 hour, so we cache it and regenerate when needed
+ */
+function generateJWT() {
+  if (!SMS_CONFIG.thesmsworks.apiKey || !SMS_CONFIG.thesmsworks.apiSecret) {
+    return null;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: SMS_CONFIG.thesmsworks.apiKey,
+    iat: now,
+    exp: now + 3600 // Token valid for 1 hour
+  };
+
+  try {
+    const token = jwt.sign(payload, SMS_CONFIG.thesmsworks.apiSecret, { algorithm: 'HS256' });
+    cachedJwtToken = token;
+    jwtTokenExpiry = now + 3600; // Cache expiry time
+    return token;
+  } catch (error) {
+    console.error('❌ Failed to generate JWT token:', error.message);
+    return null;
+  }
 }
 
-// Resolve and sanitize the originator once so we know exactly what we send
-const RESOLVED_ORIGINATOR = sanitizeNumericOriginator(SMS_CONFIG.bulksms.fromNumber);
+/**
+ * Get valid JWT token (either pre-generated or generate from API Key/Secret)
+ */
+function getJWTToken() {
+  // Option 1: Use pre-generated JWT token if available
+  if (SMS_CONFIG.thesmsworks.jwtToken) {
+    // Strip "JWT " prefix if present (some dashboards include this)
+    let token = SMS_CONFIG.thesmsworks.jwtToken.trim();
+    if (token.startsWith('JWT ')) {
+      token = token.substring(4);
+    }
+    return token;
+  }
+
+  // Option 2: Generate JWT from API Key + Secret
+  if (SMS_CONFIG.thesmsworks.apiKey && SMS_CONFIG.thesmsworks.apiSecret) {
+    const now = Math.floor(Date.now() / 1000);
+    
+    // Check if cached token is still valid (refresh 5 minutes before expiry)
+    if (cachedJwtToken && jwtTokenExpiry && now < (jwtTokenExpiry - 300)) {
+      return cachedJwtToken;
+    }
+    
+    // Generate new token
+    return generateJWT();
+  }
+
+  return null;
+}
 
 // Enhanced configuration logging (reduced for Railway)
 console.log('🔍 SMS Configuration Check:');
 console.log('  Provider:', SMS_CONFIG.provider);
-console.log('  Username:', SMS_CONFIG.bulksms.username ? '✅ Set' : '❌ NOT SET');
-console.log('  Password:', SMS_CONFIG.bulksms.password ? '✅ Set' : '❌ NOT SET');
-console.log('  From Number:', SMS_CONFIG.bulksms.fromNumber || '❌ NOT SET');
+console.log('  JWT Token:', SMS_CONFIG.thesmsworks.jwtToken ? '✅ Set (pre-generated)' : '❌ NOT SET');
+console.log('  API Key:', SMS_CONFIG.thesmsworks.apiKey ? '✅ Set' : '❌ NOT SET');
+console.log('  API Secret:', SMS_CONFIG.thesmsworks.apiSecret ? '✅ Set' : '❌ NOT SET');
+console.log('  Sender ID:', SMS_CONFIG.thesmsworks.senderId || '❌ NOT SET');
 
-if (SMS_CONFIG.bulksms.username && SMS_CONFIG.bulksms.password) {
-  bulksmsConfigured = true;
-  const originator = RESOLVED_ORIGINATOR || '(provider default)';
-  console.log('✅ BulkSMS configured');
+// Check if we have either a JWT token OR API Key + Secret
+if (SMS_CONFIG.thesmsworks.jwtToken || (SMS_CONFIG.thesmsworks.apiKey && SMS_CONFIG.thesmsworks.apiSecret)) {
+  smsWorksConfigured = true;
+  if (SMS_CONFIG.thesmsworks.jwtToken) {
+    console.log('✅ The SMS Works configured (using pre-generated JWT)');
+  } else {
+    console.log('✅ The SMS Works configured (will generate JWT from API Key/Secret)');
+  }
 } else {
-  console.warn('⚠️ BulkSMS credentials not configured - SMS disabled');
+  console.warn('⚠️ The SMS Works credentials not configured - SMS disabled');
+  console.warn('⚠️ Please set either:');
+  console.warn('   - SMS_WORKS_JWT_TOKEN (pre-generated JWT), OR');
+  console.warn('   - SMS_WORKS_API_KEY + SMS_WORKS_API_SECRET (to generate JWT dynamically)');
 }
 
 /**
@@ -140,65 +245,27 @@ async function createShortLinkForContent(content) {
 const processTemplate = (template, lead, bookingDate = null) => {
   let processedTemplate = template;
   
-  // Format booking date and time in UK timezone (Europe/London) for consistency
-  // If date_booked is midnight (00:00) and time_booked exists, combine them for accurate time display
-  let bookingDateTime = bookingDate ? new Date(bookingDate) : null;
-  
-  // Check if the time is midnight (00:00) UTC and we have a separate time_booked field
-  if (bookingDateTime && lead.time_booked) {
-    const utcHours = bookingDateTime.getUTCHours();
-    const utcMinutes = bookingDateTime.getUTCMinutes();
-    
-    // If time is midnight (00:00) UTC and we have time_booked, use time_booked instead
-    if (utcHours === 0 && utcMinutes === 0) {
-      const timeParts = lead.time_booked.split(':');
-      if (timeParts.length >= 2) {
-        const timeHours = parseInt(timeParts[0], 10);
-        const timeMinutes = parseInt(timeParts[1], 10);
-        
-        if (!isNaN(timeHours) && !isNaN(timeMinutes) && timeHours >= 0 && timeHours < 24) {
-          // time_booked is stored as UK local time (e.g., "14:00" means 2 PM UK time)
-          // Get the date part from bookingDateTime (in UTC)
-          const year = bookingDateTime.getUTCFullYear();
-          const month = bookingDateTime.getUTCMonth();
-          const day = bookingDateTime.getUTCDate();
-          
-          // Create a date string representing UK local time
-          // Format: YYYY-MM-DDTHH:MM:00 (treat as UK time)
-          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(timeHours).padStart(2, '0')}:${String(timeMinutes).padStart(2, '0')}:00`;
-          
-          // Import fromZonedTime from date-fns-tz
-          const { fromZonedTime } = require('date-fns-tz');
-          
-          // Create a date object assuming this string is in UK timezone
-          // Use fromZonedTime to convert UK local time to UTC
-          const ukLocalDate = new Date(dateStr);
-          bookingDateTime = fromZonedTime(ukLocalDate, 'Europe/London');
-          
-          console.log('🕐 SMS: Combined date_booked with time_booked:', {
-            originalDate: bookingDate,
-            time_booked: lead.time_booked,
-            combinedDateTime: bookingDateTime.toISOString(),
-            ukTime: bookingDateTime.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: true })
-          });
-        }
-      }
-    }
-  }
+  // Format booking date in UK timezone
+  const bookingDateTime = bookingDate ? new Date(bookingDate) : null;
   
   const bookingDateStr = bookingDateTime ? bookingDateTime.toLocaleDateString('en-GB', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
-    timeZone: 'Europe/London' // Use UK timezone for consistency
+    timeZone: 'Europe/London'
   }) : '';
-  const bookingTimeStr = bookingDateTime ? bookingDateTime.toLocaleTimeString('en-GB', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true, // Use 12-hour format with AM/PM
-    timeZone: 'Europe/London' // Use UK timezone for consistency
-  }) : '';
+  
+  // 🔧 100% RELIABLE TIME FORMATTING
+  // Use time_booked field DIRECTLY - no Date conversions, no locale functions
+  // time_booked stores exactly what the user selected (e.g., "12:30", "14:00")
+  const bookingTimeStr = lead.time_booked ? formatTime24to12(lead.time_booked) : '';
+  
+  console.log('🕐 SMS Template Processing:', {
+    time_booked: lead.time_booked,
+    formatted_time: bookingTimeStr,
+    date_booked: bookingDate
+  });
   
   // Common variables
   const variables = {
@@ -266,7 +333,7 @@ const trackMessageDelivery = async (messageData) => {
         sent_at: new Date().toISOString(),
         delivery_status: messageData.deliveryResult?.success ? 'delivered' : 'failed',
         provider_message_id: messageData.deliveryResult?.messageId,
-        delivery_provider: 'bulksms',
+        delivery_provider: 'thesmsworks',
         delivery_attempts: 1,
         last_delivery_attempt: new Date().toISOString(),
         delivery_response: messageData.deliveryResult?.fullResponse || null,
@@ -303,60 +370,66 @@ const sendSMS = async (to, message) => {
     console.log(`📱 Recipient Number (normalized): ${normalized}`);
     console.log(`📝 Message Length: ${message.length} characters`);
     
-    if (!bulksmsConfigured) {
-      console.error('❌ BulkSMS client NOT configured');
-      throw new Error('BulkSMS client not configured. Please check your credentials.');
+    if (!smsWorksConfigured) {
+      console.error('❌ The SMS Works client NOT configured');
+      throw new Error('The SMS Works client not configured. Please check your SMS_WORKS_API_KEY.');
     }
+    
+    // Remove '+' from destination for The SMS Works API (they expect format like 447123456789)
+    const destination = normalized.replace(/^\+/, '');
+    
+    // Sanitize sender ID (remove + if present, keep numeric)
+    const senderId = String(SMS_CONFIG.thesmsworks.senderId || '').replace(/^\+/, '').replace(/\D/g, '') || undefined;
     
     // Detailed environment and configuration logging
     console.log('🔐 Configuration Details:', {
-      username: SMS_CONFIG.bulksms.username ? 'SET' : 'NOT SET',
-      password: SMS_CONFIG.bulksms.password ? 'SET' : 'NOT SET',
-      fromNumber: SMS_CONFIG.bulksms.fromNumber || 'NOT SET'
+      apiKey: SMS_CONFIG.thesmsworks.apiKey ? 'SET' : 'NOT SET',
+      senderId: senderId || 'NOT SET',
+      destination: destination
     });
 
-    // Prepare payload with comprehensive logging
-    const payload = [{
-      to: normalized,
-      body: message,
-      routingGroup: "STANDARD",
-      encoding: "TEXT",
-      longMessageMaxParts: 99,
-      deliveryReports: "ALL"
-    }];
+    // Prepare payload for The SMS Works API
+    const payload = {
+      sender: senderId, // Optional - can be omitted to use account default
+      destination: destination,
+      content: message
+    };
 
-    console.log('📤 Payload Prepared:', JSON.stringify(payload, null, 2));
+    console.log('📤 Payload Prepared:', JSON.stringify({ ...payload, apiKey: '***' }, null, 2));
 
-    // Make API call to BulkSMS with enhanced error handling
+    // Get valid JWT token (either pre-generated or generated from API Key/Secret)
+    const jwtToken = getJWTToken();
+    if (!jwtToken) {
+      throw new Error('Failed to get JWT token. Please check your SMS Works credentials.');
+    }
+
+    // Make API call to The SMS Works with enhanced error handling
     try {
-      const response = await axios.post('https://api.bulksms.com/v1/messages', payload, {
-        auth: {
-          username: SMS_CONFIG.bulksms.username,
-          password: SMS_CONFIG.bulksms.password
-        },
+      const response = await axios.post('https://api.thesmsworks.co.uk/v1/message/send', payload, {
         headers: { 
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${jwtToken}`
         },
         timeout: 10000 // 10-second timeout
       });
 
       console.log('🌐 Full API Response:', JSON.stringify(response.data, null, 2));
 
-      // BulkSMS typically returns an object with id/status
-      const resp = Array.isArray(response.data) ? response.data[0] : response.data;
+      // The SMS Works returns an object with messageId and status
+      const resp = response.data;
       
       console.log(`✅ SMS API Response Details:`, {
-        id: resp?.id,
-        type: resp?.type,
+        messageId: resp?.messageId || resp?.id,
         status: resp?.status,
-        from: resp?.from
+        credits: resp?.credits
       });
 
       return {
         success: true,
-        provider: 'bulksms',
-        messageId: resp?.id || null,
-        status: resp?.status?.id || 'submitted',
+        provider: 'thesmsworks',
+        messageId: resp?.messageId || resp?.id || null,
+        status: resp?.status || 'submitted',
+        credits: resp?.credits || null,
         fullResponse: resp // Store full response for tracking
       };
     } catch (apiError) {
@@ -379,7 +452,7 @@ const sendSMS = async (to, message) => {
     
     return { 
       success: false, 
-      provider: 'bulksms', 
+      provider: 'thesmsworks', 
       error: error.message,
       fullError: error
     };
@@ -403,61 +476,22 @@ const sendBookingConfirmation = async (lead, appointmentDate) => {
       return sendSMS(lead.phone, defaultMessage);
     }
     
-    // Create a concise SMS version - format in UK timezone (Europe/London) for consistency
-    // If date_booked is midnight (00:00) and time_booked exists, combine them for accurate time display
-    let bookingDateTime = appointmentDate ? new Date(appointmentDate) : null;
-    
-    // Check if the time is midnight (00:00) UTC and we have a separate time_booked field
-    if (bookingDateTime && lead.time_booked) {
-      const utcHours = bookingDateTime.getUTCHours();
-      const utcMinutes = bookingDateTime.getUTCMinutes();
-      
-      // If time is midnight (00:00) UTC and we have time_booked, use time_booked instead
-      if (utcHours === 0 && utcMinutes === 0) {
-        const timeParts = lead.time_booked.split(':');
-        if (timeParts.length >= 2) {
-          const timeHours = parseInt(timeParts[0], 10);
-          const timeMinutes = parseInt(timeParts[1], 10);
-          
-          if (!isNaN(timeHours) && !isNaN(timeMinutes) && timeHours >= 0 && timeHours < 24) {
-            // time_booked is stored as UK local time (e.g., "14:00" means 2 PM UK time)
-            // Get the date part from bookingDateTime (in UTC)
-            const year = bookingDateTime.getUTCFullYear();
-            const month = bookingDateTime.getUTCMonth();
-            const day = bookingDateTime.getUTCDate();
-            
-            // Create a date string representing UK local time
-            // Format: YYYY-MM-DDTHH:MM:00 (treat as UK time)
-            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(timeHours).padStart(2, '0')}:${String(timeMinutes).padStart(2, '0')}:00`;
-            
-            // Import fromZonedTime from date-fns-tz
-            const { fromZonedTime } = require('date-fns-tz');
-            
-            // Create a date object assuming this string is in UK timezone
-            // Use fromZonedTime to convert UK local time to UTC
-            const ukLocalDate = new Date(dateStr);
-            bookingDateTime = fromZonedTime(ukLocalDate, 'Europe/London');
-            
-            console.log('🕐 SMS sendBookingConfirmation: Combined date_booked with time_booked:', {
-              originalDate: appointmentDate,
-              time_booked: lead.time_booked,
-              combinedDateTime: bookingDateTime.toISOString(),
-              ukTime: bookingDateTime.toLocaleTimeString('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', hour12: true })
-            });
-          }
-        }
-      }
-    }
-    
+    // Format date in UK timezone
+    const bookingDateTime = appointmentDate ? new Date(appointmentDate) : null;
     const bookingDateStr = bookingDateTime ? bookingDateTime.toLocaleDateString('en-GB', {
       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-      timeZone: 'Europe/London' // Use UK timezone for consistency
+      timeZone: 'Europe/London'
     }) : '';
-    const bookingTimeStr = bookingDateTime ? bookingDateTime.toLocaleTimeString('en-GB', {
-      hour: 'numeric', minute: '2-digit',
-      hour12: true, // Use 12-hour format with AM/PM
-      timeZone: 'Europe/London' // Use UK timezone for consistency
-    }) : '';
+    
+    // 🔧 100% RELIABLE TIME FORMATTING
+    // Use time_booked field DIRECTLY - no Date conversions, no locale functions
+    const bookingTimeStr = lead.time_booked ? formatTime24to12(lead.time_booked) : '';
+    
+    console.log('🕐 SMS sendBookingConfirmation:', {
+      time_booked: lead.time_booked,
+      formatted_time: bookingTimeStr,
+      date_booked: appointmentDate
+    });
 
     // Concise SMS template
     const conciseSmsBody = `Hi ${lead.name}, your photoshoot is confirmed for ${bookingDateStr} at ${bookingTimeStr}. 
@@ -537,9 +571,9 @@ const sendCustomMessage = async (phoneNumber, message) => {
 const getSMSStatus = async () => {
   return {
     configuredProvider: SMS_CONFIG.provider,
-    bulksms: {
-      available: bulksmsConfigured,
-      configured: bulksmsConfigured
+    thesmsworks: {
+      available: smsWorksConfigured,
+      configured: smsWorksConfigured
     }
   };
 };
@@ -550,7 +584,7 @@ const getSMSStatus = async () => {
  * @returns {Promise} - Test result
  */
 const testSMSService = async (phoneNumber) => {
-  const testMessage = 'This is a test message from your CRM system via BulkSMS.';
+  const testMessage = 'This is a test message from your CRM system via The SMS Works.';
   return sendSMS(phoneNumber, testMessage);
 };
 

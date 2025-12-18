@@ -46,29 +46,42 @@ NODE_OPTIONS=--max-old-space-size=2048
 
 ---
 
-## 📱 SMS Configuration (Optional)
+## 📱 SMS Configuration (Optional - The SMS Works)
 
 Only add if you want SMS functionality:
 
+**Option 1: Use Pre-generated JWT Token (Simpler)**
 ```
-BULKSMS_USERNAME=tmx2566
-```
-
-```
-BULKSMS_PASSWORD=Booker100
+SMS_WORKS_JWT_TOKEN=your_pre_generated_jwt_token
 ```
 
+**Option 2: Use API Key + Secret (Recommended - Auto-refreshes)**
 ```
-BULKSMS_FROM_NUMBER=+447786201100
-```
-
-```
-BULKSMS_POLL_ENABLED=true
+SMS_WORKS_API_KEY=your_api_key
+SMS_WORKS_API_SECRET=your_api_secret
 ```
 
+**💡 How to get your credentials:**
+1. Sign up at https://thesmsworks.co.uk/
+2. Log in to your account
+3. Navigate to the "API Key" tab
+4. You'll see:
+   - **API Key** - Copy this for `SMS_WORKS_API_KEY`
+   - **API Secret** - Copy this for `SMS_WORKS_API_SECRET`
+   - **JWT Token** (optional) - If you want to use a pre-generated token, copy this for `SMS_WORKS_JWT_TOKEN`
+
+**📌 Note:** If you use API Key + Secret, the system will automatically generate and refresh JWT tokens (recommended). If you use a pre-generated JWT token, you'll need to update it when it expires.
+
 ```
-BULKSMS_POLL_INTERVAL_MS=60000
+SMS_WORKS_SENDER_ID=447786200517
 ```
+
+**📌 Optional:** Your sender ID (numeric format, without +). If omitted, The SMS Works will use your account default.
+
+**📡 Webhook Setup for Incoming SMS:**
+1. In The SMS Works dashboard, go to "Developers" section
+2. Set your webhook URL to: `https://your-app.railway.app/api/sms/webhook`
+3. The SMS Works will send incoming messages to this endpoint automatically
 
 ---
 
