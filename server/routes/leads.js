@@ -197,10 +197,7 @@ const updateUserStatistics = async (userId, statusChange) => {
     }
     
     if (Object.keys(updateFields).length > 0) {
-      await dbManager.update('users', {
-        eq: { id: userId },
-        data: updateFields
-      });
+      await dbManager.update('users', updateFields, { id: userId });
       console.log(`📊 Updated stats for user ${userData.name}: bookings=${updateFields.bookings_made || userData.bookings_made}, showUps=${updateFields.show_ups || userData.show_ups}`);
     }
   } catch (error) {
@@ -240,13 +237,10 @@ const markAllReceivedMessagesAsRead = async (leadId) => {
     
     // Only update if there were changes
     if (hasChanges) {
-      await dbManager.update('leads', {
-        eq: { id: leadId },
-        data: { 
-          booking_history: JSON.stringify(updatedHistory),
-          updated_at: new Date().toISOString()
-        }
-      });
+      await dbManager.update('leads', { 
+        booking_history: JSON.stringify(updatedHistory),
+        updated_at: new Date().toISOString()
+      }, { id: leadId });
       
       console.log(`📖 Marked all received messages as read for lead ${leadId}`);
     }
@@ -2913,10 +2907,7 @@ router.delete('/:id([0-9a-fA-F-]{36})', auth, adminAuth, async (req, res) => {
       
       if (user && user.length > 0) {
         const newCount = Math.max((user[0].leads_assigned || 0) - 1, 0);
-        await dbManager.update('users', {
-          eq: { id: leadData.booker_id },
-          data: { leads_assigned: newCount }
-        });
+        await dbManager.update('users', { leads_assigned: newCount }, { id: leadData.booker_id });
       }
     }
 
@@ -4213,9 +4204,9 @@ router.post('/bulk-create', auth, adminAuth, async (req, res) => {
         });
         
         if (users && users.length > 0) {
-          await dbManager.update('users', req.user.id, {
+          await dbManager.update('users', {
             leads_assigned: (users[0].leads_assigned || 0) + 1
-          });
+          }, { id: req.user.id });
         }
       } catch (error) {
         importErrors.push(`Failed to import ${leadData.name}: ${error.message}`);
@@ -4451,10 +4442,7 @@ router.put('/:id/tags', auth, async (req, res) => {
 
     // Update tags using Supabase
     const tagsJson = JSON.stringify(uniqueTags);
-    const updateResult = await dbManager.update('leads', {
-      eq: { id: req.params.id },
-      data: { tags: tagsJson }
-    });
+    const updateResult = await dbManager.update('leads', { tags: tagsJson }, { id: req.params.id });
 
     if (!updateResult || updateResult.length === 0) {
       return res.status(500).json({ message: 'Failed to update tags' });
@@ -4550,7 +4538,7 @@ router.post('/:id/tags', auth, async (req, res) => {
 
     // Update tags
     const tagsJson = JSON.stringify(currentTags);
-    await dbManager.update('leads', req.params.id, { tags: tagsJson });
+    await dbManager.update('leads', { tags: tagsJson }, { id: req.params.id });
 
     // Get updated lead
     const updatedLeads = await dbManager.query('leads', {
@@ -4644,7 +4632,7 @@ router.delete('/:id/tags/:tag', auth, async (req, res) => {
 
     // Update tags
     const tagsJson = JSON.stringify(updatedTags);
-    await dbManager.update('leads', req.params.id, { tags: tagsJson });
+    await dbManager.update('leads', { tags: tagsJson }, { id: req.params.id });
 
     // Get updated lead
     const updatedLeads = await dbManager.query('leads', {
@@ -4730,7 +4718,7 @@ router.patch('/:id/reject', auth, async (req, res) => {
     // Update the lead status
     // ✅ REJECTION UPDATE: Clear booking information to allow reassignment
     // Booking history will preserve the original appointment details
-    await dbManager.update('leads', req.params.id, {
+    await dbManager.update('leads', {
       status: 'Rejected',
       reject_reason: reason,
       rejected_at: now,
@@ -4740,7 +4728,7 @@ router.patch('/:id/reject', auth, async (req, res) => {
       booking_slot: null,
       is_confirmed: null,
       booking_status: null
-    });
+    }, { id: req.params.id });
     
     const updatedLeads = await dbManager.query('leads', {
       select: '*',
