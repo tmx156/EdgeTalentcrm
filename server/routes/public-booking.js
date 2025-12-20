@@ -304,7 +304,24 @@ router.post('/book/:identifier', async (req, res) => {
         .single();
 
       if (!fetchError && currentLead) {
-        const currentHistory = currentLead.booking_history || [];
+        // Parse booking_history - it may be stored as JSON string or array
+        let currentHistory = [];
+        if (currentLead.booking_history) {
+          try {
+            if (typeof currentLead.booking_history === 'string') {
+              currentHistory = JSON.parse(currentLead.booking_history);
+            } else if (Array.isArray(currentLead.booking_history)) {
+              currentHistory = currentLead.booking_history;
+            }
+          } catch (parseError) {
+            console.warn('⚠️ Failed to parse booking_history, using empty array:', parseError.message);
+            currentHistory = [];
+          }
+        }
+        if (!Array.isArray(currentHistory)) {
+          currentHistory = [];
+        }
+        
         const historyEntry = {
           action: 'BOOKING_CREATED',
           timestamp: new Date().toISOString(),

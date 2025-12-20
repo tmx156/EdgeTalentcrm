@@ -39,7 +39,24 @@ const addBookingHistoryEntry = async (leadId, action, userId, userName, details,
       return null;
     }
 
-    const currentHistory = currentLead.booking_history || [];
+    // Parse booking_history - it may be stored as JSON string or array
+    let currentHistory = [];
+    if (currentLead.booking_history) {
+      try {
+        if (typeof currentLead.booking_history === 'string') {
+          currentHistory = JSON.parse(currentLead.booking_history);
+        } else if (Array.isArray(currentLead.booking_history)) {
+          currentHistory = currentLead.booking_history;
+        }
+      } catch (parseError) {
+        console.warn('⚠️ Failed to parse booking_history, using empty array:', parseError.message);
+        currentHistory = [];
+      }
+    }
+    if (!Array.isArray(currentHistory)) {
+      currentHistory = [];
+    }
+    
     const updatedHistory = [...currentHistory, historyEntry];
 
     // Update the lead with new booking history
@@ -1338,7 +1355,7 @@ router.post('/reply', auth, async (req, res) => {
         status: 'sent',
         delivery_status: result.status || 'sent',
         provider_message_id: result.messageId,
-        delivery_provider: result.provider || 'bulksms',
+        delivery_provider: result.provider || 'thesmsworks',
         sent_at: new Date().toISOString(),
         created_at: new Date().toISOString(),
         read_status: true // Sent messages are marked as read
