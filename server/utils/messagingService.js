@@ -84,7 +84,25 @@ async function addBookingHistoryEntry(leadId, action, performedById, performedBy
       return null;
     }
 
-    const currentHistory = currentLead.booking_history || [];
+    // Parse booking_history - it may be stored as JSON string or array
+    let currentHistory = [];
+    if (currentLead.booking_history) {
+      try {
+        if (typeof currentLead.booking_history === 'string') {
+          currentHistory = JSON.parse(currentLead.booking_history);
+        } else if (Array.isArray(currentLead.booking_history)) {
+          currentHistory = currentLead.booking_history;
+        }
+      } catch (parseError) {
+        console.warn('⚠️ Failed to parse booking_history, using empty array:', parseError.message);
+        currentHistory = [];
+      }
+    }
+    
+    if (!Array.isArray(currentHistory)) {
+      currentHistory = [];
+    }
+    
     const updatedHistory = [...currentHistory, historyEntry];
 
     // Update the lead with new booking history
