@@ -65,7 +65,7 @@ const SMS_CONFIG = {
     // Option 2: API Key + Secret to generate JWT dynamically
     apiKey: process.env.SMS_WORKS_API_KEY,
     apiSecret: process.env.SMS_WORKS_API_SECRET,
-    senderId: process.env.SMS_WORKS_SENDER_ID || process.env.BULKSMS_FROM_NUMBER || '447786200517' // Fallback to old env var
+    senderId: process.env.SMS_WORKS_SENDER_ID || 'Edge Talent'
   }
 };
 
@@ -313,7 +313,7 @@ const getTemplate = async (type) => {
 };
 
 /**
- * Send SMS message using BulkSMS REST API
+ * Send SMS message using The SMS Works API
  * @param {string} to - Recipient phone number (with country code)
  * @param {string} message - Message content
  * @returns {Promise} - SMS response
@@ -378,8 +378,19 @@ const sendSMS = async (to, message) => {
     // Remove '+' from destination for The SMS Works API (they expect format like 447123456789)
     const destination = normalized.replace(/^\+/, '');
     
-    // Sanitize sender ID (remove + if present, keep numeric)
-    const senderId = String(SMS_CONFIG.thesmsworks.senderId || '').replace(/^\+/, '').replace(/\D/g, '') || undefined;
+    // Get sender ID - can be text (e.g., "Edge Talent") or numeric
+    // If it's numeric, remove + and non-digits. If it's text, use as-is (max 11 chars for alphanumeric)
+    let senderId = SMS_CONFIG.thesmsworks.senderId || 'Edge Talent';
+    
+    // If sender is numeric, sanitize it (remove + and non-digits)
+    // If sender is text (contains letters), use it as-is (alphanumeric sender)
+    if (/^\d/.test(senderId)) {
+      // Numeric sender - sanitize
+      senderId = String(senderId).replace(/^\+/, '').replace(/\D/g, '') || undefined;
+    } else {
+      // Text/alphanumeric sender (e.g., "Edge Talent") - use as-is, limit to 11 chars
+      senderId = String(senderId).trim().substring(0, 11);
+    }
     
     // Detailed environment and configuration logging
     console.log('🔐 Configuration Details:', {
@@ -390,7 +401,7 @@ const sendSMS = async (to, message) => {
 
     // Prepare payload for The SMS Works API
     const payload = {
-      sender: senderId, // Optional - can be omitted to use account default
+      sender: senderId || 'Edge Talent', // Use "Edge Talent" as default if not set
       destination: destination,
       content: message
     };
@@ -403,44 +414,70 @@ const sendSMS = async (to, message) => {
       throw new Error('Failed to get JWT token. Please check your SMS Works credentials.');
     }
 
+    // The SMS Works API requires "JWT " prefix (tested and confirmed working)
+    // Try JWT prefix first (confirmed working), then fallbacks
+    const authHeaders = [
+      `JWT ${jwtToken}`,           // JWT prefix (CONFIRMED WORKING)
+      jwtToken,                    // Direct JWT token (fallback)
+      `Bearer ${jwtToken}`         // Bearer prefix (fallback)
+    ];
+
     // Make API call to The SMS Works with enhanced error handling
-    try {
-      const response = await axios.post('https://api.thesmsworks.co.uk/v1/message/send', payload, {
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${jwtToken}`
-        },
-        timeout: 10000 // 10-second timeout
-      });
+    let lastError = null;
+    for (const authHeader of authHeaders) {
+      try {
+        console.log(`🔐 Trying Authorization: ${authHeader.substring(0, 30)}...`);
+        
+        const response = await axios.post('https://api.thesmsworks.co.uk/v1/message/send', payload, {
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': authHeader
+          },
+          timeout: 10000 // 10-second timeout
+        });
 
-      console.log('🌐 Full API Response:', JSON.stringify(response.data, null, 2));
+        console.log('🌐 Full API Response:', JSON.stringify(response.data, null, 2));
 
-      // The SMS Works returns an object with messageId and status
-      const resp = response.data;
-      
-      console.log(`✅ SMS API Response Details:`, {
-        messageId: resp?.messageId || resp?.id,
-        status: resp?.status,
-        credits: resp?.credits
-      });
+        // The SMS Works returns an object with messageId and status
+        const resp = response.data;
+        
+        console.log(`✅ SMS API Response Details:`, {
+          messageId: resp?.messageId || resp?.id,
+          status: resp?.status,
+          credits: resp?.credits
+        });
 
-      return {
-        success: true,
-        provider: 'thesmsworks',
-        messageId: resp?.messageId || resp?.id || null,
-        status: resp?.status || 'submitted',
-        credits: resp?.credits || null,
-        fullResponse: resp // Store full response for tracking
-      };
-    } catch (apiError) {
-      console.error('❌ Detailed API Error:', {
-        message: apiError.message,
-        response: apiError.response?.data,
-        status: apiError.response?.status,
-        headers: apiError.response?.headers
-      });
-      
-      throw apiError;
+        return {
+          success: true,
+          provider: 'thesmsworks',
+          messageId: resp?.messageId || resp?.id || null,
+          status: resp?.status || 'submitted',
+          credits: resp?.credits || null,
+          fullResponse: resp // Store full response for tracking
+        };
+      } catch (apiError) {
+        // If it's a 401, try next auth format
+        if (apiError.response?.status === 401 && authHeader !== authHeaders[authHeaders.length - 1]) {
+          console.log(`⚠️  Auth format failed, trying next...`);
+          lastError = apiError;
+          continue;
+        }
+        
+        // If it's not 401, or it's the last format, throw the error
+        console.error('❌ Detailed API Error:', {
+          message: apiError.message,
+          response: apiError.response?.data,
+          status: apiError.response?.status,
+          headers: apiError.response?.headers
+        });
+        
+        throw apiError;
+      }
+    }
+    
+    // If we get here, all auth formats failed
+    if (lastError) {
+      throw lastError;
     }
   } catch (error) {
     console.error(`❌ Comprehensive SMS Sending Error:`, {

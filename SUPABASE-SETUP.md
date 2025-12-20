@@ -57,13 +57,10 @@ JWT_SECRET=your_jwt_secret_key
 EMAIL_USER=your_email@domain.com
 EMAIL_PASS=your_email_password
 
-# SMS Configuration (optional - The SMS Works)
-# Option 1: Pre-generated JWT token
-SMS_WORKS_JWT_TOKEN=your_pre_generated_jwt_token
-# Option 2: API Key + Secret (recommended - auto-refreshes JWT)
+# SMS Configuration (The SMS Works)
 SMS_WORKS_API_KEY=your_api_key
 SMS_WORKS_API_SECRET=your_api_secret
-SMS_WORKS_SENDER_ID=447786200517  # Optional: Your sender ID (numeric, without +)
+SMS_WORKS_SENDER_ID=Edge Talent
 ```
 
 ## Step 5: Verify the Schema

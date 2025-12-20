@@ -47,11 +47,12 @@ const Templates = () => {
 
     const categories = {
       'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation'],
+      'Bookers Templates': ['no_answer', 'no_photo', 'invitation_email'], // Templates created by booker role users
       'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance'],
       'Receipts': ['receipt', 'sale_receipt', 'payment_receipt'],
       'Lead Details Templates': ['custom', 'booker']
     };
-    const grouped = { 'Diary Templates': [], 'Sale Templates': [], 'Receipts': [], 'Lead Details Templates': [] };
+    const grouped = { 'Diary Templates': [], 'Bookers Templates': [], 'Sale Templates': [], 'Receipts': [], 'Lead Details Templates': [] };
     templates.forEach(t => {
       let found = false;
       for (const [cat, types] of Object.entries(categories)) {
@@ -64,9 +65,10 @@ const Templates = () => {
       if (!found) grouped['Diary Templates'].push(t); // fallback to Diary Templates
     });
 
-    // Remove Diary Templates ONLY for bookers (admin should see all)
+    // Remove Diary Templates and Bookers Templates for booker users (admin should see all)
     if (isBooker) {
       delete grouped['Diary Templates'];
+      delete grouped['Bookers Templates']; // Bookers use their own BookersTemplates.js page
     }
 
     return grouped;
@@ -456,6 +458,7 @@ const Templates = () => {
             const filteredTemplates = categoryFilter === 'All' ? availableTemplates : availableTemplates.filter(t => {
               const cat = Object.entries({
                 'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation'],
+                'Bookers Templates': ['no_answer', 'no_photo', 'invitation_email'],
                 'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance'],
                 'Lead Details Templates': ['custom', 'booker']
               }).find(([cat, types]) => types.includes(t.type));
@@ -486,6 +489,12 @@ const Templates = () => {
                           <div>
                             <h3 className="text-lg font-semibold text-gray-900">{template.name}</h3>
                             <p className="text-sm text-gray-500 capitalize">{template.type.replace('_', ' ')}</p>
+                            {/* Show booker name for admin viewing Bookers Templates */}
+                            {template.creator?.name && cat === 'Bookers Templates' && (
+                              <p className="text-xs text-blue-600 mt-1">
+                                <span className="font-medium">By:</span> {template.creator.name}
+                              </p>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             {template.sendEmail && <FiMail className="text-blue-500" />}

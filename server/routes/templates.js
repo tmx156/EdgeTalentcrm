@@ -98,9 +98,15 @@ router.get('/', auth, async (req, res) => {
   try {
     const { type, category, isActive, bookersOnly } = req.query;
 
+    // For admin, include creator info (user who created the template)
+    // This allows admin to see which booker created each template
+    const selectFields = req.user.role === 'admin' 
+      ? '*, creator:users!user_id(id, name, role)'
+      : '*';
+
     let query = supabase
       .from('templates')
-      .select('*');
+      .select(selectFields);
 
     // Define diary template types that bookers should NOT see in Templates page
     const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];

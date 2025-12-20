@@ -46,37 +46,31 @@ NODE_OPTIONS=--max-old-space-size=2048
 
 ---
 
-## 📱 SMS Configuration (Optional - The SMS Works)
+## 📱 SMS Configuration (The SMS Works)
 
-Only add if you want SMS functionality:
+**Required for SMS functionality:**
 
-**Option 1: Use Pre-generated JWT Token (Simpler)**
 ```
-SMS_WORKS_JWT_TOKEN=your_pre_generated_jwt_token
+SMS_WORKS_API_KEY=YOUR_API_KEY_HERE
 ```
 
-**Option 2: Use API Key + Secret (Recommended - Auto-refreshes)**
 ```
-SMS_WORKS_API_KEY=your_api_key
-SMS_WORKS_API_SECRET=your_api_secret
+SMS_WORKS_API_SECRET=YOUR_API_SECRET_HERE
+```
+
+```
+SMS_WORKS_SENDER_ID=Edge Talent
 ```
 
 **💡 How to get your credentials:**
 1. Sign up at https://thesmsworks.co.uk/
 2. Log in to your account
-3. Navigate to the "API Key" tab
-4. You'll see:
-   - **API Key** - Copy this for `SMS_WORKS_API_KEY`
-   - **API Secret** - Copy this for `SMS_WORKS_API_SECRET`
-   - **JWT Token** (optional) - If you want to use a pre-generated token, copy this for `SMS_WORKS_JWT_TOKEN`
+3. Navigate to the "API" or "Developers" section
+4. Copy your:
+   - **API Key** (UUID format) → `SMS_WORKS_API_KEY`
+   - **API Secret** (64-character hex string) → `SMS_WORKS_API_SECRET`
 
-**📌 Note:** If you use API Key + Secret, the system will automatically generate and refresh JWT tokens (recommended). If you use a pre-generated JWT token, you'll need to update it when it expires.
-
-```
-SMS_WORKS_SENDER_ID=447786200517
-```
-
-**📌 Optional:** Your sender ID (numeric format, without +). If omitted, The SMS Works will use your account default.
+**📌 Sender ID:** Can be alphanumeric (e.g., "Edge Talent") up to 11 characters, or a numeric phone number.
 
 **📡 Webhook Setup for Incoming SMS:**
 1. In The SMS Works dashboard, go to "Developers" section

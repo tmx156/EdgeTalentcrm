@@ -1463,7 +1463,7 @@ router.post('/', auth, async (req, res) => {
                 },
                 emailAccount: result?.emailAccount,
                 emailAccountName: 'Edge Talent',
-                smsProvider: result?.smsProvider || 'BulkSMS',
+                smsProvider: result?.smsProvider || 'The SMS Works',
                 message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
                 timestamp: new Date()
               });
@@ -1632,7 +1632,7 @@ router.post('/', auth, async (req, res) => {
                   },
                   emailAccount: result?.emailAccount,
                   emailAccountName: 'Edge Talent',
-                  smsProvider: result?.smsProvider || 'BulkSMS',
+                  smsProvider: result?.smsProvider || 'The SMS Works',
                   message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
                   timestamp: new Date()
                 });
@@ -1892,7 +1892,7 @@ router.post('/', auth, async (req, res) => {
               },
               emailAccount: result?.emailAccount,
               emailAccountName: 'Edge Talent',
-              smsProvider: result?.smsProvider || 'BulkSMS',
+              smsProvider: result?.smsProvider || 'The SMS Works',
               message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
               timestamp: new Date()
             });
@@ -2367,7 +2367,7 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
                 },
                 emailAccount: result?.emailAccount,
                 emailAccountName: 'Edge Talent',
-                smsProvider: result?.smsProvider || 'BulkSMS',
+                smsProvider: result?.smsProvider || 'The SMS Works',
                 message: `Booking confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
                 timestamp: new Date()
               });
@@ -2464,7 +2464,7 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
                 },
                 emailAccount: result?.emailAccount,
                 emailAccountName: 'Edge Talent',
-                smsProvider: result?.smsProvider || 'BulkSMS',
+                smsProvider: result?.smsProvider || 'The SMS Works',
                 message: `Reschedule confirmation sent successfully via ${result?.emailSent ? 'Email' : ''}${result?.emailSent && result?.smsSent ? ' and ' : ''}${result?.smsSent ? 'SMS' : ''}`,
                 timestamp: new Date()
               });
@@ -4843,7 +4843,7 @@ router.post('/:id/send-sms', auth, async (req, res) => {
           type: type,
           phone: lead.phone,
           status: (smsResult.status || 'submitted'),
-          provider: 'bulksms',
+          provider: 'thesmsworks',
           messageId: smsResult.messageId || null,
           timestamp: new Date()
         },
@@ -4943,7 +4943,7 @@ router.post('/:id/send-booking-confirmation', auth, async (req, res) => {
       res.json({ 
         success: true, 
         message: 'Booking confirmation SMS sent successfully',
-        provider: smsResult.provider || 'bulksms',
+        provider: smsResult.provider || 'thesmsworks',
         messageId: smsResult.messageId || null,
         status: smsResult.status || 'submitted'
       });
@@ -5374,6 +5374,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       'No answer',
       'No Answer x2',
       'No Answer x3',
+      'No photo',
       'Left Message',
       'Not interested',
       'Call back',
@@ -5431,7 +5432,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
 
     // Determine workflow actions based on status
     // Only send email for first "No answer" - not for x2/x3
-    const emailTriggers = ['Left Message', 'No answer']; // Note: 'No Answer x2' and 'No Answer x3' are NOT in emailTriggers
+    const emailTriggers = ['Left Message', 'No answer', 'No photo']; // Note: 'No Answer x2' and 'No Answer x3' are NOT in emailTriggers
     const closeTriggers = ['Not interested', 'Not Qualified'];
     const callbackTriggers = ['Call back', 'Sales/converted - purchased'];
 
@@ -5481,6 +5482,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     // This prevents blocking the user
     // Wrap in setImmediate to ensure it runs after response is sent
     setImmediate(async () => {
+      try {
       // Check booking history BEFORE adding new entry (to determine if email should be sent)
       let shouldSendEmail = true;
       if (callStatus === 'No answer' && emailTriggers.includes(callStatus) && lead.email) {
@@ -5530,14 +5532,25 @@ router.patch('/:id/call-status', auth, async (req, res) => {
         console.error('Error adding booking history:', historyError);
       }
 
-      // Email workflow: Send automatic email for "Left Message" or "No answer" (only first time for "No answer")
+      // Email workflow: Send automatic email for "Left Message", "No answer", or "No photo"
       if (emailTriggers.includes(callStatus) && lead.email && shouldSendEmail) {
         try {
-        // Find the user's specific "no_answer" template (booker-specific)
+        // Determine template type based on call status
+        // Each status has its own template type
+        let templateType = 'no_answer'; // default
+        if (callStatus === 'No photo') {
+          templateType = 'no_photo';
+        } else if (callStatus === 'Left Message') {
+          templateType = 'no_answer'; // Left Message uses no_answer template (same workflow)
+        } else if (callStatus === 'No answer') {
+          templateType = 'no_answer';
+        }
+        
+        // Find the user's specific template (booker-specific)
         const { data: templates, error: templateError } = await supabase
           .from('templates')
           .select('*')
-          .eq('type', 'no_answer')
+          .eq('type', templateType)
           .eq('is_active', true)
           .eq('user_id', req.user.id)
           .limit(1);
@@ -5545,12 +5558,12 @@ router.patch('/:id/call-status', auth, async (req, res) => {
         let template = null;
         if (!templateError && templates && templates.length > 0) {
           template = templates[0];
-          console.log(`📧 Found "no_answer" template for user ${req.user.name}:`, template.name);
+          console.log(`📧 Found "${templateType}" template for user ${req.user.name}:`, template.name);
         } else {
-          console.warn(`⚠️ No "no_answer" template found for user ${req.user.name}. Email not sent.`);
+          console.warn(`⚠️ No "${templateType}" template found for user ${req.user.name}. Email not sent.`);
         }
 
-        if (template && template.email_body) {
+        if (template) {
           // Process template with lead data
           const processedTemplate = MessagingService.processTemplate(
             template,
@@ -5560,41 +5573,76 @@ router.patch('/:id/call-status', auth, async (req, res) => {
             null
           );
 
-          // Send email
-          const messageData = {
-            id: uuidv4(),
-            lead_id: lead.id,
-            template_id: template.id,
-            type: 'email',
-            subject: processedTemplate.subject || 'We\'ve been trying to contact you',
-            email_body: processedTemplate.email_body,
-            recipient_email: lead.email,
-            recipient_phone: lead.phone,
-            sent_by: req.user.id,
-            status: 'pending',
-            created_at: new Date().toISOString()
-          };
+          // Send EMAIL if enabled in template
+          if (template.send_email && template.email_body && lead.email) {
+            const messageData = {
+              id: uuidv4(),
+              lead_id: lead.id,
+              template_id: template.id,
+              type: 'email',
+              subject: processedTemplate.subject || 'We\'ve been trying to contact you',
+              email_body: processedTemplate.email_body,
+              recipient_email: lead.email,
+              recipient_phone: lead.phone,
+              sent_by: req.user.id,
+              status: 'pending',
+              created_at: new Date().toISOString()
+            };
 
-          await dbManager.insert('messages', messageData);
+            await dbManager.insert('messages', messageData);
 
-          // Send email using MessagingService
-          const emailResult = await MessagingService.sendEmail(
-            {
-              ...messageData,
-              recipient_name: lead.name,
-              sent_by_name: req.user.name
-            },
-            template.email_account || 'primary'
-          );
+            // Send email using MessagingService
+            const emailResult = await MessagingService.sendEmail(
+              {
+                ...messageData,
+                recipient_name: lead.name,
+                sent_by_name: req.user.name
+              },
+              template.email_account || 'primary'
+            );
 
-          workflowResult.emailSent = emailResult.success;
-          workflowResult.emailMessage = emailResult.success 
-            ? 'Automatic email sent to client' 
-            : 'Failed to send email: ' + (emailResult.error || 'Unknown error');
+            workflowResult.emailSent = emailResult.success;
+            workflowResult.emailMessage = emailResult.success 
+              ? 'Automatic email sent to client' 
+              : 'Failed to send email: ' + (emailResult.error || 'Unknown error');
 
-          console.log(`📧 Automatic email sent for call status "${callStatus}" to ${lead.email}`);
+            console.log(`📧 Automatic email sent for call status "${callStatus}" to ${lead.email}`);
+          }
+
+          // Send SMS if enabled in template
+          if (template.send_sms && template.sms_body && lead.phone) {
+            try {
+              const smsBody = processedTemplate.sms_body || template.sms_body;
+              const smsResult = await sendSMS(lead.phone, smsBody);
+              
+              workflowResult.smsSent = smsResult.success;
+              workflowResult.smsMessage = smsResult.success 
+                ? 'Automatic SMS sent to client' 
+                : 'Failed to send SMS: ' + (smsResult.error || 'Unknown error');
+
+              console.log(`📱 Automatic SMS sent for call status "${callStatus}" to ${lead.phone}`);
+
+              // Log SMS in messages table
+              const smsMessageData = {
+                id: uuidv4(),
+                lead_id: lead.id,
+                template_id: template.id,
+                type: 'sms',
+                sms_body: smsBody,
+                recipient_phone: lead.phone,
+                sent_by: req.user.id,
+                status: smsResult.success ? 'sent' : 'failed',
+                created_at: new Date().toISOString()
+              };
+              await dbManager.insert('messages', smsMessageData);
+            } catch (smsError) {
+              console.error('Error sending automatic SMS:', smsError);
+              workflowResult.smsSent = false;
+              workflowResult.smsMessage = 'Failed to send SMS: ' + smsError.message;
+            }
+          }
         } else {
-          console.warn(`⚠️ No email template found for call status "${callStatus}"`);
+          console.warn(`⚠️ No template found for call status "${callStatus}"`);
         }
         } catch (emailError) {
           console.error('Error sending automatic email:', emailError);
@@ -5690,6 +5738,11 @@ router.patch('/:id/call-status', auth, async (req, res) => {
         } catch (callbackError) {
           console.error('Error creating callback reminder:', callbackError);
         }
+      }
+      } catch (workflowError) {
+        // Global catch for any unhandled errors in the async workflow
+        // This prevents server crashes from unhandled promise rejections
+        console.error('❌ Error in async call-status workflow:', workflowError);
       }
     });
 

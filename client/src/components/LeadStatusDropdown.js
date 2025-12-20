@@ -13,6 +13,7 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
   const [callbackNote, setCallbackNote] = useState('');
   const [pendingStatus, setPendingStatus] = useState(null);
   const [showNoAnswerModal, setShowNoAnswerModal] = useState(false);
+  const [showNoPhotoModal, setShowNoPhotoModal] = useState(false);
   const [hasNoAnswerBefore, setHasNoAnswerBefore] = useState(false);
   const [noAnswerCount, setNoAnswerCount] = useState(0);
 
@@ -47,6 +48,7 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
   // Base status options with workflow triggers
   const baseStatusOptions = [
     { value: 'No answer', label: 'No answer', trigger: 'email' },
+    { value: 'No photo', label: 'No photo', trigger: 'email' },
     { value: 'Left Message', label: 'Left Message', trigger: 'email' },
     { value: 'Not interested', label: 'Not interested', trigger: 'close' },
     { value: 'Call back', label: 'Call back', trigger: 'callback' },
@@ -113,6 +115,13 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
     if (status === 'No answer') {
       setPendingStatus(status);
       setShowNoAnswerModal(true);
+      return;
+    }
+
+    // If status is "No photo", show confirmation modal before sending email
+    if (status === 'No photo') {
+      setPendingStatus(status);
+      setShowNoPhotoModal(true);
       return;
     }
 
@@ -208,6 +217,7 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
       case 'No Answer x2':
       case 'No Answer x3':
       case 'Left Message':
+      case 'No photo':
         return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'Call back':
       case 'Sales/converted - purchased':
@@ -377,6 +387,58 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
               <button
                 onClick={() => {
                   setShowNoAnswerModal(false);
+                  setPendingStatus(null);
+                }}
+                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* No Photo Confirmation Modal */}
+      {showNoPhotoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Send No Photo Email?</h3>
+              <button
+                onClick={() => {
+                  setShowNoPhotoModal(false);
+                  setPendingStatus(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <FiX className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-6">
+              Do you want to send your "No Photo" template email to <strong>{lead?.name}</strong>?
+            </p>
+
+            {error && (
+              <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-lg">
+                <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+
+            <div className="flex space-x-3">
+              <button
+                onClick={async () => {
+                  await updateStatus(pendingStatus);
+                  setShowNoPhotoModal(false);
+                }}
+                disabled={loading}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Yes, Send Email
+              </button>
+              <button
+                onClick={() => {
+                  setShowNoPhotoModal(false);
                   setPendingStatus(null);
                 }}
                 className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"

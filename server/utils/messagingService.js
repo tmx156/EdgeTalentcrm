@@ -548,7 +548,7 @@ class MessagingService {
         emailAccount: effectiveSendEmail ? emailAccount : null,
         emailSent: !!emailResult,
         smsSent: !!smsResult,
-        smsProvider: 'BulkSMS'
+        smsProvider: 'The SMS Works'
       };
     } catch (error) {
       console.error('Error sending booking confirmation:', error);
@@ -932,7 +932,7 @@ class MessagingService {
         throw new Error(errorMsg);
       }
 
-      console.log('📤 Sending SMS via BulkSMS...');
+      console.log('📤 Sending SMS via The SMS Works...');
 
       const startTime = Date.now();
       const smsResult = await sendActualSMS(message.recipient_phone, message.sms_body);
@@ -944,7 +944,7 @@ class MessagingService {
         console.log('\n' + '✅'.repeat(40));
         console.log('✅ SMS SENT SUCCESSFULLY');
         console.log('✅'.repeat(40));
-        console.log(`✅ Provider:   ${smsResult.provider || 'bulksms'}`);
+        console.log(`✅ Provider:   ${smsResult.provider || 'thesmsworks'}`);
         console.log(`✅ Message ID: ${smsResult.messageId || 'N/A'}`);
         console.log(`✅ Status:     ${smsResult.status || 'submitted'}`);
         console.log(`✅ Time Taken: ${timeTaken}ms`);
@@ -990,7 +990,7 @@ class MessagingService {
             channel: 'sms',
             status: status,
             error: errorMessage,
-            provider: smsResult ? smsResult.provider : 'bulksms',
+            provider: smsResult ? smsResult.provider : 'thesmsworks',
             messageId: smsResult ? smsResult.messageId : null
           },
           message

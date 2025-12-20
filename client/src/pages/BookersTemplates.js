@@ -30,22 +30,29 @@ const BookersTemplates = () => {
   useEffect(() => {
     fetchTemplates();
     fetchVariables();
-  }, []);
+  }, [user]);
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/templates?bookersOnly=true', {
+      // Admin sees ALL bookers' templates, bookers see only their own
+      const endpoint = user?.role === 'admin' 
+        ? '/api/templates'  // Admin gets all templates
+        : '/api/templates?bookersOnly=true';  // Bookers get only their own
+      
+      const response = await fetch(endpoint, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
       if (response.ok) {
         const data = await response.json();
-        // Filter for bookers template types - only no_answer and invitation_email
-        setTemplates(data.filter(t => [
-          'no_answer',
-          'invitation_email'
-        ].includes(t.type)));
+        // Filter for bookers template types
+        // Admin sees: no_answer, no_photo, invitation_email, custom, booker (Lead Details Templates)
+        // Bookers see: no_answer, no_photo, invitation_email only
+        const allowedTypes = user?.role === 'admin'
+          ? ['no_answer', 'no_photo', 'invitation_email', 'custom', 'booker']
+          : ['no_answer', 'no_photo', 'invitation_email'];
+        setTemplates(data.filter(t => allowedTypes.includes(t.type)));
       }
     } catch (error) {
       console.error('Error fetching templates:', error);
@@ -80,6 +87,7 @@ const BookersTemplates = () => {
       // Always use a valid type
       const validType = formData.type && [
         'no_answer',
+        'no_photo',
         'invitation_email'
       ].includes(formData.type) ? formData.type : 'no_answer';
 
@@ -208,10 +216,15 @@ const BookersTemplates = () => {
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Booker Templates</h1>
-              <p className="text-gray-600 mt-2">Create and manage your personal templates</p>
+              <p className="text-gray-600 mt-2">
+                {user?.role === 'admin' 
+                  ? 'View and manage all bookers\' templates' 
+                  : 'Create and manage your personal templates'}
+              </p>
               <p className="text-sm text-gray-500 mt-1">
-                <span className="font-medium">No Answer:</span> Triggered when changing lead status to "No answer" |
-                <span className="font-medium ml-2">Invitation Email:</span> Quick button in Lead Details messages
+                <span className="font-medium">No Answer:</span> Triggered when status = "No answer" |
+                <span className="font-medium ml-2">No Photo:</span> Triggered when status = "No photo" |
+                <span className="font-medium ml-2">Invitation Email:</span> Quick button in messages
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -254,6 +267,12 @@ const BookersTemplates = () => {
                   {template.sendSMS && <FiPhone className="text-green-500" title="SMS" />}
                   <span className="text-lg font-semibold">{template.name}</span>
                 </div>
+                {/* Show booker name for admin */}
+                {user?.role === 'admin' && template.creator?.name && (
+                  <div className="text-xs text-blue-600 -mt-2">
+                    <span className="font-medium">By:</span> {template.creator.name}
+                  </div>
+                )}
                 <div className="text-gray-700 text-sm line-clamp-3">{template.smsBody || template.emailBody}</div>
                 <div className="flex gap-2 mt-auto">
                   <button onClick={() => handlePreview(template)} className="p-2 hover:bg-gray-100 rounded" title="Preview"><FiEye /></button>
@@ -311,11 +330,14 @@ const BookersTemplates = () => {
                         required
                       >
                         <option value="no_answer">📞 No Answer (Auto-triggered when status = No answer)</option>
+                        <option value="no_photo">📷 No Photo (Auto-triggered when status = No photo)</option>
                         <option value="invitation_email">📧 Invitation Email (Quick button in messages)</option>
                       </select>
                       <p className="text-xs text-gray-500 mt-1">
                         {formData.type === 'no_answer'
                           ? 'This template triggers with confirmation when you change a lead status to "No answer"'
+                          : formData.type === 'no_photo'
+                          ? 'This template triggers with confirmation when you change a lead status to "No photo"'
                           : 'This template appears as a quick button in the Lead Details message section'}
                       </p>
                     </div>
