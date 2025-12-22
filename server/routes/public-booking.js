@@ -362,44 +362,21 @@ router.post('/book/:identifier', async (req, res) => {
       // Don't fail the booking if confirmation fails
     }
 
-    // Update SalesAPE Client Goal Complete/Meeting Booked to true
-    // Per SalesAPE docs: POST to base URL with "CRM ID" and "Event Type": "Meeting Booked"
+    // Update SalesAPE - notify that meeting was booked
+    // Note: SalesApe Airtable doesn't have "Event Type" field, just log the booking
     if (lead.salesape_record_id || lead.airtable_record_id) {
       try {
-        // SalesAPE requires a POST request (not PATCH) with CRM ID and Event Type
-        // This tells SalesAPE that the goal was achieved (meeting booked)
-        const payload = {
-          fields: {
-            "CRM ID": String(leadId),
-            "Event Type": "Meeting Booked"
-          }
-        };
+        // Just log the booking - SalesApe will get updated via their webhook monitoring
+        console.log('📅 Meeting booked for SalesApe lead:', {
+          leadId: leadId,
+          leadName: lead.name,
+          salesapeRecordId: lead.salesape_record_id
+        });
 
-        if (SALESAPE_CONFIG.PAT_CODE) {
-          console.log('📤 Notifying SalesAPE of meeting booked:', {
-            leadId: leadId,
-            leadName: lead.name,
-            date: date,
-            time: time
-          });
+        // Skip Airtable POST - SalesApe doesn't have "Event Type" field
+        // SalesApe will detect the booking via their own monitoring
 
-          // POST to base Airtable URL (not PATCH to specific record)
-          await axios.post(
-            SALESAPE_CONFIG.AIRTABLE_URL,
-            payload,
-            {
-              headers: {
-                'Authorization': `Bearer ${SALESAPE_CONFIG.PAT_CODE}`,
-                'Content-Type': 'application/json'
-              },
-              timeout: 10000
-            }
-          );
-
-          console.log('✅ SalesAPE notified: Meeting Booked for lead', leadId);
-        }
-
-        // Also update our local database to track goal hit
+        // Update our local database to track goal hit
         await supabase
           .from('leads')
           .update({

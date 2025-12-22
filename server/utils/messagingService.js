@@ -270,16 +270,21 @@ class MessagingService {
         }
       }
 
-      // Get user using Supabase
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      // Get user using Supabase (optional - may be null for public bookings)
+      let user = null;
+      if (userId) {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .single();
 
-      if (userError || !user) {
-        console.error('Error fetching user:', userError);
-        throw new Error('User not found');
+        if (userError || !userData) {
+          console.error('Error fetching user:', userError);
+          // Don't throw - user is optional for public bookings
+        } else {
+          user = userData;
+        }
       }
 
       // Get booking confirmation template using Supabase

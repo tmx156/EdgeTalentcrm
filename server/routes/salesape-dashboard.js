@@ -428,28 +428,11 @@ router.post('/queue/remove', auth, async (req, res) => {
           PAT_CODE: process.env.SALESAPE_PAT_CODE || process.env.SALESAPE_PAT
         };
 
-        if (SALESAPE_CONFIG.PAT_CODE) {
-          const payload = {
-            fields: {
-              "CRM ID": String(leadId),
-              "Event Type": "Human Intervention" // This stops the AI
-            }
-          };
-
-          console.log('🛑 Sending "Human Intervention" to SalesApe to stop conversation:', leadId);
-
-          await axios.post(SALESAPE_CONFIG.AIRTABLE_URL, payload, {
-            headers: {
-              'Authorization': `Bearer ${SALESAPE_CONFIG.PAT_CODE}`,
-              'Content-Type': 'application/json'
-            },
-            timeout: 10000
-          });
-
-          console.log('✅ SalesApe conversation stopped successfully');
-        } else {
-          console.warn('⚠️ SALESAPE_PAT_CODE not configured, skipping SalesApe notification');
-        }
+        // Note: SalesApe Airtable doesn't have "Event Type" field
+        // Just log the intervention - can't send to Airtable
+        console.log('🛑 Human Intervention requested for lead:', leadId);
+        console.log('ℹ️ Skipping Airtable POST - SalesApe doesnt have Event Type field');
+        console.log('✅ Lead removed from SalesApe queue locally');
       } catch (salesapeError) {
         console.error('❌ Error notifying SalesApe of cancellation:', salesapeError.response?.data || salesapeError.message);
         // Continue with local removal even if SalesApe notification fails

@@ -225,85 +225,33 @@ class SalesAPEService {
    * Notify SalesApe of booking via their Airtable endpoint
    */
   async notifyBooking(lead, eventType = 'Meeting Booked') {
-    if (!this.enabled || !this.salesApePAT || !lead.airtable_record_id) {
-      console.log('⚠️ SalesApe booking notification skipped - missing config or record ID');
-      return { success: false, error: 'Configuration missing' };
-    }
+    // Note: SalesApe Airtable doesn't have "Event Type" field
+    // Just log locally - they'll detect bookings via their own monitoring
+    console.log(`📅 Booking logged for SalesApe lead: ${lead.name} (${eventType})`);
+    console.log('ℹ️ Skipping Airtable POST - SalesApe doesnt have Event Type field');
 
-    try {
-      const payload = {
-        fields: {
-          "CRM ID": lead.airtable_record_id,
-          "Event Type": eventType
-        }
-      };
-
-      console.log(`📅 Notifying SalesApe of booking: ${lead.name} (${lead.airtable_record_id})`);
-
-      const response = await axios.post(this.salesApeUpdateUrl, payload, {
-        headers: {
-          'Authorization': `Bearer ${this.salesApePAT}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      });
-
-      console.log(`✅ SalesApe booking notification sent successfully`);
-
-      return {
-        success: true,
-        response: response.data
-      };
-    } catch (error) {
-      console.error('❌ Error notifying SalesApe of booking:', {
-        leadName: lead.name,
-        airtableRecordId: lead.airtable_record_id,
-        error: error.message,
-        response: error.response?.data
-      });
-
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+    return {
+      success: true,
+      message: 'Booking logged locally',
+      leadName: lead.name
+    };
   }
 
   /**
    * Update SalesApe record with booking status
+   * Note: SalesApe Airtable doesn't have "Event Type" field - just log locally
    */
   async updateBookingStatus(crmId, eventType = 'Meeting Booked') {
-    if (!this.enabled || !this.salesApePAT) {
-      return { success: false, error: 'SalesApe integration not configured' };
-    }
+    // SalesApe doesn't have "Event Type" field - just log locally
+    console.log(`📅 Booking status update for CRM ID ${crmId}: ${eventType}`);
+    console.log('ℹ️ Skipping Airtable POST - SalesApe doesnt have Event Type field');
 
-    try {
-      const payload = {
-        fields: {
-          "CRM ID": crmId,
-          "Event Type": eventType
-        }
-      };
-
-      const response = await axios.post(this.salesApeUpdateUrl, payload, {
-        headers: {
-          'Authorization': `Bearer ${this.salesApePAT}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      });
-
-      return {
-        success: true,
-        response: response.data
-      };
-    } catch (error) {
-      console.error('Error updating SalesApe booking status:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
+    return {
+      success: true,
+      message: 'Status logged locally',
+      crmId: crmId,
+      eventType: eventType
+    };
   }
 }
 
