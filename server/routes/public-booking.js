@@ -29,6 +29,33 @@ const SALESAPE_CONFIG = {
   PAT_CODE: process.env.SALESAPE_PAT_CODE || process.env.SALESAPE_PAT
 };
 
+// Default booker for SalesApe/public bookings (Sally)
+let DEFAULT_SALESAPE_BOOKER_ID = null;
+
+// Look up Sally's user ID on startup
+async function initDefaultBooker() {
+  try {
+    const { data: sally, error } = await supabase
+      .from('users')
+      .select('id, name')
+      .ilike('name', '%sally%')
+      .limit(1)
+      .single();
+
+    if (sally && !error) {
+      DEFAULT_SALESAPE_BOOKER_ID = sally.id;
+      console.log(`✅ SalesApe bookings will be assigned to: ${sally.name} (${sally.id})`);
+    } else {
+      console.warn('⚠️ Could not find Sally user for SalesApe bookings');
+    }
+  } catch (err) {
+    console.error('Error looking up default booker:', err.message);
+  }
+}
+
+// Initialize on module load
+initDefaultBooker();
+
 /**
  * Helper function to find a lead by ID or booking code
  * @param {string} identifier - UUID or booking code
@@ -266,8 +293,15 @@ router.post('/book/:identifier', async (req, res) => {
       booked_at: new Date().toISOString(),
       ever_booked: true,
       is_confirmed: true,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      // Assign to Sally for SalesApe/public bookings
+      booker_id: DEFAULT_SALESAPE_BOOKER_ID,
+      booker_name: 'Sally (SalesApe)'
     };
+
+    if (DEFAULT_SALESAPE_BOOKER_ID) {
+      console.log('📋 Booking assigned to Sally (SalesApe default booker)');
+    }
 
     // If client updated their name or email, save it
     if (name && name !== lead.name) {
@@ -353,7 +387,7 @@ router.post('/book/:identifier', async (req, res) => {
       const bookingDate = new Date(bookingDateTime);
       await MessagingService.sendBookingConfirmation(
         leadId,
-        null, // No user ID for public bookings
+        DEFAULT_SALESAPE_BOOKER_ID, // Use Sally for SalesApe bookings
         bookingDate.toISOString(),
         { sendEmail: true, sendSms: true }
       );
