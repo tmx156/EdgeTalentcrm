@@ -295,8 +295,7 @@ router.post('/book/:identifier', async (req, res) => {
       is_confirmed: true,
       updated_at: new Date().toISOString(),
       // Assign to Sally for SalesApe/public bookings
-      booker_id: DEFAULT_SALESAPE_BOOKER_ID,
-      booker_name: 'Sally (SalesApe)'
+      booker_id: DEFAULT_SALESAPE_BOOKER_ID
     };
 
     if (DEFAULT_SALESAPE_BOOKER_ID) {
