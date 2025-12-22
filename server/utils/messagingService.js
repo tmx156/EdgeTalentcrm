@@ -173,13 +173,9 @@ class MessagingService {
       };
     }
 
+    // User can be null for public bookings - continue with lead info
     if (!user) {
-      console.error('❌ User is null or undefined');
-      return {
-        subject: 'Booking Notification',
-        email_body: 'Your booking has been confirmed.',
-        sms_body: 'Your booking has been confirmed.'
-      };
+      console.log('ℹ️ User is null (public booking) - using lead info only');
     }
 
     // Format booking date in UK timezone
@@ -208,10 +204,10 @@ class MessagingService {
       '{leadName}': lead.name || 'Valued Customer',
       '{leadEmail}': lead.email || '',
       '{leadPhone}': lead.phone || '',
-      '{userName}': user.name || 'System',
-      '{userEmail}': user.email || '',
-      '{bookerName}': bookerInfo ? bookerInfo.name : 'N/A',
-      '{bookerEmail}': bookerInfo ? bookerInfo.email : 'N/A',
+      '{userName}': user?.name || 'Edge Talent',
+      '{userEmail}': user?.email || '',
+      '{bookerName}': bookerInfo?.name || lead.booker_name || 'Edge Talent',
+      '{bookerEmail}': bookerInfo?.email || '',
       '{bookingDate}': bookingDateStr,
       '{bookingTime}': bookingTimeStr,
       '{companyName}': 'Edge Talent',
