@@ -80,18 +80,37 @@ async function sendLeadToSalesApe(lead) {
     const bookingLink = `https://${bookingDomain}/book/${bookingIdentifier}`;
 
     // Format lead data for SalesApe's requirements
-    const payload = {
-      fields: {
-        "First Name": lead.name?.split(' ')[0] || '',
-        "Last Name": lead.name?.split(' ').slice(1).join(' ') || '',
-        "Email": lead.email || '',
-        "Phone Number": lead.phone || '',
-        "CRM ID": String(lead.id), // Must be a string
-        "Context": lead.notes || `Lead from ${lead.source || 'CRM'}`,
-        "Base Details": [SALESAPE_CONFIG.BASE_DETAILS_ID],
-        "Calendar_Link": bookingLink // Clean, short booking URL for the AI to share
-      }
+    // Airtable doesn't like empty strings - use null/undefined or omit the field
+    const firstName = lead.name?.split(' ')[0]?.trim() || '';
+    const lastName = lead.name?.split(' ').slice(1).join(' ').trim() || null;
+    const email = lead.email?.trim() || null;
+    const phoneNumber = lead.phone?.trim() || '';
+    const context = lead.notes?.trim() || `Lead from ${lead.source || 'CRM'}`;
+    
+    const fields = {
+      "First Name": firstName, // Required field - keep as empty string if needed
+      "Phone Number": phoneNumber, // Required field - keep as empty string if needed
+      "CRM ID": String(lead.id), // Must be a string
+      "Context": context,
+      "Calendar_Link": bookingLink // Clean, short booking URL for the AI to share
     };
+    
+    // Only add Last Name if it has a value (Airtable may reject empty strings)
+    if (lastName) {
+      fields["Last Name"] = lastName;
+    }
+    
+    // Only add Email if it has a value
+    if (email) {
+      fields["Email"] = email;
+    }
+    
+    // Only add Base Details if the ID is valid
+    if (SALESAPE_CONFIG.BASE_DETAILS_ID) {
+      fields["Base Details"] = [SALESAPE_CONFIG.BASE_DETAILS_ID];
+    }
+    
+    const payload = { fields };
 
     console.log('📅 Including booking link for SalesApe:', bookingLink);
     console.log('📋 Booking code:', lead.booking_code || '(using UUID fallback)');
@@ -159,19 +178,37 @@ async function sendLeadToSalesApe(lead) {
 
     return response.data;
   } catch (error) {
-    console.error('❌ Error sending lead to SalesApe:', {
+    // Log full error details for debugging
+    const errorDetails = {
       leadId: lead.id,
       leadName: lead.name,
       error: error.message,
       code: error.code,
-      response: error.response?.data
-    });
-
-    // ✅ FIX: Mark lead as failed with detailed error
-    const errorMessage = error.response?.data?.error?.message ||
-                        error.response?.data?.error ||
-                        error.message ||
-                        'Unknown error';
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      responseData: error.response?.data,
+      responseHeaders: error.response?.headers
+    };
+    
+    console.error('❌ Error sending lead to SalesApe:', JSON.stringify(errorDetails, null, 2));
+    
+    // Extract detailed error message from Airtable
+    let errorMessage = 'Unknown error';
+    if (error.response?.data?.error) {
+      if (typeof error.response.data.error === 'string') {
+        errorMessage = error.response.data.error;
+      } else if (error.response.data.error.message) {
+        errorMessage = error.response.data.error.message;
+      } else if (error.response.data.error.type) {
+        errorMessage = `${error.response.data.error.type}: ${JSON.stringify(error.response.data.error)}`;
+      } else {
+        errorMessage = JSON.stringify(error.response.data.error);
+      }
+    } else if (error.response?.data) {
+      errorMessage = JSON.stringify(error.response.data);
+    } else {
+      errorMessage = error.message || 'Unknown error';
+    }
 
     await supabase
       .from('leads')
