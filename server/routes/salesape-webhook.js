@@ -91,12 +91,18 @@ async function sendLeadToSalesApe(lead) {
     const phoneNumber = lead.phone?.trim() || '';
     const context = lead.notes?.trim() || `Lead from ${lead.source || 'CRM'}`;
 
+    // WORKAROUND: SalesApe hasn't added Calendar_Link field yet
+    // Include booking link prominently in Context so AI can use it
+    const contextWithBooking = `${context}
+
+IMPORTANT - Use this booking link when scheduling: ${bookingLink}`;
+
     const fields = {
       "First Name": firstName, // Required field - keep as empty string if needed
       "Phone Number": phoneNumber, // Required field - keep as empty string if needed
       "CRM ID": String(lead.id), // Must be a string
-      "Context": context,
-      "Calendar_Link": bookingLink // Our CRM booking link for the AI to share
+      "Context": contextWithBooking
+      // Calendar_Link removed - SalesApe Airtable doesn't have this field yet
     };
     
     // Only add Last Name if it has a value (Airtable may reject empty strings)
