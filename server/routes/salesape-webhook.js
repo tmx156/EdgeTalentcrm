@@ -29,6 +29,10 @@ const SALESAPE_CONFIG = {
   BASE_DETAILS_ID: process.env.SALESAPE_BASE_DETAILS_ID || 'recThsoXqOHJCdgZY'
 };
 
+// Debug: Store last 10 webhook payloads for debugging
+const recentWebhooks = [];
+const MAX_STORED_WEBHOOKS = 10;
+
 /**
  * Send a lead to SalesApe's Airtable (Trigger their AI)
  * This should be called when you want SalesApe to contact a lead
@@ -266,6 +270,20 @@ router.post('/update', async (req, res) => {
     console.log('📥 Received update from SalesApe:', JSON.stringify(req.body, null, 2));
     console.log('📥 Headers:', JSON.stringify(req.headers, null, 2));
     console.log('📥 ====================================================');
+
+    // Store webhook for debugging
+    recentWebhooks.unshift({
+      timestamp: new Date().toISOString(),
+      body: req.body,
+      headers: {
+        'content-type': req.headers['content-type'],
+        'user-agent': req.headers['user-agent'],
+        'origin': req.headers['origin']
+      }
+    });
+    if (recentWebhooks.length > MAX_STORED_WEBHOOKS) {
+      recentWebhooks.pop();
+    }
 
     const {
       Airtable_Record_ID,
@@ -621,6 +639,22 @@ router.get('/test-log', (req, res) => {
       'Event_Type (if booking made)',
       'Calendar_Link (if provided)'
     ]
+  });
+});
+
+/**
+ * Debug endpoint - View recent webhook payloads from SalesApe
+ * GET /api/salesape-webhook/debug
+ * Use this to see what SalesApe is actually sending
+ */
+router.get('/debug', (req, res) => {
+  res.json({
+    message: 'Recent webhook payloads from SalesApe',
+    totalReceived: recentWebhooks.length,
+    webhooks: recentWebhooks,
+    note: recentWebhooks.length === 0
+      ? 'No webhooks received yet. SalesApe may not be configured to send webhooks.'
+      : 'These are the last ' + recentWebhooks.length + ' webhook payloads received'
   });
 });
 
