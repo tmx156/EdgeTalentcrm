@@ -86,13 +86,16 @@ async function sendLeadToSalesApe(lead) {
     const email = lead.email?.trim() || null;
     const phoneNumber = lead.phone?.trim() || '';
     const context = lead.notes?.trim() || `Lead from ${lead.source || 'CRM'}`;
-    
+
+    // Include booking link in context so AI can share it
+    const contextWithLink = `${context}\n\nBooking Link: ${bookingLink}`;
+
     const fields = {
       "First Name": firstName, // Required field - keep as empty string if needed
       "Phone Number": phoneNumber, // Required field - keep as empty string if needed
       "CRM ID": String(lead.id), // Must be a string
-      "Context": context,
-      "Calendar_Link": bookingLink // Clean, short booking URL for the AI to share
+      "Context": contextWithLink
+      // Note: Calendar_Link removed - SalesApe's Airtable doesn't have this field
     };
     
     // Only add Last Name if it has a value (Airtable may reject empty strings)
@@ -546,62 +549,25 @@ router.post('/send-calendar-link/:leadId', auth, async (req, res) => {
       });
     }
 
-    // Update the Airtable record with calendar link
-    // According to API requirements, we use PATCH to update the record
-    const payload = {
-      fields: {
-        "CRM ID": lead.id,
-        "Event Type": eventType,
-        "Calendar_Link": calendarLink
-      }
-    };
+    // Note: SalesApe's Airtable doesn't have a Calendar_Link field
+    // The booking link is already included in the Context when the lead is initially sent
+    // This endpoint is kept for potential future use if SalesApe adds the field
+    console.log('⚠️ Calendar link endpoint called, but SalesApe Airtable does not have Calendar_Link field');
+    console.log('📝 The booking link was already included in the Context field when lead was sent');
 
-    console.log('📅 Sending calendar link to SalesApe:', {
+    return res.json({
+      success: true,
+      message: 'Calendar link was already included in the lead Context when sent to SalesApe',
+      note: 'SalesApe Airtable does not have a Calendar_Link field. The booking link is embedded in the Context field.',
       leadId: lead.id,
-      leadName: lead.name,
-      recordId: lead.salesape_record_id,
       calendarLink: calendarLink
     });
 
-    const response = await axios.patch(
-      `${SALESAPE_CONFIG.AIRTABLE_URL}/${lead.salesape_record_id}`,
-      payload,
-      {
-        headers: {
-          'Authorization': `Bearer ${SALESAPE_CONFIG.PAT_CODE}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      }
-    );
-
-    console.log('✅ Calendar link sent to SalesApe successfully');
-
-    // Emit socket event for real-time update
-    if (global.io) {
-      global.io.emit('salesape_calendar_link_sent', {
-        leadId: lead.id,
-        leadName: lead.name,
-        calendarLink: calendarLink,
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Calendar link sent to SalesApe',
-      data: {
-        leadId: lead.id,
-        recordId: lead.salesape_record_id,
-        calendarLink: calendarLink
-      }
-    });
-
   } catch (error) {
-    console.error('❌ Error sending calendar link to SalesApe:', error.response?.data || error.message);
+    console.error('❌ Error in send-calendar-link endpoint:', error.message);
     res.status(500).json({
-      error: 'Failed to send calendar link',
-      message: error.response?.data?.error?.message || error.message
+      error: 'Failed to process calendar link request',
+      message: error.message
     });
   }
 });
