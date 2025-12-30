@@ -432,7 +432,9 @@ router.get('/', auth, async (req, res) => {
     // Apply search filter across multiple fields
     if (search && String(search).trim().length > 0) {
       const term = String(search).trim();
-      const like = `%${term}%`;
+      // Escape special characters that could break the ILIKE pattern
+      const escapedTerm = term.replace(/[%_\\]/g, '\\$&');
+      const like = `%${escapedTerm}%`;
       // Use OR across common searchable columns
       const orExpr = [
         `name.ilike.${like}`,
@@ -442,7 +444,7 @@ router.get('/', auth, async (req, res) => {
       ].join(',');
       dataQuery = dataQuery.or(orExpr);
       countQuery = countQuery.or(orExpr);
-      console.log(`🔍 Search filter applied across name/phone/email/postcode: ${term}`);
+      console.log(`🔍 Search filter applied across name/phone/email/postcode: ${term} (page ${pageInt})`);
     }
 
     // Apply assigned_at date range filter for "Date Assigned" filter
@@ -467,11 +469,32 @@ router.get('/', auth, async (req, res) => {
     }
 
     // Execute queries
-    const [{ data: leads, error: leadsError, count: totalCount }] = await Promise.all([
-      dataQuery
-    ]);
+    let leads, leadsError, totalCount;
+    try {
+      const result = await dataQuery;
+      leads = result.data;
+      leadsError = result.error;
+      totalCount = result.count;
+    } catch (queryError) {
+      console.error('Supabase query execution error:', {
+        message: queryError.message,
+        search: search || 'none',
+        page: pageInt,
+        from,
+        to
+      });
+      throw queryError;
+    }
 
     if (leadsError) {
+      console.error('Supabase leads query error:', {
+        message: leadsError.message,
+        code: leadsError.code,
+        details: leadsError.details,
+        hint: leadsError.hint,
+        search: search || 'none',
+        page: pageInt
+      });
       throw leadsError;
     }
 
@@ -631,8 +654,17 @@ router.get('/', auth, async (req, res) => {
       limit: validatedLimit
     });
   } catch (error) {
-    console.error('Get leads error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Get leads error:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      stack: error.stack
+    });
+    res.status(500).json({
+      message: 'Server error',
+      error: process.env.NODE_ENV !== 'production' ? error.message : undefined
+    });
   }
 });
 

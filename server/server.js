@@ -316,6 +316,7 @@ app.use(helmet({
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
+      mediaSrc: ["'self'", "data:", "https:"],
       fontSrc: ["'self'", "data:"],
     },
   },
