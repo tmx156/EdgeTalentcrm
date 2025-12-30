@@ -10,16 +10,22 @@ const path = require('path');
 
 // Path to the original PDF template - Edge Talent Invoice & Order Form
 const TEMPLATE_PATH = path.join(__dirname, '../templates/EDGE TALENT INVOICE Terms and conditions (1).pdf');
+const FALLBACK_TEMPLATE_PATH = path.join(__dirname, '../templates/contract-template.pdf');
 
 // Verify template exists on module load
+const templatesDir = path.join(__dirname, '../templates');
+console.log('📁 Templates directory:', templatesDir);
+
+if (fs.existsSync(templatesDir)) {
+  console.log('📁 Templates folder contents:', fs.readdirSync(templatesDir));
+}
+
 if (fs.existsSync(TEMPLATE_PATH)) {
   console.log('✅ Contract template found:', TEMPLATE_PATH);
 } else {
   console.error('❌ Contract template NOT found at:', TEMPLATE_PATH);
-  // List what's in the templates folder
-  const templatesDir = path.join(__dirname, '../templates');
-  if (fs.existsSync(templatesDir)) {
-    console.log('📁 Templates folder contents:', fs.readdirSync(templatesDir));
+  if (fs.existsSync(FALLBACK_TEMPLATE_PATH)) {
+    console.log('⚠️ Will use fallback template:', FALLBACK_TEMPLATE_PATH);
   }
 }
 
@@ -47,23 +53,40 @@ function formatDate(date) {
  */
 async function generateContractPDF(contractData) {
   try {
+    console.log('🔄 Starting PDF generation...');
+
     // Load the template PDF - Edge Talent Invoice & Order Form
     let templateBytes;
     let actualTemplatePath = TEMPLATE_PATH;
-    
+
+    // Log current working directory and paths for debugging
+    console.log('📍 Current working directory:', process.cwd());
+    console.log('📍 __dirname:', __dirname);
+    console.log('📍 Looking for template at:', TEMPLATE_PATH);
+
     if (!fs.existsSync(TEMPLATE_PATH)) {
+      console.log('⚠️ Primary template not found, checking fallback...');
+
       // Try fallback to contract-template.pdf if the exact filename doesn't exist
-      const fallbackPath = path.join(__dirname, '../templates/contract-template.pdf');
-      if (fs.existsSync(fallbackPath)) {
-        console.log('⚠️ Using fallback template: contract-template.pdf');
-        actualTemplatePath = fallbackPath;
-        templateBytes = fs.readFileSync(fallbackPath);
+      if (fs.existsSync(FALLBACK_TEMPLATE_PATH)) {
+        console.log('⚠️ Using fallback template:', FALLBACK_TEMPLATE_PATH);
+        actualTemplatePath = FALLBACK_TEMPLATE_PATH;
+        templateBytes = fs.readFileSync(FALLBACK_TEMPLATE_PATH);
       } else {
-        throw new Error(`Contract template not found. Please ensure "EDGE TALENT INVOICE Terms and conditions (1).pdf" is in server/templates/`);
+        // List what's actually in the templates folder for debugging
+        const templatesDir = path.join(__dirname, '../templates');
+        let folderContents = [];
+        if (fs.existsSync(templatesDir)) {
+          folderContents = fs.readdirSync(templatesDir);
+        }
+        throw new Error(`Contract template not found. Templates folder contains: [${folderContents.join(', ')}]`);
       }
     } else {
+      console.log('✅ Using primary template:', TEMPLATE_PATH);
       templateBytes = fs.readFileSync(TEMPLATE_PATH);
     }
+
+    console.log('📄 Template loaded, size:', templateBytes.length, 'bytes');
     
     const pdfDoc = await PDFDocument.load(templateBytes);
     console.log(`✅ Loaded Edge Talent contract template PDF: ${path.basename(actualTemplatePath)}`);
