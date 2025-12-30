@@ -3,8 +3,31 @@
  * Centralized API configuration for the CRM frontend
  */
 
-// API Base URL configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// Get API Base URL dynamically
+// - If REACT_APP_API_URL is set, use it
+// - In development (localhost:3000), use localhost:5000 for the server
+// - In production (Railway), use empty string (same origin) since client/server are served together
+const getBaseUrl = () => {
+  // If explicitly set via environment variable, use it
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+
+  // Check if we're in a browser
+  if (typeof window !== 'undefined') {
+    // In development (React dev server on port 3000), use localhost:5000
+    if (window.location.port === '3000') {
+      return 'http://localhost:5000';
+    }
+  }
+
+  // In production (Railway or same-origin deployment), use relative URLs
+  return '';
+};
+
+// For backwards compatibility, evaluate once at load time
+// But getApiUrl will re-evaluate if needed
+const API_BASE_URL = getBaseUrl();
 
 // API endpoints
 export const API_ENDPOINTS = {
@@ -52,8 +75,10 @@ export const addCacheBuster = (url) => {
 };
 
 // Helper function to get full API URL
+// Uses getBaseUrl() dynamically to handle dev/production properly
 export const getApiUrl = (endpoint, bustCache = false) => {
-  const url = `${API_BASE_URL}${endpoint}`;
+  const baseUrl = getBaseUrl();
+  const url = `${baseUrl}${endpoint}`;
   return bustCache ? addCacheBuster(url) : url;
 };
 

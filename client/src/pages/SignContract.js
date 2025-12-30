@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { FileText, CheckCircle, X, Loader, AlertTriangle, Download, PenTool } from 'lucide-react';
+import { getApiUrl } from '../config/api';
 
 /**
  * SignContract - Public page for customers to view and sign contracts
@@ -115,13 +116,9 @@ const SignContract = () => {
     });
   };
 
-  // Get PDF URL - use direct server URL to avoid proxy issues with binary responses
+  // Get PDF URL - uses API config which handles dev/production URLs
   const getPdfUrl = () => {
-    // In development, use direct server URL (port 5000)
-    // In production, use relative URL (same origin)
-    const isDev = window.location.port === '3000';
-    const baseUrl = isDev ? 'http://localhost:5000' : '';
-    return `${baseUrl}/api/contracts/preview/${token}`;
+    return getApiUrl(`/api/contracts/preview/${token}`);
   };
 
   if (loading) {

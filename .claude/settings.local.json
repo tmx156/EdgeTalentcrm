@@ -69,7 +69,10 @@
       "Bash(done)",
       "Bash(git checkout:*)",
       "Bash(npm install)",
-      "Bash(powershell -Command \"\\(Get-Item ''c:\\\\Users\\\\Tin\\\\CRM -Alan\\\\server\\\\templates\\\\EDGE TALENT INVOICE Terms and conditions \\(1\\).pdf''\\).Length\")"
+      "Bash(powershell -Command \"\\(Get-Item ''c:\\\\Users\\\\Tin\\\\CRM -Alan\\\\server\\\\templates\\\\EDGE TALENT INVOICE Terms and conditions \\(1\\).pdf''\\).Length\")",
+      "Bash(git push)",
+      "Bash(git reset:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []
