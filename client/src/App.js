@@ -25,6 +25,8 @@ import Messages from './pages/MessagesNew'; // Updated to use premium Gmail-styl
 import SalesApe from './pages/SalesApe';
 import BlockedSlots from './pages/BlockedSlots';
 import PublicBooking from './pages/PublicBooking';
+import Photographer from './pages/Photographer';
+import SignContract from './pages/SignContract';
 
 // Create browser history
 const history = createBrowserHistory();
@@ -75,6 +77,11 @@ function App() {
                 path="/book/:leadId" 
                 element={<PublicBooking />} 
               />
+              {/* Public contract signing page - no authentication required */}
+              <Route 
+                path="/sign-contract/:token" 
+                element={<SignContract />} 
+              />
               <Route
                 path="/*"
                 element={
@@ -95,6 +102,7 @@ function App() {
                           <Route path="/messages" element={<Messages />} />
                           <Route path="/salesape" element={<SalesApe />} />
                           <Route path="/blocked-slots" element={<BlockedSlots />} />
+                          <Route path="/photographer" element={<Photographer />} />
                           <Route path="/" element={<Navigate to="/dashboard" />} />
                         </Routes>
                       </Layout>
