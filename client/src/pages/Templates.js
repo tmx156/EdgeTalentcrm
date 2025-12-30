@@ -48,7 +48,7 @@ const Templates = () => {
     const categories = {
       'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation'],
       'Bookers Templates': ['no_answer', 'no_photo', 'invitation_email'], // Templates created by booker role users
-      'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance'],
+      'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance', 'contract_signing'],
       'Receipts': ['receipt', 'sale_receipt', 'payment_receipt'],
       'Lead Details Templates': ['custom', 'booker']
     };
@@ -459,7 +459,7 @@ const Templates = () => {
               const cat = Object.entries({
                 'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation'],
                 'Bookers Templates': ['no_answer', 'no_photo', 'invitation_email'],
-                'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance'],
+                'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance', 'contract_signing'],
                 'Lead Details Templates': ['custom', 'booker']
               }).find(([cat, types]) => types.includes(t.type));
               return cat ? cat[0] === categoryFilter : categoryFilter === 'Diary Templates';
@@ -666,6 +666,7 @@ const Templates = () => {
                             <option key="sale_followup_paid" value="sale_followup_paid">✅ Paid in Full - Follow-up</option>
                             <option key="sale_finance_agreement" value="sale_finance_agreement">📋 Finance Agreement - Welcome</option>
                             <option key="sale_followup_finance" value="sale_followup_finance">💳 Finance Agreement - Follow-up</option>
+                            <option key="contract_signing" value="contract_signing">📝 Contract Signing</option>
                             <option key="receipt" value="receipt">🧾 Receipt</option>
                             <option key="sale_receipt" value="sale_receipt">🧾 Sale Receipt</option>
                             <option key="payment_receipt" value="payment_receipt">🧾 Payment Receipt</option>
