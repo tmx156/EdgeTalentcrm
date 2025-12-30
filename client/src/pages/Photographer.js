@@ -33,6 +33,13 @@ const Photographer = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const abortControllerRef = useRef(null);
   const PHOTOS_PER_PAGE = 30; // Optimal for performance (Pinterest uses 20-30)
+  
+  // Viewport optimization - only render 20 images at once
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 });
+  const [imagesPerRow, setImagesPerRow] = useState(6); // Default, will be calculated
+  const VISIBLE_IMAGES_COUNT = 20;
+  const BUFFER_IMAGES = 5; // Render a few extra above/below for smooth scrolling
+  const gridContainerRef = useRef(null);
 
   // Fetch photographer's photos with cursor-based pagination
   const fetchPhotos = useCallback(async (reset = false, cursor = null) => {
@@ -154,6 +161,29 @@ const Photographer = () => {
       }
     };
   }, [hasMorePhotos, loadingMore, loadMorePhotos]);
+
+  // Calculate images per row based on screen size
+  useEffect(() => {
+    const calculateImagesPerRow = () => {
+      const width = window.innerWidth;
+      if (width >= 1280) return 6; // xl
+      if (width >= 1024) return 5; // lg
+      if (width >= 768) return 4; // md
+      if (width >= 640) return 3; // sm
+      return 2; // mobile
+    };
+    
+    setImagesPerRow(calculateImagesPerRow());
+    
+    const handleResize = () => {
+      setImagesPerRow(calculateImagesPerRow());
+    };
+    
+    window.addEventListener('resize', handleResize, { passive: true });
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+
 
   // Handle file upload
   const handleUpload = async (files, folderPath = '') => {
@@ -401,6 +431,59 @@ const Photographer = () => {
     
     return unique;
   }, [photos, selectedFolder]);
+
+  // Reset visible range when photos change (e.g., folder filter, new uploads)
+  useEffect(() => {
+    setVisibleRange({ start: 0, end: Math.min(VISIBLE_IMAGES_COUNT + BUFFER_IMAGES * 2, filteredPhotos.length) });
+  }, [selectedFolder, filteredPhotos.length]);
+
+  // Viewport-based rendering - update visible range on scroll
+  useEffect(() => {
+    if (filteredPhotos.length === 0) return;
+
+    const updateVisibleRange = () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      const viewportHeight = window.innerHeight;
+      
+      // Calculate which images should be visible based on scroll position
+      // Estimate: each image is roughly 200px tall (including gap)
+      const estimatedImageHeight = 200;
+      
+      // Calculate start index based on scroll position
+      const rowsFromTop = Math.floor(scrollTop / estimatedImageHeight);
+      const startIndex = Math.max(0, (rowsFromTop - BUFFER_IMAGES) * imagesPerRow);
+      
+      // Calculate end index - show approximately 20 images + buffer
+      const visibleRows = Math.ceil(viewportHeight / estimatedImageHeight);
+      const endIndex = Math.min(
+        filteredPhotos.length,
+        startIndex + Math.max(VISIBLE_IMAGES_COUNT, (visibleRows + BUFFER_IMAGES * 2) * imagesPerRow)
+      );
+      
+      setVisibleRange({ start: startIndex, end: endIndex });
+    };
+
+    // Initial calculation
+    updateVisibleRange();
+
+    // Update on scroll (throttled for performance)
+    let scrollTimeout;
+    const handleScroll = () => {
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(updateVisibleRange, 50);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    // Also update on resize
+    window.addEventListener('resize', handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, [filteredPhotos.length, imagesPerRow, BUFFER_IMAGES, VISIBLE_IMAGES_COUNT]);
 
   // Select all photos
   const handleSelectAll = useCallback((checked) => {
@@ -802,13 +885,25 @@ const Photographer = () => {
               <p className="text-gray-500">No photos yet. Upload some photos to get started!</p>
             </div>
           ) : (
-            <div className="relative">
-              {/* Photo Grid */}
+            <div className="relative" ref={gridContainerRef}>
+              {/* Photo Grid - Only render visible images for optimization */}
               <div 
                 className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
                 style={{ minHeight: '400px' }}
               >
-                {filteredPhotos.map((photo, index) => {
+                {/* Spacer for images before visible range */}
+                {visibleRange.start > 0 && (
+                  <div 
+                    style={{ 
+                      gridColumn: '1 / -1',
+                      height: `${Math.ceil(visibleRange.start / imagesPerRow) * 200}px`
+                    }}
+                  />
+                )}
+                
+                {/* Render only visible images */}
+                {filteredPhotos.slice(visibleRange.start, visibleRange.end).map((photo, relativeIndex) => {
+                  const index = visibleRange.start + relativeIndex;
                   const imageUrl = photo.cloudinary_secure_url || photo.cloudinary_url;
                   const isSelected = selectedPhotos.includes(photo.id);
 
@@ -878,6 +973,16 @@ const Photographer = () => {
                     </div>
                   );
                 })}
+                
+                {/* Spacer for images after visible range */}
+                {visibleRange.end < filteredPhotos.length && (
+                  <div 
+                    style={{ 
+                      gridColumn: '1 / -1',
+                      height: `${Math.ceil((filteredPhotos.length - visibleRange.end) / imagesPerRow) * 200}px`
+                    }}
+                  />
+                )}
               </div>
               
               {/* Infinite scroll trigger */}

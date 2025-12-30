@@ -6,7 +6,7 @@
 // Get API Base URL dynamically
 // - If REACT_APP_API_URL is set, use it
 // - In development (localhost:3000), use localhost:5000 for the server
-// - In production (Railway), use empty string (same origin) since client/server are served together
+// - In production (crm.edgetalent.co.uk), use same origin
 const getBaseUrl = () => {
   // If explicitly set via environment variable, use it
   if (process.env.REACT_APP_API_URL) {
@@ -15,13 +15,20 @@ const getBaseUrl = () => {
 
   // Check if we're in a browser
   if (typeof window !== 'undefined') {
-    // In development (React dev server on port 3000), use localhost:5000
-    if (window.location.port === '3000') {
+    const hostname = window.location.hostname;
+    const port = window.location.port;
+
+    // In development (localhost on port 3000), use localhost:5000 for the server
+    if (hostname === 'localhost' && port === '3000') {
       return 'http://localhost:5000';
     }
+
+    // In production (crm.edgetalent.co.uk or any non-localhost), use same origin
+    // This handles Railway and any custom domain
+    return '';
   }
 
-  // In production (Railway or same-origin deployment), use relative URLs
+  // Default for SSR or non-browser environments
   return '';
 };
 

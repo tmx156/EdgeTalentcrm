@@ -26,7 +26,7 @@ import SalesApe from './pages/SalesApe';
 import BlockedSlots from './pages/BlockedSlots';
 import PublicBooking from './pages/PublicBooking';
 import Photographer from './pages/Photographer';
-import SignContract from './pages/SignContract';
+import ContractSigning from './pages/ContractSigning';
 
 // Create browser history
 const history = createBrowserHistory();
@@ -78,9 +78,9 @@ function App() {
                 element={<PublicBooking />} 
               />
               {/* Public contract signing page - no authentication required */}
-              <Route 
-                path="/sign-contract/:token" 
-                element={<SignContract />} 
+              <Route
+                path="/sign-contract/:token"
+                element={<ContractSigning />}
               />
               <Route
                 path="/*"

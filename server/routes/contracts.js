@@ -153,9 +153,29 @@ router.post('/create', auth, async (req, res) => {
 
     // Generate contract token
     const contractToken = generateContractToken();
-    const baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || process.env.RAILWAY_PUBLIC_DOMAIN || 'http://localhost:3000';
+
+    // Determine base URL for signing link
+    // Priority: FRONTEND_URL > CLIENT_URL > RAILWAY_PUBLIC_DOMAIN > production default > localhost
+    let baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL;
+
+    if (!baseUrl && process.env.RAILWAY_PUBLIC_DOMAIN) {
+      baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+    }
+
+    if (!baseUrl) {
+      // Default to production URL if in production, otherwise localhost
+      baseUrl = process.env.NODE_ENV === 'production'
+        ? 'https://crm.edgetalent.co.uk'
+        : 'http://localhost:3000';
+    }
+
+    // Ensure URL doesn't have trailing slash
+    baseUrl = baseUrl.replace(/\/$/, '');
+
     const signingUrl = `${baseUrl}/sign-contract/${contractToken}`;
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    console.log('📝 Contract signing URL base:', baseUrl);
 
     // Ensure contract_data is properly serialized (no Date objects, functions, etc.)
     const serializedContractData = JSON.parse(JSON.stringify(contractData));
@@ -265,50 +285,97 @@ router.post('/send/:contractId', auth, async (req, res) => {
     try {
       const transporter = createEmailTransporter();
 
+      // Get contract details for email
+      const contractData = contract.contract_data || {};
+      const totalAmount = contractData.total ? `£${parseFloat(contractData.total).toFixed(2)}` : '';
+      const packageInfo = contractData.notes || '';
+
       const mailOptions = {
-        from: `"Edge Talent" <${process.env.SMTP_USER || 'noreply@edgetalent.co.uk'}>`,
+        from: `"Edge Talent" <${process.env.SMTP_FROM || process.env.SMTP_USER || 'hello@edgetalent.co.uk'}>`,
         to: recipientEmail,
-        subject: `Your Edge Talent Contract - Please Sign`,
+        subject: `Edge Talent - Your Contract is Ready for Signing`,
         html: `
           <!DOCTYPE html>
           <html>
           <head>
             <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-              .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-              .header { text-align: center; padding: 20px 0; border-bottom: 2px solid #1a1a2e; }
-              .header h1 { color: #1a1a2e; margin: 0; }
-              .content { padding: 30px 0; }
-              .button { display: inline-block; background: #1a1a2e; color: #ffffff !important; padding: 15px 40px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0; }
-              .footer { text-align: center; padding-top: 20px; border-top: 1px solid #eee; color: #888; font-size: 12px; }
-              .warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 15px 0; }
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f5f5f5; }
+              .container { max-width: 600px; margin: 0 auto; background: #ffffff; }
+              .header { background: #1a1a2e; padding: 30px 20px; text-align: center; }
+              .header h1 { color: #ffffff; margin: 0; font-size: 28px; letter-spacing: 3px; }
+              .header p { color: #cccccc; margin: 5px 0 0 0; font-size: 14px; }
+              .content { padding: 40px 30px; }
+              .greeting { font-size: 18px; margin-bottom: 20px; }
+              .intro { margin-bottom: 25px; color: #555; }
+              .button-container { text-align: center; margin: 30px 0; }
+              .button { display: inline-block; background: #1a1a2e; color: #ffffff !important; padding: 16px 50px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; }
+              .button:hover { background: #2a2a4e; }
+              .instructions { background: #f8f9fa; border-radius: 8px; padding: 25px; margin: 25px 0; }
+              .instructions h3 { color: #1a1a2e; margin-top: 0; margin-bottom: 15px; font-size: 16px; }
+              .instructions ol { margin: 0; padding-left: 20px; color: #555; }
+              .instructions li { margin-bottom: 10px; }
+              .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
+              .warning strong { color: #856404; }
+              .link-backup { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0; word-break: break-all; font-size: 13px; color: #666; }
+              .order-summary { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+              .order-summary h4 { margin: 0 0 10px 0; color: #1a1a2e; }
+              .order-summary p { margin: 5px 0; color: #555; }
+              .footer { background: #f5f5f5; padding: 25px; text-align: center; color: #888; font-size: 12px; }
+              .footer p { margin: 5px 0; }
+              .contact { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; }
             </style>
           </head>
           <body>
             <div class="container">
               <div class="header">
                 <h1>EDGE TALENT</h1>
-                <p>Invoice & Order Form</p>
+                <p>Professional Photography Services</p>
               </div>
               <div class="content">
-                <p>Dear ${customerName},</p>
-                <p>Thank you for choosing Edge Talent. Please review and sign your contract to confirm your order.</p>
+                <p class="greeting">Dear ${customerName},</p>
 
-                <p style="text-align: center;">
-                  <a href="${contract.signing_url}" class="button">Click Here to Sign Your Contract</a>
-                </p>
+                <p class="intro">Thank you for choosing Edge Talent! Your contract is ready for review and signing. Please complete this within 7 days to confirm your order.</p>
 
-                <div class="warning">
-                  <strong>Important:</strong> This link will expire in 7 days. Please complete your signing before then.
+                ${totalAmount ? `
+                <div class="order-summary">
+                  <h4>Order Summary</h4>
+                  <p><strong>Total Amount:</strong> ${totalAmount} (inc. VAT)</p>
+                  ${packageInfo ? `<p><strong>Details:</strong> ${packageInfo}</p>` : ''}
+                </div>
+                ` : ''}
+
+                <div class="button-container">
+                  <a href="${contract.signing_url}" class="button">Review & Sign Contract</a>
                 </div>
 
-                <p>If the button doesn't work, copy and paste this link into your browser:</p>
-                <p style="word-break: break-all; color: #666;">${contract.signing_url}</p>
+                <div class="instructions">
+                  <h3>How to Complete Your Contract:</h3>
+                  <ol>
+                    <li><strong>Click the button above</strong> to open your contract</li>
+                    <li><strong>Review the PDF</strong> - Check all your details are correct</li>
+                    <li><strong>Scroll down</strong> to view the contract details and terms</li>
+                    <li><strong>Sign in the signature boxes</strong> - Use your mouse or finger to sign</li>
+                    <li><strong>Tick the confirmation boxes</strong> to acknowledge the terms</li>
+                    <li><strong>Click "Sign Contract"</strong> to submit</li>
+                  </ol>
+                </div>
 
-                <p>If you have any questions, please contact us at <a href="mailto:sales@edgetalent.co.uk">sales@edgetalent.co.uk</a></p>
+                <div class="warning">
+                  <strong>⏰ Important:</strong> This link will expire in 7 days. Please complete your signing before then. If you have any issues, contact us immediately.
+                </div>
+
+                <p>If the button above doesn't work, copy and paste this link into your browser:</p>
+                <div class="link-backup">${contract.signing_url}</div>
+
+                <div class="contact">
+                  <p>Need help or have questions? Contact us:</p>
+                  <p>📧 Email: <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
+                  <p>🌐 Website: <a href="https://www.edgetalent.co.uk">www.edgetalent.co.uk</a></p>
+                </div>
               </div>
               <div class="footer">
-                <p>Edge Talent is a trading name of S&A Advertising Ltd</p>
+                <p><strong>Edge Talent</strong></p>
+                <p>A trading name of S&A Advertising Ltd</p>
                 <p>Company No 8708429 | VAT Reg No 171339904</p>
                 <p>129A Weedington Rd, London NW5 4NX</p>
               </div>
@@ -319,21 +386,40 @@ router.post('/send/:contractId', auth, async (req, res) => {
         text: `
 Dear ${customerName},
 
-Thank you for choosing Edge Talent. Please review and sign your contract to confirm your order.
+Thank you for choosing Edge Talent! Your contract is ready for review and signing.
 
-Click here to sign: ${contract.signing_url}
+${totalAmount ? `Order Total: ${totalAmount} (inc. VAT)` : ''}
+${packageInfo ? `Details: ${packageInfo}` : ''}
 
-This link will expire in 7 days.
+HOW TO COMPLETE YOUR CONTRACT:
+================================
 
-If you have any questions, please contact us at sales@edgetalent.co.uk
+1. Click the link below to open your contract
+2. Review the PDF - Check all your details are correct
+3. Scroll down to view the contract details and terms
+4. Sign in the signature boxes using your mouse or finger
+5. Tick the confirmation boxes to acknowledge the terms
+6. Click "Sign Contract" to submit
 
+SIGN YOUR CONTRACT HERE:
+${contract.signing_url}
+
+⏰ IMPORTANT: This link will expire in 7 days. Please complete your signing before then.
+
+Need help? Contact us:
+Email: hello@edgetalent.co.uk
+Website: www.edgetalent.co.uk
+
+---
 Edge Talent
+A trading name of S&A Advertising Ltd
+Company No 8708429 | VAT Reg No 171339904
 129A Weedington Rd, London NW5 4NX
         `
       };
 
       await transporter.sendMail(mailOptions);
-      console.log(`Contract email sent to ${recipientEmail}`);
+      console.log(`Contract email sent to ${recipientEmail} from hello@edgetalent.co.uk`);
     } catch (emailError) {
       console.error('Email sending failed:', emailError);
       // Continue even if email fails - URL can still be shared manually

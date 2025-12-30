@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { FileText, CheckCircle, X, Loader, AlertTriangle, Download, PenTool } from 'lucide-react';
-import { getApiUrl } from '../config/api';
 
 /**
  * SignContract - Public page for customers to view and sign contracts
@@ -25,6 +24,11 @@ const SignContract = () => {
     passDetails: false,
     happyPurchase: false
   });
+
+  // PDF blob URL for preview
+  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState(null);
 
   // Fetch contract data
   useEffect(() => {
@@ -116,10 +120,65 @@ const SignContract = () => {
     });
   };
 
-  // Get PDF URL - uses API config which handles dev/production URLs
-  const getPdfUrl = () => {
-    return getApiUrl(`/api/contracts/preview/${token}`);
-  };
+  // Ref to track blob URL for cleanup
+  const pdfBlobUrlRef = useRef(null);
+
+  // Fetch PDF as blob to avoid cross-origin issues
+  useEffect(() => {
+    if (!token || !contract) return;
+
+    const fetchPdf = async () => {
+      setPdfLoading(true);
+      setPdfError(null);
+
+      try {
+        // Fetch PDF from API (uses relative URL, works with proxy)
+        const response = await fetch(`/api/contracts/preview/${token}`);
+
+        if (!response.ok) {
+          const text = await response.text();
+          console.error('PDF fetch failed:', response.status, text);
+          throw new Error('Failed to load PDF');
+        }
+
+        // Verify it's actually a PDF
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/pdf')) {
+          console.error('Response is not a PDF:', contentType);
+          throw new Error('Invalid response - not a PDF');
+        }
+
+        // Get as blob
+        const blob = await response.blob();
+        console.log('PDF blob received, size:', blob.size);
+
+        // Revoke old URL if exists
+        if (pdfBlobUrlRef.current) {
+          URL.revokeObjectURL(pdfBlobUrlRef.current);
+        }
+
+        // Create blob URL
+        const url = URL.createObjectURL(blob);
+        pdfBlobUrlRef.current = url;
+        setPdfBlobUrl(url);
+      } catch (err) {
+        console.error('Error loading PDF:', err);
+        setPdfError(err.message);
+      } finally {
+        setPdfLoading(false);
+      }
+    };
+
+    fetchPdf();
+
+    // Cleanup blob URL on unmount
+    return () => {
+      if (pdfBlobUrlRef.current) {
+        URL.revokeObjectURL(pdfBlobUrlRef.current);
+        pdfBlobUrlRef.current = null;
+      }
+    };
+  }, [token, contract]);
 
   if (loading) {
     return (
@@ -192,38 +251,48 @@ const SignContract = () => {
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-800">Contract PDF Preview</h2>
-            <a
-              href={getPdfUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-            >
-              <Download className="w-4 h-4" />
-              <span>Open PDF in New Tab</span>
-            </a>
+            {pdfBlobUrl && (
+              <a
+                href={pdfBlobUrl}
+                download="EdgeTalent_Contract.pdf"
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download PDF</span>
+              </a>
+            )}
           </div>
           <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-100" style={{ height: '800px' }}>
-            <object
-              data={getPdfUrl()}
-              type="application/pdf"
-              className="w-full h-full"
-              title="Contract PDF Preview"
-            >
-              <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <AlertTriangle className="w-12 h-12 text-yellow-500 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">PDF Preview Unavailable</h3>
-                <p className="text-gray-600 mb-4">Your browser cannot display the PDF inline.</p>
-                <a
-                  href={getPdfUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <Download className="w-5 h-5" />
-                  <span>Click to View/Download PDF</span>
-                </a>
+            {pdfLoading ? (
+              <div className="flex flex-col items-center justify-center h-full">
+                <Loader className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+                <p className="text-gray-600">Loading contract PDF...</p>
               </div>
-            </object>
+            ) : pdfError ? (
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">Failed to Load PDF</h3>
+                <p className="text-gray-600 mb-4">{pdfError}</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : pdfBlobUrl ? (
+              <iframe
+                src={pdfBlobUrl}
+                className="w-full h-full"
+                title="Contract PDF Preview"
+                style={{ border: 'none' }}
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <Loader className="w-12 h-12 text-gray-400 animate-spin mb-4" />
+                <p className="text-gray-600">Preparing PDF preview...</p>
+              </div>
+            )}
           </div>
         </div>
 
