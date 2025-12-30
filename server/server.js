@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression'); // Gzip compression for responses
 const rateLimit = require('express-rate-limit');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -28,9 +29,9 @@ process.env.SUPABASE_URL = config.supabase.url;
 process.env.SUPABASE_ANON_KEY = config.supabase.anonKey;
 process.env.JWT_SECRET = config.JWT_SECRET;
 
-// Database configuration - Now using centralized config
-const { createClient } = require('@supabase/supabase-js');
-const supabase = createClient(config.supabase.url, config.supabase.anonKey);
+// Database configuration - Now using centralized config with timeout protection
+const { getSupabaseClient } = require('./config/supabase-client');
+const supabase = getSupabaseClient();
 // console.log('✅ Supabase client initialized using centralized config');
 
 const authRoutes = require('./routes/auth-simple');
@@ -55,6 +56,11 @@ const blockedSlotsRoutes = require('./routes/blocked-slots');
 const callbackRemindersRoutes = require('./routes/callback-reminders');
 const gmailAuthRoutes = require('./routes/gmail-auth');
 const gravityFormsWebhookRoutes = require('./routes/gravity-forms-webhook');
+const photosRoutes = require('./routes/photos');
+const packagesRoutes = require('./routes/packages');
+const invoicesRoutes = require('./routes/invoices');
+const signatureRoutes = require('./routes/signature');
+const contractsRoutes = require('./routes/contracts');
 // TEMPORARILY DISABLED: const scheduler = require('./utils/scheduler');
 // OLD IMAP-based email poller (replaced with Gmail API)
 // const { startEmailPoller } = require('./utils/emailPoller');
@@ -315,6 +321,18 @@ app.use(helmet({
   },
 }));
 
+// Gzip compression - reduces payload size by 60-80%
+app.use(compression({
+  level: 6, // Balanced compression level (1-9)
+  threshold: 1024, // Only compress responses > 1KB
+  filter: (req, res) => {
+    // Don't compress if client doesn't accept gzip
+    if (req.headers['x-no-compression']) return false;
+    // Use default filter (compresses text, json, etc.)
+    return compression.filter(req, res);
+  }
+}));
+
 // Rate limiting with proper configuration - more lenient for retry scenarios
 const limiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes (reduced window)
@@ -476,6 +494,16 @@ app.use('/api/salesape-dashboard', salesapeDashboardRoutes);
 // Blocked Slots API (for calendar availability management)
 app.use('/api/blocked-slots', blockedSlotsRoutes);
 app.use('/api/callback-reminders', callbackRemindersRoutes);
+// Photos API (for photographer image management)
+app.use('/api/photos', photosRoutes);
+// Packages API (for package definitions and pricing)
+app.use('/api/packages', packagesRoutes);
+// Invoices API (for invoice creation and management)
+app.use('/api/invoices', invoicesRoutes);
+// Signature API (for e-signature collection)
+app.use('/api/signature', signatureRoutes);
+// Contracts API (for Edge Talent contract signing)
+app.use('/api/contracts', contractsRoutes);
 // Public Booking API (for client self-service booking)
 const publicBookingRoutes = require('./routes/public-booking');
 app.use('/api/public/booking', publicBookingRoutes);

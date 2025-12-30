@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT UNIQUE NOT NULL,
     password TEXT, -- Hashed password (nullable for OAuth users)
     password_hash TEXT, -- Alternative password hash column (for compatibility)
-    role TEXT NOT NULL CHECK (role IN ('admin', 'booker', 'closer', 'viewer')),
+    role TEXT NOT NULL CHECK (role IN ('admin', 'booker', 'closer', 'viewer', 'photographer')),
     is_active BOOLEAN DEFAULT TRUE, -- Track if user account is active
     leads_assigned INTEGER DEFAULT 0, -- Counter for assigned leads
     bookings_made INTEGER DEFAULT 0, -- Counter for bookings made

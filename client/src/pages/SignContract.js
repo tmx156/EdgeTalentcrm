@@ -115,6 +115,15 @@ const SignContract = () => {
     });
   };
 
+  // Get PDF URL - use direct server URL to avoid proxy issues with binary responses
+  const getPdfUrl = () => {
+    // In development, use direct server URL (port 5000)
+    // In production, use relative URL (same origin)
+    const isDev = window.location.port === '3000';
+    const baseUrl = isDev ? 'http://localhost:5000' : '';
+    return `${baseUrl}/api/contracts/preview/${token}`;
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
@@ -184,14 +193,40 @@ const SignContract = () => {
 
         {/* PDF Preview Section */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">Contract PDF Preview</h2>
-          <div className="border border-gray-200 rounded-lg overflow-hidden" style={{ height: '800px' }}>
-            <iframe
-              src={`/api/contracts/preview/${token}`}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-gray-800">Contract PDF Preview</h2>
+            <a
+              href={getPdfUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            >
+              <Download className="w-4 h-4" />
+              <span>Open PDF in New Tab</span>
+            </a>
+          </div>
+          <div className="border border-gray-200 rounded-lg overflow-hidden bg-gray-100" style={{ height: '800px' }}>
+            <object
+              data={getPdfUrl()}
+              type="application/pdf"
               className="w-full h-full"
               title="Contract PDF Preview"
-              style={{ border: 'none' }}
-            />
+            >
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <AlertTriangle className="w-12 h-12 text-yellow-500 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">PDF Preview Unavailable</h3>
+                <p className="text-gray-600 mb-4">Your browser cannot display the PDF inline.</p>
+                <a
+                  href={getPdfUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Download className="w-5 h-5" />
+                  <span>Click to View/Download PDF</span>
+                </a>
+              </div>
+            </object>
           </div>
         </div>
 

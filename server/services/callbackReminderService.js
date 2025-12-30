@@ -1,10 +1,11 @@
 const dbManager = require('../database-connection-manager');
-const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
+const { getSupabaseClient } = require('../config/supabase-client');
 
 class CallbackReminderService {
   constructor() {
-    this.supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+    // Use the centralized Supabase client with timeout protection
+    this.supabase = getSupabaseClient();
     this.checkInterval = null;
     this.isRunning = false;
   }

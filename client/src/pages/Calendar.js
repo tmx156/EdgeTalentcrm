@@ -3,16 +3,24 @@ import {
   FiCalendar, FiClock, FiMapPin, FiUser, FiX, FiPhone, FiMail,
   FiFileText, FiActivity, FiCheckCircle,
   FiExternalLink, FiCheck, FiSettings, FiEdit, FiMessageSquare,
-  FiChevronDown, FiChevronUp, FiChevronLeft, FiChevronRight, FiSearch, FiDownload, FiSend
+  FiChevronDown, FiChevronUp, FiChevronLeft, FiChevronRight, FiSearch, FiDownload, FiSend,
+  FiImage, FiUpload, FiCamera
 } from 'react-icons/fi';
+import { LazyLoadImage } from 'react-lazy-load-image-component';
+import 'react-lazy-load-image-component/src/effects/blur.css';
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import SaleModal from '../components/SaleModal';
+import PackageSelectionModal from '../components/PackageSelectionModal';
+import InvoiceModal from '../components/InvoiceModal';
+import SendContractModal from '../components/SendContractModal';
+import PresentationGallery from '../components/PresentationGallery';
 import ImageLightbox from '../components/ImageLightbox';
 import LazyImage from '../components/LazyImage';
-import { getOptimizedImageUrl } from '../utils/imageUtils';
+import OptimizedImage from '../components/OptimizedImage';
+import { getOptimizedImageUrl, getCloudinaryUrl, getBlurPlaceholder } from '../utils/imageUtils';
 import { getCurrentUKTime } from '../utils/timeUtils';
 import SlotCalendar from '../components/SlotCalendar';
 import WeeklySlotCalendar from '../components/WeeklySlotCalendar';
@@ -57,6 +65,16 @@ const Calendar = () => {
     time_booked: ''
   });
   const [showSaleModal, setShowSaleModal] = useState(false);
+  const [showPackageModal, setShowPackageModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [currentInvoice, setCurrentInvoice] = useState(null);
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [contractInvoiceData, setContractInvoiceData] = useState(null);
+  const [showPresentationGallery, setShowPresentationGallery] = useState(false);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
+  const [selectedPhotos, setSelectedPhotos] = useState([]);
+  const [selectedPackage, setSelectedPackage] = useState(null);
+  const [imageSelectionMode, setImageSelectionMode] = useState(false); // true when selecting after package
   const [selectedSale, setSelectedSale] = useState(null);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState('');
@@ -91,6 +109,21 @@ const Calendar = () => {
   
   // Image lightbox state
   const [lightboxImage, setLightboxImage] = useState(null);
+
+  // Photos state for calendar modal
+  const [leadPhotos, setLeadPhotos] = useState([]);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [hasMorePhotos, setHasMorePhotos] = useState(false);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loadingMorePhotos, setLoadingMorePhotos] = useState(false);
+
+  // Photographer upload state
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadDetails, setUploadDetails] = useState({ current: 0, total: 0, currentFileName: '' });
+  const [dragActive, setDragActive] = useState(false);
+  const uploadInputRef = useRef(null);
 
   // Memoize fetchEvents to prevent unnecessary re-renders
   const [isFetching, setIsFetching] = useState(false);
@@ -906,6 +939,162 @@ const Calendar = () => {
       socket.off('message_sent', handleMessageSent);
     };
   }, [socket, selectedEvent]);
+
+  // Fetch photos for a lead with pagination (optimized for modals)
+  const fetchLeadPhotos = useCallback(async (leadId, reset = true, cursor = null) => {
+    if (!leadId) {
+      setLeadPhotos([]);
+      return;
+    }
+
+    // Allow admin, viewer, and photographer roles to see photos
+    if (user?.role !== 'admin' && user?.role !== 'viewer' && user?.role !== 'photographer') {
+      return;
+    }
+
+    if (reset) {
+      setLoadingPhotos(true);
+    } else {
+      setLoadingMorePhotos(true);
+    }
+
+    try {
+      // Limit to 20 photos initially for modal (faster load, can load more)
+      const response = await axios.get('/api/photos', {
+        params: { 
+          leadId,
+          limit: 20, // Smaller initial load for faster modal opening
+          cursor: cursor || undefined,
+          fields: 'minimal' // Only fetch needed fields
+        }
+      });
+      if (response.data.success) {
+        const newPhotos = response.data.photos || [];
+        
+        if (reset) {
+          setLeadPhotos(newPhotos);
+        } else {
+          setLeadPhotos(prev => [...prev, ...newPhotos]);
+        }
+        
+        // Update pagination state
+        setHasMorePhotos(response.data.hasMore || false);
+        setNextCursor(response.data.nextCursor || null);
+      }
+    } catch (error) {
+      console.error('Error fetching photos:', error);
+      if (reset) {
+        setLeadPhotos([]);
+      }
+    } finally {
+      setLoadingPhotos(false);
+      setLoadingMorePhotos(false);
+    }
+  }, [user?.role]);
+
+  // Load more photos for modal
+  const loadMorePhotos = useCallback(() => {
+    if (selectedEvent.extendedProps?.lead?.id && hasMorePhotos && !loadingMorePhotos && nextCursor) {
+      fetchLeadPhotos(selectedEvent.extendedProps.lead.id, false, nextCursor);
+    }
+  }, [selectedEvent, hasMorePhotos, loadingMorePhotos, nextCursor, fetchLeadPhotos]);
+
+  // Handle photo upload for photographers
+  const handlePhotoUpload = async (files) => {
+    if (!files || files.length === 0) return;
+    if (!selectedEvent?.extendedProps?.lead?.id) {
+      alert('No lead selected for photo upload');
+      return;
+    }
+
+    const leadId = selectedEvent.extendedProps.lead.id;
+    const fileArray = Array.from(files);
+    const totalFiles = fileArray.length;
+
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadDetails({ current: 0, total: totalFiles, currentFileName: '' });
+
+    let uploadedCount = 0;
+    let failedCount = 0;
+
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+
+      // Update current file info
+      setUploadDetails({
+        current: i + 1,
+        total: totalFiles,
+        currentFileName: file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name
+      });
+
+      try {
+        const formData = new FormData();
+        formData.append('photo', file);
+        formData.append('leadId', leadId);
+
+        // Don't set Content-Type - let axios set it with boundary
+        await axios.post('/api/photos/upload', formData);
+
+        uploadedCount++;
+      } catch (error) {
+        console.error(`Error uploading ${file.name}:`, error);
+        failedCount++;
+      }
+
+      // Update progress
+      setUploadProgress(Math.round(((i + 1) / totalFiles) * 100));
+    }
+
+    setUploading(false);
+    setUploadProgress(0);
+    setUploadDetails({ current: 0, total: 0, currentFileName: '' });
+    setShowUploadPanel(false);
+
+    // Refresh photos (reset pagination)
+    fetchLeadPhotos(leadId, true);
+
+    // Show result notification
+    if (failedCount > 0) {
+      alert(`Uploaded ${uploadedCount} of ${totalFiles} photos. ${failedCount} failed.`);
+    } else if (uploadedCount > 0) {
+      alert(`Successfully uploaded ${uploadedCount} photo${uploadedCount > 1 ? 's' : ''}!`);
+    }
+  };
+
+  // Drag and drop handlers for photo upload
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handlePhotoUpload(e.dataTransfer.files);
+    }
+  };
+
+  // Fetch photos when event modal opens (reset pagination)
+  useEffect(() => {
+    if (showEventModal && selectedEvent?.extendedProps?.lead?.id) {
+      // Reset pagination state when modal opens
+      setHasMorePhotos(false);
+      setNextCursor(null);
+      fetchLeadPhotos(selectedEvent.extendedProps.lead.id, true);
+    } else {
+      setLeadPhotos([]);
+      setHasMorePhotos(false);
+      setNextCursor(null);
+    }
+  }, [showEventModal, selectedEvent, fetchLeadPhotos]);
 
   const checkForHighlighting = (eventsToCheck) => {
     // Check if there's a booking to highlight from Daily Diary
@@ -3033,6 +3222,7 @@ const Calendar = () => {
                     )}
                   </div>
                 </div>
+
                 {/* Right Column - Details & Actions */}
                 <div>
                   <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center">
@@ -3298,7 +3488,8 @@ const Calendar = () => {
                               <button
                                 onClick={() => {
                                   if (user?.role === 'viewer' || user?.role === 'admin') {
-                                    setShowSaleModal(true);
+                                    // Use new package selection flow
+                                    setShowPackageModal(true);
                                   }
                                 }}
                                 disabled={selectedEvent.extendedProps?.status === 'Attended' || !(user?.role === 'admin' || user?.role === 'viewer')}
@@ -3311,6 +3502,17 @@ const Calendar = () => {
                                 <FiCheckCircle className="h-4 w-4" />
                                 <span>{selectedEvent.extendedProps?.status === 'Attended' ? '✓ Complete' : (selectedSale ? 'Edit Sale' : 'Complete')}</span>
                               </button>
+
+                              {/* Quick Sale button (legacy) - small button */}
+                              {!(selectedEvent.extendedProps?.status === 'Attended') && (user?.role === 'admin' || user?.role === 'viewer') && (
+                                <button
+                                  onClick={() => setShowSaleModal(true)}
+                                  className="flex items-center justify-center space-x-1 px-2 py-1 rounded text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all"
+                                  title="Quick sale without package selection"
+                                >
+                                  <span>Quick $</span>
+                                </button>
+                              )}
                               
                               {/* Reject Lead button - Only for booker and admin */}
                               <button
@@ -3872,8 +4074,240 @@ const Calendar = () => {
                   )}
                 </div>
               </div>
+
+              {/* Photos Section - Show for admin, viewer, and photographer */}
+              {(user?.role === 'admin' || user?.role === 'viewer' || user?.role === 'photographer') && selectedEvent.extendedProps?.lead?.id && (
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold text-gray-900 flex items-center">
+                      <FiImage className="h-4 w-4 mr-2 text-indigo-600" />
+                      Client Photos
+                      {leadPhotos.length > 0 && (
+                        <span className="ml-2 bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">
+                          {leadPhotos.length}
+                        </span>
+                      )}
+                    </h4>
+                    {/* Upload button for photographers and admins */}
+                    {(user?.role === 'photographer' || user?.role === 'admin') && (
+                      <button
+                        onClick={() => setShowUploadPanel(!showUploadPanel)}
+                        className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          showUploadPanel
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                        }`}
+                      >
+                        <FiUpload className="h-3.5 w-3.5" />
+                        <span>{showUploadPanel ? 'Close' : 'Upload'}</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Upload Panel - for photographers */}
+                  {showUploadPanel && (user?.role === 'photographer' || user?.role === 'admin') && (
+                    <div className="mb-4">
+                      <div
+                        onDragEnter={handleDrag}
+                        onDragLeave={handleDrag}
+                        onDragOver={handleDrag}
+                        onDrop={handleDrop}
+                        className={`border-2 border-dashed rounded-lg p-6 text-center transition-all ${
+                          dragActive
+                            ? 'border-indigo-500 bg-indigo-50'
+                            : 'border-gray-300 bg-gray-50 hover:border-indigo-400'
+                        }`}
+                      >
+                        {uploading ? (
+                          <div className="space-y-3 py-2">
+                            {/* Upload icon with pulse */}
+                            <div className="relative mx-auto w-12 h-12">
+                              <FiCamera className="h-12 w-12 text-indigo-600" />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                              </div>
+                            </div>
+
+                            {/* File count */}
+                            <div className="text-center">
+                              <p className="text-lg font-semibold text-indigo-700">
+                                Uploading {uploadDetails.current} of {uploadDetails.total}
+                              </p>
+                              {uploadDetails.currentFileName && (
+                                <p className="text-xs text-gray-500 mt-1 font-mono">
+                                  {uploadDetails.currentFileName}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Progress bar */}
+                            <div className="w-full">
+                              <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                <span>{uploadProgress}% complete</span>
+                                <span>{uploadDetails.total - uploadDetails.current} remaining</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden"
+                                  style={{
+                                    width: `${uploadProgress}%`,
+                                    background: 'linear-gradient(90deg, #4F46E5, #7C3AED)'
+                                  }}
+                                >
+                                  {/* Animated stripes */}
+                                  <div
+                                    className="absolute inset-0 opacity-30"
+                                    style={{
+                                      backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent)',
+                                      backgroundSize: '1rem 1rem',
+                                      animation: 'progress-stripes 1s linear infinite'
+                                    }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <p className="text-xs text-gray-400 text-center">
+                              Please don't close this window
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <FiUpload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                            <p className="text-sm text-gray-600 mb-1">
+                              Drag & drop photos here
+                            </p>
+                            <p className="text-xs text-gray-500 mb-3">
+                              or click to select files
+                            </p>
+                            <input
+                              type="file"
+                              ref={uploadInputRef}
+                              multiple
+                              accept="image/*,video/*"
+                              onChange={(e) => handlePhotoUpload(e.target.files)}
+                              className="hidden"
+                            />
+                            <button
+                              onClick={() => uploadInputRef.current?.click()}
+                              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+                            >
+                              Select Photos
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Photo Grid - Optimized with progressive loading */}
+                  {loadingPhotos ? (
+                    <div className="bg-gray-50 rounded-lg p-4 text-center">
+                      <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                      <p className="text-gray-500 text-sm">Loading photos...</p>
+                    </div>
+                  ) : leadPhotos.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                        {leadPhotos.map((photo) => {
+                          const imageUrl = photo.cloudinary_secure_url || photo.cloudinary_url;
+
+                          return (
+                            <div
+                              key={photo.id}
+                              className="relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-400 transition-all bg-gray-100"
+                              style={{ aspectRatio: '1' }}
+                              onClick={() => setLightboxImage(imageUrl)}
+                            >
+                              {/* Progressive loading with OptimizedImage (same as Photographer page) */}
+                              <OptimizedImage
+                                src={imageUrl}
+                                alt={photo.description || 'Client photo'}
+                                size="thumb" // Small thumbnails for grid (100x100)
+                                className="w-full h-full object-cover"
+                                useBlur={true} // Enable blur placeholder
+                                threshold={100} // Start loading 100px before viewport
+                                onError={(e) => {
+                                  // Safely handle error
+                                  if (e && e.target && e.target.style) {
+                                    e.target.style.opacity = '0.3';
+                                  }
+                                }}
+                              />
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center z-10 pointer-events-none">
+                                <FiImage className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {/* Load More button for pagination */}
+                      {hasMorePhotos && (
+                        <div className="mt-3 text-center">
+                          <button
+                            onClick={loadMorePhotos}
+                            disabled={loadingMorePhotos}
+                            className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {loadingMorePhotos ? (
+                              <>
+                                <div className="animate-spin h-4 w-4 border-2 border-indigo-500 border-t-transparent rounded-full inline-block mr-2"></div>
+                                Loading...
+                              </>
+                            ) : (
+                              `Load More Photos (${leadPhotos.length} loaded)`
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="bg-gray-50 rounded-lg p-4 text-center">
+                      <FiImage className="h-8 w-8 mx-auto text-gray-300 mb-2" />
+                      <p className="text-gray-500 text-sm">No photos uploaded yet</p>
+                      {(user?.role === 'photographer' || user?.role === 'admin') && !showUploadPanel && (
+                        <button
+                          onClick={() => setShowUploadPanel(true)}
+                          className="mt-2 text-indigo-600 text-sm hover:text-indigo-800"
+                        >
+                          Upload photos now
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Bottom Action Buttons */}
-              <div className="mt-3 pt-3 border-t border-gray-200">
+              <div className="mt-3 pt-3 border-t border-gray-200 space-y-2">
+                {/* Viewer Actions Row - View Gallery and Start Sale */}
+                {(user?.role === 'viewer' || user?.role === 'admin') && leadPhotos.length > 0 && (
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => {
+                        setImageSelectionMode(false);
+                        setShowPresentationGallery(true);
+                      }}
+                      className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg hover:from-purple-600 hover:to-indigo-600 transition-all duration-300 shadow text-xs font-medium"
+                    >
+                      <FiImage className="h-4 w-4" />
+                      <span>View Gallery ({leadPhotos.length})</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedPhotoIds([]);
+                        setSelectedPhotos([]);
+                        setSelectedPackage(null);
+                        setShowPackageModal(true);
+                      }}
+                      className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all duration-300 shadow text-xs font-medium"
+                    >
+                      <FiCheckCircle className="h-4 w-4" />
+                      <span>Start Sale</span>
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex space-x-2">
                   {/* Reschedule Button - Available for all roles */}
                   {selectedEvent.extendedProps?.status !== 'Cancelled' && (
@@ -3885,7 +4319,7 @@ const Calendar = () => {
                       <span>Reschedule</span>
                     </button>
                   )}
-                  
+
                   {/* View Lead Details Button - Hidden for viewers */}
                   {user?.role !== 'viewer' && (
                     <button
@@ -3908,7 +4342,7 @@ const Calendar = () => {
         </div>
       )}
 
-      {/* Sale Modal */}
+      {/* Sale Modal (Legacy Quick Sale) */}
       {showSaleModal && selectedEvent && selectedEvent.extendedProps?.lead && (
         <SaleModal
           isOpen={showSaleModal}
@@ -3921,6 +4355,146 @@ const Calendar = () => {
             alert(selectedSale ? 'Sale updated successfully!' : 'Sale recorded successfully!');
             handleEventStatusChange('Attended');
             debouncedFetchEvents(); // Use debounced fetch to prevent race conditions
+          }}
+        />
+      )}
+
+      {/* Package Selection Modal (New Complete Flow) */}
+      {showPackageModal && selectedEvent && selectedEvent.extendedProps?.lead && (
+        <PackageSelectionModal
+          isOpen={showPackageModal}
+          onClose={() => {
+            setShowPackageModal(false);
+            // Don't clear package if photos are selected (user might come back)
+            if (selectedPhotoIds.length === 0) {
+              setSelectedPackage(null);
+            }
+          }}
+          lead={selectedEvent.extendedProps.lead}
+          selectedPhotoCount={selectedPhotoIds.length}
+          selectedPhotoIds={selectedPhotoIds}
+          initialPackage={selectedPackage}
+          onTrimSelection={() => {
+            // Go back to gallery to adjust selection
+            setShowPackageModal(false);
+            setImageSelectionMode(true);
+            setShowPresentationGallery(true);
+          }}
+          onPackageSelected={(pkg) => {
+            // Store selected package and open gallery for image selection
+            setSelectedPackage(pkg);
+            setShowPackageModal(false);
+            setImageSelectionMode(true);
+            setShowPresentationGallery(true);
+          }}
+          onChangeImages={(pkg) => {
+            // Go back to gallery to change images (keep the package)
+            setSelectedPackage(pkg);
+            setShowPackageModal(false);
+            setImageSelectionMode(true);
+            setShowPresentationGallery(true);
+          }}
+          onGenerateInvoice={async (data) => {
+            try {
+              const response = await axios.post('/api/invoices', {
+                leadId: data.leadId,
+                items: data.items,
+                selectedPhotoIds: selectedPhotoIds
+              });
+
+              if (response.data.success) {
+                setCurrentInvoice(response.data.invoice);
+                setShowPackageModal(false);
+                setSelectedPackage(null);
+                setSelectedPhotoIds([]);
+                setShowInvoiceModal(true);
+              }
+            } catch (err) {
+              console.error('Error creating invoice:', err);
+              alert('Failed to create invoice. Please try again.');
+            }
+          }}
+          onSendContract={(data) => {
+            // Store the package and invoice data for the contract
+            setSelectedPackage(data.package);
+            setContractInvoiceData({
+              subtotal: data.totals.subtotal,
+              vatAmount: data.totals.vatAmount,
+              total: data.totals.total
+            });
+            setShowPackageModal(false);
+            setShowContractModal(true);
+          }}
+        />
+      )}
+
+      {/* Presentation Gallery - For viewing and selecting photos */}
+      {showPresentationGallery && selectedEvent?.extendedProps?.lead && (
+        <PresentationGallery
+          isOpen={showPresentationGallery}
+          onClose={() => {
+            setShowPresentationGallery(false);
+            setImageSelectionMode(false);
+          }}
+          photos={leadPhotos}
+          leadId={selectedEvent.extendedProps.lead.id}
+          leadName={selectedEvent.extendedProps.lead.name || 'Client'}
+          initialSelectedIds={selectedPhotoIds}
+          imageLimit={selectedPackage?.imageCount ?? selectedPackage?.image_count}
+          selectionMode={imageSelectionMode}
+          onProceedToPackage={(photoIds, photos) => {
+            setSelectedPhotoIds(photoIds);
+            setSelectedPhotos(photos);
+            setShowPresentationGallery(false);
+            if (imageSelectionMode && selectedPackage) {
+              // Already have package selected, proceed to invoice
+              setShowPackageModal(true);
+            } else {
+              // No package yet, open package selection
+              setShowPackageModal(true);
+            }
+          }}
+        />
+      )}
+
+      {/* Invoice Modal */}
+      {showInvoiceModal && currentInvoice && (
+        <InvoiceModal
+          isOpen={showInvoiceModal}
+          onClose={() => setShowInvoiceModal(false)}
+          invoice={currentInvoice}
+          lead={selectedEvent?.extendedProps?.lead}
+          onPaymentRecorded={(updatedInvoice) => {
+            setCurrentInvoice(updatedInvoice);
+          }}
+          onSignatureSaved={(updatedInvoice) => {
+            setCurrentInvoice(updatedInvoice);
+          }}
+          onComplete={(completedInvoice) => {
+            setCurrentInvoice(completedInvoice);
+            setShowInvoiceModal(false);
+            setShowEventModal(false);
+            alert('Sale completed successfully!');
+            handleEventStatusChange('Attended');
+            debouncedFetchEvents();
+          }}
+        />
+      )}
+
+      {/* Send Contract Modal */}
+      {showContractModal && selectedEvent?.extendedProps?.lead && selectedPackage && (
+        <SendContractModal
+          isOpen={showContractModal}
+          onClose={() => {
+            setShowContractModal(false);
+            setContractInvoiceData(null);
+          }}
+          lead={selectedEvent.extendedProps.lead}
+          packageData={selectedPackage}
+          invoiceData={contractInvoiceData}
+          onContractSent={(contract) => {
+            console.log('Contract sent:', contract);
+            // Optionally close other modals and show success
           }}
         />
       )}

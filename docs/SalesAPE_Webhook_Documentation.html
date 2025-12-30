@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>SalesAPE Webhook Integration Documentation</title>
+<style>
+body { font-family: Calibri, Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; }
+h1 { color: #1a1a1a; border-bottom: 2px solid #333; padding-bottom: 10px; }
+h2 { color: #333; margin-top: 30px; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+h3 { color: #444; margin-top: 20px; }
+table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+th { background-color: #f5f5f5; font-weight: bold; }
+code { background-color: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: Consolas, monospace; }
+pre { background-color: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; font-family: Consolas, monospace; font-size: 13px; }
+.required { color: #d32f2f; font-weight: bold; }
+.important { background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107; margin: 15px 0; }
+</style>
+</head>
+<body>
+
+<h1>SalesAPE Webhook Integration Documentation</h1>
+
+<h2>Webhook Endpoint</h2>
+<table>
+<tr><th>URL</th><td><code>https://edgetalentcrm-production.up.railway.app/api/salesape-webhook/update</code></td></tr>
+<tr><th>Method</th><td><code>POST</code></td></tr>
+<tr><th>Content-Type</th><td><code>application/json</code></td></tr>
+</table>
+
+<h2>Authentication</h2>
+<p><strong>None required</strong> – The endpoint is open and accepts requests without authentication.</p>
+
+<hr>
+
+<h2>Field Mappings</h2>
+
+<h3>Required Field</h3>
+<table>
+<tr><th>Field Name</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>CRM_ID</code></td><td>string</td><td><span class="required">REQUIRED</span> – The unique lead ID from our CRM</td></tr>
+</table>
+
+<h3>Status Update Fields</h3>
+<table>
+<tr><th>Field Name</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>Airtable_Record_ID</code></td><td>string</td><td>Your Airtable record ID</td></tr>
+<tr><td><code>SalesAPE_Status</code></td><td>string</td><td>Current status (e.g., "User Engaged", "Goal Hit")</td></tr>
+<tr><td><code>SalesAPE_Initial_Message_Sent</code></td><td>boolean</td><td>true/false</td></tr>
+<tr><td><code>SalesAPE_User_Engaged</code></td><td>boolean</td><td>true/false</td></tr>
+<tr><td><code>SalesAPE_Goal_Presented</code></td><td>boolean</td><td>true/false</td></tr>
+<tr><td><code>SalesAPE_Goal_Hit</code></td><td>boolean</td><td><strong>When true, CRM automatically marks lead as "Booked"</strong></td></tr>
+<tr><td><code>Follow_Ups_Ended</code></td><td>boolean</td><td>true/false</td></tr>
+<tr><td><code>Not_Interested_Opted_Out</code></td><td>boolean</td><td>true/false</td></tr>
+</table>
+
+<h3>Booking Fields (when booking is made)</h3>
+<table>
+<tr><th>Field Name</th><th>Type</th><th>Format</th></tr>
+<tr><td><code>Booking_Date</code></td><td>string</td><td>YYYY-MM-DD (e.g., "2024-01-15")</td></tr>
+<tr><td><code>Booking_Time</code></td><td>string</td><td>HH:MM 24-hour (e.g., "14:30")</td></tr>
+<tr><td><code>Event_Type</code></td><td>string</td><td>"Meeting Booked"</td></tr>
+<tr><td><code>Calendar_Link</code></td><td>string</td><td>URL</td></tr>
+</table>
+
+<h3>Conversation Summary Fields (optional)</h3>
+<table>
+<tr><th>Field Name</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>Post_Conversation_Summary</code></td><td>boolean</td><td>Set true when sending summary</td></tr>
+<tr><td><code>Conversation_Summary</code></td><td>string</td><td>Brief summary text</td></tr>
+<tr><td><code>Full_Conversation</code></td><td>string</td><td>Complete transcript</td></tr>
+<tr><td><code>Portal_Link</code></td><td>string</td><td>Link to your portal</td></tr>
+</table>
+
+<hr>
+
+<h2>Example Payloads</h2>
+
+<h3>Status Update</h3>
+<pre>{
+  "CRM_ID": "550e8400-e29b-41d4-a716-446655440000",
+  "Airtable_Record_ID": "recABC123",
+  "SalesAPE_Status": "User Engaged",
+  "SalesAPE_Initial_Message_Sent": true,
+  "SalesAPE_User_Engaged": true,
+  "SalesAPE_Goal_Hit": false
+}</pre>
+
+<h3>Booking Made (Goal Hit)</h3>
+<pre>{
+  "CRM_ID": "550e8400-e29b-41d4-a716-446655440000",
+  "Airtable_Record_ID": "recABC123",
+  "SalesAPE_Status": "Goal Hit",
+  "SalesAPE_Goal_Hit": true,
+  "Booking_Date": "2024-01-15",
+  "Booking_Time": "14:30",
+  "Event_Type": "Meeting Booked"
+}</pre>
+
+<hr>
+
+<h2>Response Format</h2>
+
+<h3>Success (200)</h3>
+<pre>{
+  "success": true,
+  "message": "Lead updated successfully",
+  "leadId": "550e8400-e29b-41d4-a716-446655440000"
+}</pre>
+
+<h3>Error (400)</h3>
+<pre>{
+  "error": "CRM_ID is required"
+}</pre>
+
+<hr>
+
+<h2>Health Check Endpoint</h2>
+<pre>GET https://edgetalentcrm-production.up.railway.app/api/salesape-webhook/health</pre>
+
+<hr>
+
+<h2>Important Notes</h2>
+<div class="important">
+<ul>
+<li><strong>CRM_ID is REQUIRED</strong> – Every webhook request must include this field</li>
+<li><strong>Goal Hit = Booking</strong> – When <code>SalesAPE_Goal_Hit</code> is <code>true</code>, the CRM automatically marks the lead as "Booked"</li>
+<li><strong>Date Format</strong> – Use YYYY-MM-DD format for dates</li>
+<li><strong>Time Format</strong> – Use 24-hour HH:MM format for times</li>
+</ul>
+</div>
+
+</body>
+</html>
+

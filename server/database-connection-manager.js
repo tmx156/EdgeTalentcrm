@@ -3,6 +3,44 @@ const { createClient } = require('@supabase/supabase-js');
 // Import centralized configuration
 const config = require('./config');
 
+// Fetch with timeout wrapper
+// Node.js 20+ has fetch and AbortController globally
+const fetchWithTimeout = async (url, options = {}) => {
+  const timeoutMs = 30000; // 30 seconds
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      const errorMsg = `Request timeout after ${timeoutMs}ms: ${url}`;
+      console.error('⏱️', errorMsg);
+      throw new Error(errorMsg);
+    }
+    // Provide more detailed error information for network errors
+    if (error.message && (error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND'))) {
+      const errorMsg = `Network error connecting to Supabase: ${url}\n` +
+        `Possible causes:\n` +
+        `  - Internet connectivity issues\n` +
+        `  - Supabase service is temporarily unavailable\n` +
+        `  - Firewall/proxy blocking the connection\n` +
+        `  - DNS resolution problems\n` +
+        `  - Incorrect Supabase URL\n` +
+        `Original error: ${error.message}`;
+      console.error('🌐', errorMsg);
+      throw new Error(errorMsg);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 class DatabaseConnectionManager {
   constructor() {
     this.client = null;
@@ -31,7 +69,19 @@ class DatabaseConnectionManager {
         console.warn('⚠️  WARNING: SUPABASE_SERVICE_ROLE_KEY does not start with "eyJ" - may be invalid');
       }
 
-      this.client = createClient(url, key);
+      // Create Supabase client with connection options and timeout
+      this.client = createClient(url, key, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+        global: {
+          headers: {
+            'x-client-info': 'crm-backend',
+          },
+          fetch: fetchWithTimeout,
+        },
+      });
 
       // Log key preview (first 20 chars) for debugging
       const keyPreview = key.substring(0, 20);

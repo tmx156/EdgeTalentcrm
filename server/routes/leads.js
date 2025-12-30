@@ -366,18 +366,23 @@ router.get('/', auth, async (req, res) => {
       .select('*', { count: 'exact', head: true });
 
     // ROLE-BASED ACCESS CONTROL - Apply FIRST to ensure correct filtering
-    if (req.user.role !== 'admin') {
-      // ✅ BOOKER RULE: Once assigned, leads stay with booker regardless of status changes
-      // EXCEPT: Rejected leads are excluded from booker views
+    if (req.user.role === 'admin' || req.user.role === 'viewer') {
+      // Admins and viewers can see all leads
+      console.log(`👑 Full access: User ${req.user.name} (${req.user.role}) can see all leads`);
+    } else if (req.user.role === 'photographer') {
+      // Photographers can see booked/attended leads (for photo assignment)
+      dataQuery = dataQuery.in('status', ['Booked', 'Attended', 'Sale']);
+      countQuery = countQuery.in('status', ['Booked', 'Attended', 'Sale']);
+      console.log(`📸 Photographer access: User ${req.user.name} can see booked/attended/sale leads`);
+    } else {
+      // Bookers can only see leads assigned to them
       dataQuery = dataQuery
         .eq('booker_id', req.user.id)
-        .neq('status', 'Rejected'); // Exclude rejected leads from booker views
+        .neq('status', 'Rejected');
       countQuery = countQuery
         .eq('booker_id', req.user.id)
-        .neq('status', 'Rejected'); // Exclude rejected leads from booker views
-      console.log(`🔒 Role-based filtering: User ${req.user.name} (${req.user.role}) can only see their assigned leads (excluding rejected)`);
-    } else {
-      console.log(`👑 Admin access: User ${req.user.name} can see all leads`);
+        .neq('status', 'Rejected');
+      console.log(`🔒 Role-based filtering: User ${req.user.name} (${req.user.role}) can only see their assigned leads`);
     }
 
     // Filter out ghost bookings (used for stats correction)
@@ -4883,6 +4888,290 @@ router.post('/:id/send-sms', auth, async (req, res) => {
   } catch (error) {
     console.error('Send SMS error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/leads/bulk-communication
+// @desc    Send bulk email/SMS to multiple leads using templates
+// @access  Private
+router.post('/bulk-communication', auth, async (req, res) => {
+  try {
+    const { templateId, leadIds, communicationType, customSubject, customEmailBody, customSmsBody } = req.body;
+    
+    if (!templateId || !leadIds || leadIds.length === 0) {
+      return res.status(400).json({ message: 'Template ID and lead IDs are required' });
+    }
+
+    console.log(`📤 Starting bulk communication for ${leadIds.length} leads with template ${templateId}`);
+    
+    // Get the template
+    const { data: templates, error: templateError } = await supabase
+      .from('templates')
+      .select('*')
+      .eq('id', templateId)
+      .eq('is_active', true)
+      .limit(1);
+    
+    if (templateError) {
+      console.error('❌ Template fetch error:', templateError);
+      return res.status(500).json({ message: 'Error fetching template', error: templateError.message });
+    }
+    
+    if (!templates || templates.length === 0) {
+      console.log('❌ Template not found or inactive:', templateId);
+      return res.status(404).json({ message: 'Template not found or inactive' });
+    }
+    
+    const template = templates[0];
+    console.log(`✅ Using template: ${template.name} (${template.type})`);
+
+    let sentCount = 0;
+    const results = [];
+
+    for (const leadId of leadIds) {
+      try {
+        console.log(`📊 Processing lead: ${leadId}`);
+        
+        // Get the lead data
+        const { data: lead, error: leadError } = await supabase
+          .from('leads')
+          .select('*')
+          .eq('id', leadId)
+          .single();
+        
+        if (leadError || !lead) {
+          console.log(`⚠️ Lead ${leadId} not found:`, leadError);
+          results.push({
+            leadId,
+            error: 'Lead not found'
+          });
+          continue;
+        }
+        
+        console.log(`✅ Found lead: ${lead.name} (${lead.email || 'no email'}, ${lead.phone || 'no phone'})`);
+
+        // Prepare variables for template replacement
+        const variables = {
+          '{leadName}': lead.name || 'Customer',
+          '{leadEmail}': lead.email || '',
+          '{leadPhone}': lead.phone || '',
+          '{leadPostcode}': lead.postcode || '',
+          '{leadStatus}': lead.status || 'New',
+          '{dateBooked}': lead.date_booked ? new Date(lead.date_booked).toLocaleDateString('en-GB') : '',
+          '{timeBooked}': lead.time_booked || '',
+          '{companyName}': 'Modelling Studio CRM',
+          '{bookerName}': req.user.name || 'Team Member'
+        };
+
+        // Replace variables in content
+        let emailSubject = customSubject || template.subject || '';
+        let emailBody = customEmailBody || template.email_body || '';
+        let smsBody = customSmsBody || template.sms_body || '';
+
+        Object.entries(variables).forEach(([key, value]) => {
+          emailSubject = emailSubject.replace(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+          emailBody = emailBody.replace(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+          smsBody = smsBody.replace(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), value);
+        });
+
+        // Create a custom template object
+        const customTemplate = {
+          ...template,
+          subject: emailSubject,
+          email_body: emailBody,
+          sms_body: smsBody,
+          send_email: (communicationType === 'email' || communicationType === 'both'),
+          send_sms: (communicationType === 'sms' || communicationType === 'both')
+        };
+
+        // Use MessagingService.processTemplate
+        const processedTemplate = MessagingService.processTemplate(customTemplate, lead, req.user, lead.date_booked, lead.time_booked);
+        
+        console.log(`📧 Processed template for ${lead.name}:`, {
+          hasEmail: !!processedTemplate.email_body,
+          hasSms: !!processedTemplate.sms_body,
+          emailLength: processedTemplate.email_body?.length || 0,
+          smsLength: processedTemplate.sms_body?.length || 0
+        });
+
+        // Create message record
+        const messageId = require('uuid').v4();
+        const { data: messageResult, error: messageError } = await supabase
+          .from('messages')
+          .insert({
+            id: messageId,
+            lead_id: leadId,
+            template_id: templateId,
+            type: (customTemplate.send_email && customTemplate.send_sms) ? 'both' : (customTemplate.send_email ? 'email' : 'sms'),
+            content: customTemplate.send_email ? processedTemplate.email_body : processedTemplate.sms_body,
+            subject: customTemplate.send_email ? processedTemplate.subject : null,
+            email_body: customTemplate.send_email ? processedTemplate.email_body : null,
+            sms_body: customTemplate.send_sms ? processedTemplate.sms_body : null,
+            recipient_email: customTemplate.send_email ? lead.email : null,
+            recipient_phone: customTemplate.send_sms ? lead.phone : null,
+            sent_by: req.user.id,
+            sent_by_name: req.user.name,
+            status: 'pending',
+            sent_at: new Date().toISOString(),
+            created_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (messageError) {
+          console.error('❌ Message creation error:', messageError);
+          results.push({
+            leadId,
+            customerName: lead.name,
+            error: 'Failed to create message record'
+          });
+          continue;
+        }
+
+        console.log(`✅ Message record created: ${messageResult.id}`);
+
+        // Send communications
+        let emailSent = false;
+        let smsSent = false;
+        let emailError = null;
+        let smsError = null;
+
+        // Send email if requested and lead has email
+        if (customTemplate.send_email && lead.email) {
+          try {
+            const message = {
+              id: messageId,
+              recipient_email: lead.email,
+              recipient_name: lead.name,
+              subject: processedTemplate.subject,
+              email_body: processedTemplate.email_body,
+              lead_id: leadId,
+              template_id: templateId,
+              type: 'email',
+              sent_by: req.user.id,
+              sent_by_name: req.user.name,
+              status: 'pending',
+              created_at: new Date().toISOString(),
+              channel: 'email',
+            };
+            
+            console.log(`📧 Sending email to ${lead.email}...`);
+            const emailResult = await MessagingService.sendEmail(message);
+            emailSent = emailResult;
+            
+            if (emailResult) {
+              console.log(`✅ Email sent successfully to ${lead.email}`);
+            } else {
+              console.log(`❌ Email failed to ${lead.email}`);
+            }
+          } catch (error) {
+            console.error('❌ Email sending error:', error);
+            emailError = error.message;
+          }
+        } else if (customTemplate.send_email && !lead.email) {
+          emailError = 'Lead does not have an email address';
+        }
+
+        // Send SMS if requested and lead has phone
+        if (customTemplate.send_sms && lead.phone) {
+          try {
+            const message = {
+              id: messageId,
+              recipient_phone: lead.phone,
+              recipient_name: lead.name,
+              sms_body: processedTemplate.sms_body,
+              lead_id: leadId,
+              template_id: templateId,
+              type: 'sms',
+              sent_by: req.user.id,
+              sent_by_name: req.user.name,
+              status: 'pending',
+              created_at: new Date().toISOString(),
+              channel: 'sms',
+            };
+            
+            console.log(`📱 Sending SMS to ${lead.phone}...`);
+            const smsResult = await MessagingService.sendSMS(message);
+            smsSent = smsResult;
+            
+            if (smsResult) {
+              console.log(`✅ SMS sent successfully to ${lead.phone}`);
+            } else {
+              console.log(`❌ SMS failed to ${lead.phone}`);
+            }
+          } catch (error) {
+            console.error('❌ SMS sending error:', error);
+            smsError = error.message;
+          }
+        } else if (customTemplate.send_sms && !lead.phone) {
+          smsError = 'Lead does not have a phone number';
+        }
+
+        // Update message status
+        const finalStatus = (emailSent || smsSent) ? 'sent' : 'failed';
+        const { error: updateError } = await supabase
+          .from('messages')
+          .update({
+            status: finalStatus,
+            email_status: customTemplate.send_email ? (emailSent ? 'sent' : 'failed') : null,
+            sms_status: customTemplate.send_sms ? (smsSent ? 'sent' : 'failed') : null,
+            sent_at: new Date().toISOString()
+          })
+          .eq('id', messageId);
+
+        if (updateError) {
+          console.error('❌ Message status update error:', updateError);
+        } else {
+          console.log(`✅ Message ${messageId} status updated to ${finalStatus}`);
+        }
+
+        results.push({
+          leadId,
+          customerName: lead.name,
+          email: lead.email,
+          phone: lead.phone,
+          emailSent,
+          smsSent,
+          emailError,
+          smsError
+        });
+
+        if (emailSent || smsSent) {
+          sentCount++;
+        }
+      } catch (leadError) {
+        console.error('Error processing lead:', leadError);
+        results.push({
+          leadId,
+          error: leadError.message
+        });
+      }
+    }
+
+    // Calculate success/error counts
+    const errorCount = results.filter(r => r.error || (!r.emailSent && !r.smsSent)).length;
+    const successCount = results.filter(r => !r.error && (r.emailSent || r.smsSent)).length;
+
+    // Log the communication attempt
+    console.log(`📤 Bulk communication completed: ${successCount} successful, ${errorCount} errors`);
+
+    let message = `Bulk communication completed: ${successCount} messages sent successfully`;
+    if (errorCount > 0) {
+      message += `, ${errorCount} failed`;
+    }
+
+    res.json({
+      message,
+      sentCount: successCount,
+      errorCount,
+      totalLeads: leadIds.length,
+      results,
+      note: successCount > 0 ? 'Messages will appear in the message history shortly' : 'No messages were sent due to errors'
+    });
+
+  } catch (error) {
+    console.error('Bulk communication error:', error);
+    res.status(500).json({ message: 'Error sending bulk communications', error: error.message });
   }
 });
 

@@ -139,4 +139,4 @@ fix-*
 server/config/gmail-token.json
 server/data/processed_*.json
 server.log
-*.log
+*.logRAILWAY_ENV_VARIABLES.txt

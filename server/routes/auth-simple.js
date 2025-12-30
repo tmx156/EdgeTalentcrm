@@ -6,8 +6,49 @@ const { createClient } = require('@supabase/supabase-js');
 // Import centralized configuration
 const config = require('../config');
 
+// Fetch with timeout wrapper (Node.js 20+ has fetch and AbortController globally)
+const fetchWithTimeout = async (url, options = {}) => {
+  const timeoutMs = 30000; // 30 seconds
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms: ${url}`);
+    }
+    if (error.message && (error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND'))) {
+      throw new Error(`Network error connecting to Supabase: ${url}. Check your internet connection and Supabase service status. Original: ${error.message}`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 // Use centralized Supabase configuration with service role key for auth operations
-const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
+// Add connection options with timeout and better error handling
+const supabase = createClient(
+  config.supabase.url, 
+  config.supabase.serviceRoleKey || config.supabase.anonKey,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      headers: {
+        'x-client-info': 'crm-auth',
+      },
+      fetch: fetchWithTimeout,
+    },
+  }
+);
 
 // Debug: Log configuration status
 console.log('🔐 Auth Route Configuration:');

@@ -11,6 +11,43 @@ const config = require('./index');
  * IMPORTANT: Use this instead of calling createClient() directly!
  */
 
+// Fetch with timeout wrapper (Node.js 20+ has fetch and AbortController globally)
+const fetchWithTimeout = async (url, options = {}) => {
+  const timeoutMs = 30000; // 30 seconds
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } catch (error) {
+    if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+      const errorMsg = `Request timeout after ${timeoutMs}ms: ${url}`;
+      console.error('⏱️', errorMsg);
+      throw new Error(errorMsg);
+    }
+    // Provide more detailed error information for network errors
+    if (error.message && (error.message.includes('fetch failed') || error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND'))) {
+      const errorMsg = `Network error connecting to Supabase: ${url}\n` +
+        `Possible causes:\n` +
+        `  - Internet connectivity issues\n` +
+        `  - Supabase service is temporarily unavailable\n` +
+        `  - Firewall/proxy blocking the connection\n` +
+        `  - DNS resolution problems\n` +
+        `  - Incorrect Supabase URL\n` +
+        `Original error: ${error.message}`;
+      console.error('🌐', errorMsg);
+      throw new Error(errorMsg);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 let supabaseInstance = null;
 
 function getSupabaseClient() {
@@ -37,11 +74,12 @@ function getSupabaseClient() {
       global: {
         headers: {
           'x-application-name': 'edge-talent-crm'
-        }
+        },
+        fetch: fetchWithTimeout,
       }
     });
 
-    console.log('✅ Singleton Supabase client initialized');
+    console.log('✅ Singleton Supabase client initialized with timeout protection');
   }
 
   return supabaseInstance;

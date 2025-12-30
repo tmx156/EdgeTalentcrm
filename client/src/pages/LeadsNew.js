@@ -12,6 +12,7 @@ import { useSocket } from '../context/SocketContext';
 import LeadAnalysisModal from '../components/LeadAnalysisModal';
 import LazyImage from '../components/LazyImage';
 import ImageLightbox from '../components/ImageLightbox';
+import BulkCommunicationModal from '../components/BulkCommunicationModal';
 import { getOptimizedImageUrl } from '../utils/imageUtils';
 
 const LeadsNew = () => {
@@ -42,7 +43,7 @@ const LeadsNew = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalLeads, setTotalLeads] = useState(0);
-  const [leadsPerPage] = useState(50); // Increased for full-page experience
+  const [leadsPerPage] = useState(30); // Optimized: Reduced from 50 to 30 for better performance
   const [selectedLeads, setSelectedLeads] = useState([]);
   const [viewMode, setViewMode] = useState('table'); // Default to table view
   
@@ -54,6 +55,7 @@ const LeadsNew = () => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [showBulkCommunicationModal, setShowBulkCommunicationModal] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
   const [salesTeam, setSalesTeam] = useState([]);
   const [selectedBooker, setSelectedBooker] = useState('');
@@ -87,7 +89,8 @@ const LeadsNew = () => {
   }, [searchTerm, statusFilter, dateFilter, customDateStart, customDateEnd]);
 
   // Helper function to calculate date range in GMT/London timezone
-  const getDateRange = () => {
+  // Memoized to prevent recreating Date objects on every render
+  const getDateRange = useCallback(() => {
     // Get current time in London timezone - use proper Date object
     const now = new Date();
     
@@ -97,8 +100,10 @@ const LeadsNew = () => {
     // Create Date objects for calculations
     const todayMidnightLondon = new Date(todayLondonStr + 'T00:00:00.000Z');
 
-    console.log('🕐 Current time:', now.toLocaleString('en-GB', { timeZone: 'Europe/London' }));
-    console.log('📅 Today (London midnight):', todayLondonStr, todayMidnightLondon.toISOString());
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🕐 Current time:', now.toLocaleString('en-GB', { timeZone: 'Europe/London' }));
+      console.log('📅 Today (London midnight):', todayLondonStr, todayMidnightLondon.toISOString());
+    }
 
     switch (dateFilter) {
       case 'today':
@@ -145,9 +150,10 @@ const LeadsNew = () => {
       default:
         return null;
     }
-  };
+  }, [dateFilter, customDateStart, customDateEnd]);
 
-  const fetchLeads = async () => {
+  // Memoized fetchLeads to prevent unnecessary recreations
+  const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
@@ -167,17 +173,25 @@ const LeadsNew = () => {
         if (statusFilter === 'Assigned') {
           params.assigned_at_start = dateRange.start;
           params.assigned_at_end = dateRange.end;
-          console.log('📅 Assigned date filter active:', dateFilter, 'Range:', dateRange);
+          if (process.env.NODE_ENV === 'development') {
+            console.log('📅 Assigned date filter active:', dateFilter, 'Range:', dateRange);
+          }
         } else {
           params.created_at_start = dateRange.start;
           params.created_at_end = dateRange.end;
-          console.log('📅 Created date filter active:', dateFilter, 'Range:', dateRange);
+          if (process.env.NODE_ENV === 'development') {
+            console.log('📅 Created date filter active:', dateFilter, 'Range:', dateRange);
+          }
         }
       } else {
-        console.log('📅 Date filter: All time (no filter applied)');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📅 Date filter: All time (no filter applied)');
+        }
       }
 
-      console.log('🔍 Fetching leads with params:', params);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 Fetching leads with params:', params);
+      }
 
       const response = await axios.get('/api/leads', {
         params,
@@ -194,9 +208,10 @@ const LeadsNew = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, leadsPerPage, statusFilter, searchTerm, getDateRange, dateFilter]);
 
-  const fetchLeadCounts = async () => {
+  // Memoized fetchLeadCounts to prevent unnecessary recreations
+  const fetchLeadCounts = useCallback(async () => {
     try {
       // Build params for stats API with date filter if applicable
       const params = {};
@@ -207,36 +222,44 @@ const LeadsNew = () => {
         // (assigned_at is only used for the actual leads list when viewing Assigned status)
         params.created_at_start = dateRange.start;
         params.created_at_end = dateRange.end;
-        console.log('📊 Fetching counts with date filter:', dateRange);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📊 Fetching counts with date filter:', dateRange);
+        }
       }
 
       const response = await axios.get('/api/stats/leads', { params });
-      console.log('📊 Fetched lead counts with date filter:', response.data);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📊 Fetched lead counts with date filter:', response.data);
+      }
       setLeadCounts(response.data);
     } catch (error) {
       console.error('Error fetching lead counts:', error);
     }
-  };
+  }, [getDateRange]);
 
+  // Combined useEffect for fetching leads
   useEffect(() => {
     fetchLeads();
-  }, [currentPage, statusFilter, searchTerm, dateFilter, customDateStart, customDateEnd]);
+  }, [fetchLeads]);
 
+  // Combined useEffect for initial load and date filter changes
   useEffect(() => {
     if (user) {
       fetchLeadCounts();
       fetchSalesTeam();
     }
-  }, [user]);
+  }, [user, dateFilter, customDateStart, customDateEnd, fetchLeadCounts]);
 
-  // Refetch lead counts when date filter changes
-  useEffect(() => {
-    if (user) {
-      console.log('📅 Date filter changed, refetching counts...');
-      fetchLeadCounts();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFilter, customDateStart, customDateEnd]);
+  // Memoize status filter buttons array to prevent recreations
+  const statusFilterButtons = useMemo(() => [
+    { value: 'all', label: 'All', count: leadCounts.total },
+    { value: 'New', label: 'New', count: leadCounts.new },
+    { value: 'Booked', label: 'Booked', count: leadCounts.booked },
+    { value: 'Attended', label: 'Attended', count: leadCounts.attended },
+    { value: 'Cancelled', label: 'Cancelled', count: leadCounts.cancelled },
+    { value: 'Assigned', label: 'Assigned', count: leadCounts.assigned },
+    { value: 'Rejected', label: 'Rejected', count: leadCounts.rejected }
+  ], [leadCounts.total, leadCounts.new, leadCounts.booked, leadCounts.attended, leadCounts.cancelled, leadCounts.assigned, leadCounts.rejected]);
 
   // Handle navigation state changes from sidebar
   useEffect(() => {
@@ -246,21 +269,23 @@ const LeadsNew = () => {
     }
   }, [location.state?.statusFilter]);
 
-  const handleRowClick = (lead) => {
-    // Pass filter context and current leads to LeadDetail for navigation
+  // Memoized handleRowClick - removed filteredLeads to reduce memory usage
+  const handleRowClick = useCallback((lead) => {
+    // Pass filter context to LeadDetail for navigation (removed filteredLeads to save memory)
     navigate(`/leads/${lead.id}`, {
       state: {
         statusFilter,
         searchTerm,
         dateFilter,
         customDateStart,
-        customDateEnd,
-        filteredLeads: leads // Pass the current filtered leads
+        customDateEnd
+        // Removed: filteredLeads: leads - this was causing memory bloat
       }
     });
-  };
+  }, [navigate, statusFilter, searchTerm, dateFilter, customDateStart, customDateEnd]);
 
-  const handleBookLead = (lead, e) => {
+  // Memoized handleBookLead to prevent unnecessary re-renders
+  const handleBookLead = useCallback((lead, e) => {
     e.stopPropagation();
     localStorage.setItem('bookingLead', JSON.stringify({
       id: lead.id,
@@ -274,9 +299,10 @@ const LeadsNew = () => {
       isReschedule: lead.status === 'Booked' || lead.status === 'Rescheduled'
     }));
     navigate('/calendar');
-  };
+  }, [navigate]);
 
-  const getStatusColor = (status) => {
+  // Memoized helper functions to prevent recreations on every render
+  const getStatusColor = useCallback((status) => {
     const colors = {
       'New': 'bg-amber-100 text-amber-800 border-amber-300',
       'Booked': 'bg-blue-100 text-blue-800 border-blue-300',
@@ -286,9 +312,9 @@ const LeadsNew = () => {
       'Rejected': 'bg-gray-100 text-gray-800 border-gray-300'
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-300';
-  };
+  }, []);
 
-  const formatDate = (date) => {
+  const formatDate = useCallback((date) => {
     if (!date) return 'Not set';
     const dateObj = new Date(date);
     if (isNaN(dateObj.getTime())) return 'Invalid date';
@@ -297,23 +323,26 @@ const LeadsNew = () => {
       month: 'short',
       year: 'numeric'
     });
-  };
+  }, []);
 
-  const handleSelectLead = (leadId) => {
+  // Memoized handlers to prevent unnecessary re-renders
+  const handleSelectLead = useCallback((leadId) => {
     setSelectedLeads(prev => 
       prev.includes(leadId) 
         ? prev.filter(id => id !== leadId)
         : [...prev, leadId]
     );
-  };
+  }, []);
 
-  const handleSelectAll = () => {
-    if (selectedLeads.length === leads.length) {
-      setSelectedLeads([]);
-    } else {
-      setSelectedLeads(leads.map(lead => lead.id));
-    }
-  };
+  const handleSelectAll = useCallback(() => {
+    setSelectedLeads(prev => {
+      if (prev.length === leads.length && leads.length > 0) {
+        return [];
+      } else {
+        return leads.map(lead => lead.id);
+      }
+    });
+  }, [leads]);
 
   // Handle adding new lead
   const handleAddLead = async (e) => {
@@ -341,21 +370,31 @@ const LeadsNew = () => {
 
   // Handle file upload for CSV
   const handleFileUpload = (event) => {
-    console.log('📁 File input changed!');
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📁 File input changed!');
+    }
     const file = event.target.files[0];
-    console.log('📁 Selected file:', file);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('📁 Selected file:', file);
+    }
 
     if (file) {
-      console.log('📁 File type:', file.type);
-      console.log('📁 File name:', file.name);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📁 File type:', file.type);
+        console.log('📁 File name:', file.name);
+      }
 
       const validTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
       if (!validTypes.includes(file.type) && !file.name.endsWith('.csv')) {
-        console.log('❌ Invalid file type');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('❌ Invalid file type');
+        }
         alert('Please select a CSV or Excel file');
         return;
       }
-      console.log('✅ File accepted, setting upload file');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('✅ File accepted, setting upload file');
+      }
       setUploadFile(file);
       setUploadStatus('');
     }
@@ -374,7 +413,9 @@ const LeadsNew = () => {
 
     const token = localStorage.getItem('token');
     if (!token) {
-      console.log('❌ No authentication token available');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('❌ No authentication token available');
+      }
       alert('Please login again to upload files');
       return;
     }
@@ -399,13 +440,17 @@ const LeadsNew = () => {
 
       setUploadProgress(100);
 
-      console.log('🔍 Upload response received:', response.data);
-      console.log('🔍 Analysis data:', response.data.analysis);
-      console.log('🔍 Report length:', response.data.analysis?.report?.length);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 Upload response received:', response.data);
+        console.log('🔍 Analysis data:', response.data.analysis);
+        console.log('🔍 Report length:', response.data.analysis?.report?.length);
+      }
 
       // Always show analysis modal for review before importing
       if (response.data.analysis) {
-        console.log('✅ Showing analysis modal with analysis data');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ Showing analysis modal with analysis data');
+        }
         setDuplicateAnalysis(response.data);
         setAnalysisReport(response.data.analysis.report || []);
         setDistanceStats(response.data.analysis.distanceStats || null);
@@ -413,7 +458,9 @@ const LeadsNew = () => {
         setShowLeadAnalysisModal(true);
         setUploadStatus('');
       } else {
-        console.log('❌ No analysis data received');
+        if (process.env.NODE_ENV === 'development') {
+          console.log('❌ No analysis data received');
+        }
         setUploadStatus('Analysis failed');
         setTimeout(() => setUploadStatus(''), 3000);
       }
@@ -518,7 +565,9 @@ const LeadsNew = () => {
   // Handle LeadAnalysisModal actions
   const handleAcceptAll = async () => {
     if (!duplicateAnalysis || isImporting) return;
-    console.log('🔄 Accepting all leads:', duplicateAnalysis.processedLeads.length);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔄 Accepting all leads:', duplicateAnalysis.processedLeads.length);
+    }
     await importLeads(duplicateAnalysis.processedLeads);
     setShowLeadAnalysisModal(false);
   };
@@ -532,7 +581,9 @@ const LeadsNew = () => {
       return !reportItem || !reportItem.duplicateOf;
     });
 
-    console.log('🔄 Discarding duplicates - importing unique leads:', uniqueLeads.length);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔄 Discarding duplicates - importing unique leads:', uniqueLeads.length);
+    }
     await importLeads(uniqueLeads);
     setShowLeadAnalysisModal(false);
   };
@@ -546,7 +597,9 @@ const LeadsNew = () => {
       return !reportItem;
     });
 
-    console.log('🔄 Saving valid leads only:', validLeads.length);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔄 Saving valid leads only:', validLeads.length);
+    }
     await importLeads(validLeads);
     setShowLeadAnalysisModal(false);
   };
@@ -588,8 +641,8 @@ const LeadsNew = () => {
     setUploadStatus('');
   };
 
-  // Fetch sales team for assignment
-  const fetchSalesTeam = async () => {
+  // Memoized fetchSalesTeam to prevent unnecessary recreations
+  const fetchSalesTeam = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.get('/api/users/bookers', {
@@ -600,7 +653,7 @@ const LeadsNew = () => {
       console.error('Error fetching sales team:', error);
       setSalesTeam([]);
     }
-  };
+  }, []);
 
   // Handle bulk delete
   const handleBulkDelete = async () => {
@@ -716,6 +769,18 @@ const LeadsNew = () => {
                     <span className="font-medium">{selectedLeads.length} Selected</span>
                   </div>
                   
+                  <button
+                    onClick={() => setShowBulkCommunicationModal(true)}
+                    className="group px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center space-x-2 hover:scale-105 transform"
+                    style={{
+                      pointerEvents: 'auto',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <FiMessageSquare className="h-5 w-5 group-hover:animate-pulse" />
+                    <span className="font-medium">Send Email/SMS</span>
+                  </button>
+                  
                   {user?.role === 'admin' && (
                     <>
                       <button
@@ -829,15 +894,7 @@ const LeadsNew = () => {
         {/* Status Filter Tabs */}
         <div className="px-6 pb-3">
           <div className="flex items-center space-x-2 overflow-x-auto pb-2">
-            {[
-              { value: 'all', label: 'All', count: leadCounts.total },
-              { value: 'New', label: 'New', count: leadCounts.new },
-              { value: 'Booked', label: 'Booked', count: leadCounts.booked },
-              { value: 'Attended', label: 'Attended', count: leadCounts.attended },
-              { value: 'Cancelled', label: 'Cancelled', count: leadCounts.cancelled },
-              { value: 'Assigned', label: 'Assigned', count: leadCounts.assigned },
-              { value: 'Rejected', label: 'Rejected', count: leadCounts.rejected }
-            ].map(filter => {
+            {statusFilterButtons.map(filter => {
               const getFilterStyle = () => {
                 if (statusFilter !== filter.value) {
                   return 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50';
@@ -877,7 +934,7 @@ const LeadsNew = () => {
 
       {/* Date Filter - Scrollable Section */}
       <div className="px-3 sm:px-6 pt-4 pb-4 bg-gradient-to-br from-gray-50 via-white to-gray-100">
-        <div className="flex flex-col gap-3 bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 rounded-xl border border-blue-200">
+        <div className="flex flex-col gap-3 bg-gradient-to-r from-blue-50 to-purple-50 p-3 sm:p-4 rounded-xl border-[0.3px] border-blue-200">
           {/* Label Section */}
           <div className="flex items-center space-x-2 flex-shrink-0">
             <FiCalendar className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
@@ -886,8 +943,8 @@ const LeadsNew = () => {
             </span>
           </div>
           
-          {/* Quick Filter Buttons */}
-          <div className="flex flex-wrap gap-2 w-full">
+          {/* Quick Filter Buttons and Custom Date Range - All in One Row */}
+          <div className="flex flex-wrap items-center gap-2 w-full">
             <button
               onClick={() => setDateFilter('today')}
               className={`px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-lg font-medium transition-all duration-200 whitespace-nowrap ${
@@ -938,11 +995,9 @@ const LeadsNew = () => {
             >
               All Time
             </button>
-          </div>
-
-          {/* Custom Date Range */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto sm:ml-auto">
-            <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+            
+            {/* Custom Date Range - Inline with buttons */}
+            <div className="flex items-center gap-2 ml-auto">
               <input
                 type="date"
                 value={customDateStart}
@@ -950,7 +1005,7 @@ const LeadsNew = () => {
                   setCustomDateStart(e.target.value);
                   if (e.target.value) setDateFilter('custom');
                 }}
-                className="flex-1 sm:flex-initial border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-0"
+                className="border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[140px]"
                 placeholder="Start date"
               />
               <span className="text-gray-500 text-xs sm:text-sm whitespace-nowrap">to</span>
@@ -961,7 +1016,7 @@ const LeadsNew = () => {
                   setCustomDateEnd(e.target.value);
                   if (e.target.value) setDateFilter('custom');
                 }}
-                className="flex-1 sm:flex-initial border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-0"
+                className="border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[140px]"
                 placeholder="End date"
               />
               {(customDateStart || customDateEnd) && (
@@ -1101,7 +1156,7 @@ const LeadsNew = () => {
                       type="checkbox"
                       checked={selectedLeads.length === leads.length && leads.length > 0}
                       onChange={handleSelectAll}
-                      className="rounded text-blue-600"
+                      className="w-5 h-5 rounded text-blue-600 cursor-pointer"
                     />
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Lead</th>
@@ -1128,7 +1183,7 @@ const LeadsNew = () => {
                           handleSelectLead(lead.id);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="rounded text-blue-600"
+                        className="w-5 h-5 rounded text-blue-600 cursor-pointer"
                       />
                     </td>
                     <td className="px-6 py-4">
@@ -1678,6 +1733,17 @@ const LeadsNew = () => {
         onExportCSV={handleExportCSV}
         onSaveValidLeads={handleSaveValidLeads}
         isImporting={isImporting}
+      />
+
+      {/* Bulk Communication Modal */}
+      <BulkCommunicationModal
+        isOpen={showBulkCommunicationModal}
+        onClose={() => setShowBulkCommunicationModal(false)}
+        selectedLeads={selectedLeads}
+        onSuccess={() => {
+          setSelectedLeads([]);
+          fetchLeads();
+        }}
       />
 
       {/* Image Lightbox */}

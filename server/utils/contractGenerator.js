@@ -11,6 +11,18 @@ const path = require('path');
 // Path to the original PDF template - Edge Talent Invoice & Order Form
 const TEMPLATE_PATH = path.join(__dirname, '../templates/EDGE TALENT INVOICE Terms and conditions (1).pdf');
 
+// Verify template exists on module load
+if (fs.existsSync(TEMPLATE_PATH)) {
+  console.log('✅ Contract template found:', TEMPLATE_PATH);
+} else {
+  console.error('❌ Contract template NOT found at:', TEMPLATE_PATH);
+  // List what's in the templates folder
+  const templatesDir = path.join(__dirname, '../templates');
+  if (fs.existsSync(templatesDir)) {
+    console.log('📁 Templates folder contents:', fs.readdirSync(templatesDir));
+  }
+}
+
 /**
  * Format currency value
  */

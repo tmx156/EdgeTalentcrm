@@ -37,9 +37,9 @@ router.post('/', auth, async (req, res) => {
     }
 
     // Validate role
-    if (!['admin', 'booker', 'viewer'].includes(role)) {
+    if (!['admin', 'booker', 'viewer', 'photographer'].includes(role)) {
       return res.status(400).json({ 
-        message: 'Role must be admin, booker, or viewer' 
+        message: 'Role must be admin, booker, viewer, or photographer' 
       });
     }
 

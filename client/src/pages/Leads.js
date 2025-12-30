@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { FiPlus, FiSearch, FiFilter, FiChevronRight, FiChevronLeft, FiUserPlus, FiCalendar, FiWifi, FiUpload, FiTrash2, FiX, FiFileText, FiCheck } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
@@ -9,7 +9,7 @@ import { getCurrentUKTime, getTodayUK, getStartOfDayUK, getEndOfDayUK, ukTimeToU
 import LeadAnalysisModal from '../components/LeadAnalysisModal';
 import LazyImage from '../components/LazyImage';
 import VirtualLeadsList from '../components/VirtualLeadsList';
-import { getOptimizedImageUrl } from '../utils/imageUtils';
+import { getOptimizedImageUrl, clearImageQueue } from '../utils/imageUtils';
 
 const Leads = () => {
   const navigate = useNavigate();
@@ -43,15 +43,33 @@ const Leads = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const searchInputRef = useRef(null);
+  const cursorPositionRef = useRef(null);
+  const isTypingRef = useRef(false);
   const [statusFilter, setStatusFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('all'); // New: Date filter
   const [customDateStart, setCustomDateStart] = useState(''); // New: Custom date range start
   const [customDateEnd, setCustomDateEnd] = useState(''); // New: Custom date range end
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => {
+    // Initialize from sessionStorage if available (for browser back button support)
+    const savedPage = sessionStorage.getItem('leadsPage');
+    return savedPage ? parseInt(savedPage, 10) : 1;
+  });
+  
+  // Save page to sessionStorage whenever it changes (for browser back button support)
+  useEffect(() => {
+    sessionStorage.setItem('leadsPage', currentPage.toString());
+  }, [currentPage]);
   const [totalPages, setTotalPages] = useState(1);
   const [totalLeads, setTotalLeads] = useState(0);
-  const [leadsPerPage] = useState(25); // Reduced from 50 to 25 for better performance
-  const [useVirtualScrolling, setUseVirtualScrolling] = useState(false);
+  const [leadsPerPage] = useState(40); // Set to 40 leads per page
+  const [useVirtualScrolling, setUseVirtualScrolling] = useState(true); // Enabled by default for performance
+  const [refreshToken, setRefreshToken] = useState(0); // Used to force data refresh
+
+  // Function to trigger a data refresh
+  const triggerRefresh = useCallback(() => {
+    setRefreshToken(prev => prev + 1);
+  }, []);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
 
@@ -93,6 +111,13 @@ const Leads = () => {
     console.log('🔍 selectedLeads state changed:', selectedLeads);
   }, [selectedLeads]);
 
+  // Cleanup image queue on unmount (prevents stale image loads)
+  useEffect(() => {
+    return () => {
+      clearImageQueue();
+    };
+  }, []);
+
 
   const [newLead, setNewLead] = useState({
     name: '',
@@ -104,19 +129,85 @@ const Leads = () => {
   });
 
 
-  // Handle status filter from navigation
+  // Track if we're restoring from navigation to prevent filter resets
+  const isRestoringFromNavigation = useRef(false);
+
+  // Handle status filter and page from navigation (works for both programmatic and browser back button)
   useEffect(() => {
-    if (location.state?.statusFilter) {
+    // Check navigation state first (for programmatic navigation)
+    if (location.state) {
+      isRestoringFromNavigation.current = true;
+      
+      if (location.state.statusFilter) {
       setStatusFilter(location.state.statusFilter);
     }
-    if (location.state?.searchTerm) {
+      if (location.state.searchTerm !== undefined) {
       setSearchTerm(location.state.searchTerm);
     }
+      // Restore the page number if it was passed in navigation state
+      if (location.state.currentPage) {
+        setCurrentPage(location.state.currentPage);
+        // Also save to sessionStorage for browser back button support
+        sessionStorage.setItem('leadsPage', location.state.currentPage.toString());
+      }
+      
     // Clear the navigation state to prevent it from persisting
-    if (location.state) {
       window.history.replaceState({}, document.title);
+      
+      // Reset the flag after a short delay to allow other effects to see it
+      setTimeout(() => {
+        isRestoringFromNavigation.current = false;
+      }, 100);
     }
   }, [location.state]);
+
+  // Separate effect to handle browser back button (when location.state is null but we're on /leads)
+  // This runs whenever we land on /leads without navigation state (browser back button case)
+  useEffect(() => {
+    // Only check sessionStorage if we're on the leads page and have no navigation state
+    // This handles browser back button navigation
+    if (location.pathname === '/leads' && !location.state) {
+      const savedPage = sessionStorage.getItem('leadsPage');
+      const savedStatusFilter = sessionStorage.getItem('leadsStatusFilter');
+      const savedSearchTerm = sessionStorage.getItem('leadsSearchTerm');
+      
+      console.log('🔍 Browser back detected - checking sessionStorage:', { 
+        savedPage, 
+        savedStatusFilter, 
+        savedSearchTerm, 
+        currentPage,
+        isRestoring: isRestoringFromNavigation.current
+      });
+      
+      if (savedPage && !isRestoringFromNavigation.current) {
+        const pageNum = parseInt(savedPage, 10);
+        // Only restore if it's different from current page to avoid unnecessary updates
+        if (pageNum > 0 && pageNum !== currentPage) {
+          console.log('✅ Restoring page from sessionStorage:', pageNum);
+          isRestoringFromNavigation.current = true;
+          setCurrentPage(pageNum);
+          
+          // Also restore filters if they were saved
+          if (savedStatusFilter && savedStatusFilter !== statusFilter) {
+            console.log('✅ Restoring status filter:', savedStatusFilter);
+            setStatusFilter(savedStatusFilter);
+          }
+          if (savedSearchTerm !== null && savedSearchTerm !== searchTerm) {
+            console.log('✅ Restoring search term:', savedSearchTerm);
+            setSearchTerm(savedSearchTerm);
+          }
+          
+          setTimeout(() => {
+            isRestoringFromNavigation.current = false;
+          }, 200); // Increased timeout to ensure other effects see the flag
+        } else {
+          console.log('⏭️ Page already correct or invalid, skipping restore');
+        }
+      } else if (!savedPage) {
+        console.log('⚠️ No saved page in sessionStorage');
+      }
+    }
+  }, [location.pathname, location.state]);
 
   // Clear upload status on component mount to prevent stuck modal
   useEffect(() => {
@@ -235,6 +326,8 @@ const Leads = () => {
         status: statusFilter,
         search: debouncedSearchTerm || '' // Ensure empty string instead of undefined
       };
+      
+      console.log('📊 Fetching leads with limit:', leadsPerPage, 'params:', params);
 
       // Add date filter if applicable
       const dateRange = getDateRange();
@@ -398,6 +491,8 @@ const Leads = () => {
           status: statusFilter,
           search: debouncedSearchTerm || '' // Ensure empty string instead of undefined
         };
+        
+        console.log('📊 Fetching leads with limit:', leadsPerPage, 'params:', params);
 
         // Add date filter if applicable
         const dateRange = getDateRange();
@@ -444,7 +539,7 @@ const Leads = () => {
     };
 
     fetchData();
-  }, [currentPage, statusFilter, debouncedSearchTerm, dateFilter, customDateStart, customDateEnd, user, leadsPerPage]);
+  }, [currentPage, statusFilter, debouncedSearchTerm, dateFilter, customDateStart, customDateEnd, user, leadsPerPage, refreshToken]);
 
   // Fetch lead counts on mount
   useEffect(() => {
@@ -462,16 +557,26 @@ const Leads = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFilter, customDateStart, customDateEnd]);
 
-  // Reset to first page when date filter changes
+  // Reset to first page when any filter changes (prevents out-of-bounds pages)
+  // BUT skip if we're restoring from navigation (to preserve the page)
   useEffect(() => {
-    console.log('📅 Date filter changed, resetting to page 1...');
+    if (!isRestoringFromNavigation.current) {
     setCurrentPage(1);
-  }, [dateFilter, customDateStart, customDateEnd]);
+    }
+  }, [dateFilter, customDateStart, customDateEnd, statusFilter]);
+
+  // Reset to first page when search term changes (debounced)
+  // BUT skip if we're restoring from navigation (to preserve the page)
+  useEffect(() => {
+    if (debouncedSearchTerm !== undefined && !isRestoringFromNavigation.current) {
+      setCurrentPage(1);
+    }
+  }, [debouncedSearchTerm]);
 
   // Clear selected leads when leads change (due to filtering/pagination)
   useEffect(() => {
     setSelectedLeads([]);
-  }, [statusFilter, searchTerm, currentPage]);
+  }, [statusFilter, debouncedSearchTerm, currentPage]);
 
   // Enable virtual scrolling for large datasets
   useEffect(() => {
@@ -518,6 +623,36 @@ const Leads = () => {
     };
   }, [searchTerm, debouncedSearchTerm]);
 
+  // Preserve and restore focus + cursor position after EVERY re-render
+  // This runs synchronously before browser paint to prevent visible cursor jump
+  useLayoutEffect(() => {
+    const input = searchInputRef.current;
+    if (!input) return;
+    
+    const wasFocused = document.activeElement === input;
+    const pos = cursorPositionRef.current;
+    
+    // If user was typing or input was focused, restore focus and cursor
+    if (isTypingRef.current || wasFocused) {
+      // Restore focus if it was lost
+      if (document.activeElement !== input) {
+        input.focus();
+      }
+      
+      // Restore cursor position if we have a valid position
+      if (pos !== null && pos >= 0) {
+        // Clamp position to valid range
+        const maxPos = input.value.length;
+        const clampedPos = Math.min(pos, maxPos);
+        // Restore cursor position synchronously before browser paints
+        input.setSelectionRange(clampedPos, clampedPos);
+      } else if (wasFocused) {
+        // If we don't have a stored position but input was focused, put cursor at end
+        const endPos = input.value.length;
+        input.setSelectionRange(endPos, endPos);
+      }
+    }
+  });
 
   useEffect(() => {
     if (user?.role === 'admin') {
@@ -581,8 +716,7 @@ const Leads = () => {
           
         default:
           // For any other updates, refresh the list and counts
-          // Trigger a re-fetch by updating a dependency
-          setCurrentPage(prev => prev);
+          triggerRefresh();
           fetchLeadCounts();
       }
     });
@@ -618,8 +752,8 @@ const Leads = () => {
       setShowAssignModal(false);
       setSelectedLead(null);
       setSelectedBooker('');
-      // Trigger a re-fetch by updating a dependency
-      setCurrentPage(prev => prev);
+      // Trigger a re-fetch
+      triggerRefresh();
       fetchLeadCounts(); // Refresh the counts
     } catch (error) {
       console.error('Error assigning lead:', error);
@@ -881,7 +1015,7 @@ const Leads = () => {
         alert(`✅ Successfully sent ${successCount} lead${successCount === 1 ? '' : 's'} to SalesApe AI!${errorCount > 0 ? `\n⚠️ ${errorCount} failed` : ''}`);
         setSelectedLeads([]);
         // Refresh leads to show updated salesape_sent_at
-        setCurrentPage(prev => prev);
+        triggerRefresh();
       } else {
         alert('❌ Failed to send leads to SalesApe. Please check server logs.');
       }
@@ -911,8 +1045,8 @@ const Leads = () => {
       setShowBulkAssignModal(false);
       setBulkAssignBooker('');
       setSelectedLeads([]);
-      // Trigger a re-fetch by updating a dependency
-      setCurrentPage(prev => prev);
+      // Trigger a re-fetch
+      triggerRefresh();
       fetchLeadCounts(); // Refresh the counts
     } catch (error) {
       console.error('Error bulk assigning leads:', error);
@@ -933,8 +1067,8 @@ const Leads = () => {
         status: 'New',
         image_url: ''
       });
-      // Trigger a re-fetch by updating a dependency
-      setCurrentPage(prev => prev);
+      // Trigger a re-fetch
+      triggerRefresh();
       fetchLeadCounts();
     } catch (error) {
       console.error('Error adding lead:', error);
@@ -990,11 +1124,19 @@ const Leads = () => {
         filteredLeadsCount: filteredLeads.length
       });
       
-      // Navigate to lead details page with filter context
+      // Save current page to sessionStorage for browser back button support
+      sessionStorage.setItem('leadsPage', currentPage.toString());
+      sessionStorage.setItem('leadsStatusFilter', statusFilter);
+      if (searchTerm) {
+        sessionStorage.setItem('leadsSearchTerm', searchTerm);
+      }
+      
+      // Navigate to lead details page with filter context and current page
       navigate(`/leads/${lead.id}`, {
         state: {
           statusFilter: statusFilter,
           searchTerm: searchTerm,
+          currentPage: currentPage, // Preserve current page
           filteredLeads: filteredLeads
         }
       });
@@ -1300,9 +1442,9 @@ const Leads = () => {
       setShowAnalysisModal(false);
       setAnalysisData(null);
       setProcessedLeads([]);
-      // Trigger a re-fetch by updating a dependency
-      setCurrentPage(prev => prev);
-      
+      // Trigger a re-fetch
+      triggerRefresh();
+
       alert(`Successfully imported ${response.data.imported} leads`);
     } catch (error) {
       console.error('Error importing all leads:', error);
@@ -1328,9 +1470,9 @@ const Leads = () => {
       setShowAnalysisModal(false);
       setAnalysisData(null);
       setProcessedLeads([]);
-      // Trigger a re-fetch by updating a dependency
-      setCurrentPage(prev => prev);
-      
+      // Trigger a re-fetch
+      triggerRefresh();
+
       alert(`Successfully imported ${response.data.imported} leads (${duplicateRows.length} duplicates discarded)`);
     } catch (error) {
       console.error('Error importing leads:', error);
@@ -1356,9 +1498,9 @@ const Leads = () => {
       setShowAnalysisModal(false);
       setAnalysisData(null);
       setProcessedLeads([]);
-      // Trigger a re-fetch by updating a dependency
-      setCurrentPage(prev => prev);
-      
+      // Trigger a re-fetch
+      triggerRefresh();
+
       alert(`Successfully imported ${response.data.imported} valid leads`);
     } catch (error) {
       console.error('Error importing valid leads:', error);
@@ -1476,11 +1618,56 @@ const Leads = () => {
           <div className="relative">
             <FiSearch className={`absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 ${isSearching ? 'text-blue-500 animate-pulse' : 'text-gray-400'}`} />
             <input
+              ref={searchInputRef}
               type="text"
               placeholder="Search leads..."
               className="pl-10 pr-4 py-2 border border-gray-300 rounded-md w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                const input = e.target;
+                // Store cursor position BEFORE state update (critical for maintaining position)
+                const cursorPos = input.selectionStart;
+                cursorPositionRef.current = cursorPos;
+                isTypingRef.current = true;
+                
+                // Update state
+                setSearchTerm(e.target.value);
+                
+                // Immediately restore cursor position after state update
+                // Use requestAnimationFrame to ensure it happens after React's state update
+                requestAnimationFrame(() => {
+                  if (searchInputRef.current && isTypingRef.current) {
+                    const maxPos = searchInputRef.current.value.length;
+                    const clampedPos = Math.min(cursorPos, maxPos);
+                    searchInputRef.current.setSelectionRange(clampedPos, clampedPos);
+                  }
+                });
+              }}
+              onKeyDown={(e) => {
+                // Track that user is actively typing
+                isTypingRef.current = true;
+              }}
+              onFocus={() => {
+                isTypingRef.current = true;
+                if (searchInputRef.current) {
+                  cursorPositionRef.current = searchInputRef.current.selectionStart;
+                }
+              }}
+              onBlur={() => {
+                // Only clear typing flag if focus actually moved away
+                setTimeout(() => {
+                  if (document.activeElement !== searchInputRef.current) {
+                    isTypingRef.current = false;
+                    cursorPositionRef.current = null;
+                  }
+                }, 100);
+              }}
+              onSelect={(e) => {
+                // Update cursor position when user selects text
+                if (searchInputRef.current) {
+                  cursorPositionRef.current = searchInputRef.current.selectionStart;
+                }
+              }}
             />
             {isSearching && (
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
@@ -1493,7 +1680,8 @@ const Leads = () => {
           <div className="flex items-center space-x-2">
             <FiFilter className="h-5 w-5 text-gray-400" />
             <select
-              className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full"
+              className="border border-gray-300 rounded-md px-4 py-3 text-base focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full"
+              style={{ minHeight: '48px' }}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -2074,7 +2262,7 @@ const Leads = () => {
                     type="checkbox"
                     checked={selectedLeads.length === leads.filter(shouldIncludeLead).length && leads.filter(shouldIncludeLead).length > 0}
                     onChange={(e) => handleSelectAll(e.target.checked)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className="w-6 h-6 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -2135,7 +2323,7 @@ const Leads = () => {
                         handleRowClick(lead, e);
                       }
                     }}
-                    className={`cursor-pointer hover:bg-gray-50 transition-colors duration-200 ${
+                    className={`cursor-pointer hover:bg-gray-50 transition-fast ${
                       isSelected ? 'bg-blue-50 selected' : ''
                     }`}
                   >
@@ -2144,25 +2332,12 @@ const Leads = () => {
                       type="checkbox"
                       checked={isSelected}
                       onChange={(e) => {
-                        console.log('🔍 Checkbox onChange triggered:', {
-                          leadId: lead.id,
-                          leadIdString,
-                          checked: e.target.checked,
-                          currentSelected: selectedLeads,
-                          isInSelected: isSelected
-                        });
-                        // Stop propagation to prevent row click
                         e.stopPropagation();
                         if (lead.id) {
                           handleSelectLead(lead.id, e.target.checked);
-                        } else {
-                          console.error('❌ Cannot select lead - missing ID:', lead);
                         }
                       }}
-                      onClick={(e) => {
-                        console.log('🔍 Checkbox onClick triggered');
-                        e.stopPropagation();
-                      }}
+                      onClick={(e) => e.stopPropagation()}
                       className="cursor-pointer"
                       disabled={!lead.id}
                     />

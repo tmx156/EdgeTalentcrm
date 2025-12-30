@@ -1,4 +1,4 @@
-/**
+c/**
  * Emergency Script: Clear ALL leads from SalesApe queue
  * This will reset all SalesApe data for all leads
  */

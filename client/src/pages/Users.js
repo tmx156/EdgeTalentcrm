@@ -333,6 +333,7 @@ const Users = () => {
           <FiFilter className="h-5 w-5 text-gray-400" />
           <select className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
             <option value="all">All Roles</option>
+            <option value="photographer">Photographer</option>
             <option value="admin">Admin</option>
             <option value="sales">Sales</option>
             <option value="viewer">Viewer</option>
@@ -575,6 +576,7 @@ const Users = () => {
                 >
                   <option value="booker">Booker</option>
                   <option value="viewer">Viewer</option>
+                  <option value="photographer">Photographer</option>
                   <option value="admin">Administrator</option>
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
@@ -582,6 +584,8 @@ const Users = () => {
                     ? 'Full access to all features and user management' 
                     : formData.role === 'viewer'
                     ? 'Read-only access to view data only'
+                    : formData.role === 'photographer'
+                    ? 'Access to upload and manage photos for leads'
                     : 'Access to leads management and bookings'
                   }
                 </p>
@@ -706,6 +710,7 @@ const Users = () => {
                 >
                   <option value="booker">Booker</option>
                   <option value="viewer">Viewer</option>
+                  <option value="photographer">Photographer</option>
                   <option value="admin">Administrator</option>
                 </select>
               </div>

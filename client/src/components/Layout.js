@@ -23,7 +23,8 @@ import {
   FiTrendingUp,
   FiMessageSquare,
   FiLock,
-  FiPhone
+  FiPhone,
+  FiImage
 } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
 
@@ -718,6 +719,7 @@ const Layout = ({ children }) => {
       ]
     },
     { name: 'Diary', href: '/calendar', icon: FiCalendar },
+    { name: 'Photos', href: '/photographer', icon: FiImage, photographerOnly: true },
     { name: 'Blocked Slots', href: '/blocked-slots', icon: FiLock, adminOnly: true },
     { name: 'SalesApe AI', href: '/salesape', icon: RiRobot2Line, adminOnly: true },
     { name: 'Messages', href: '/messages', icon: FiMessageSquare },
@@ -754,6 +756,9 @@ const Layout = ({ children }) => {
 
     // Hide booker-only items for non-bookers
     if (item.bookerOnly && user?.role !== 'booker') return false;
+
+    // Hide photographer-only items for non-photographers
+    if (item.photographerOnly && user?.role !== 'photographer') return false;
 
     // Hide viewer-hidden items for viewers
     if (item.viewerHidden && user?.role === 'viewer') return false;

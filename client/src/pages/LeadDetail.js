@@ -1,15 +1,21 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { FiArrowLeft, FiEdit, FiSave, FiPhone, FiMail, FiMapPin, FiCalendar, FiMessageSquare, FiSend, FiChevronLeft, FiChevronRight, FiChevronUp, FiChevronDown, FiClock, FiUser, FiCheck, FiSettings, FiX } from 'react-icons/fi';
 import axios from 'axios';
 import LeadStatusDropdown from '../components/LeadStatusDropdown';
 import PhotoModal from '../components/PhotoModal';
 import LazyImage from '../components/LazyImage';
-import { getOptimizedImageUrl, preloadImages } from '../utils/imageUtils';
+import { getOptimizedImageUrl, preloadImages, clearImageQueue, loadImageWithPriority } from '../utils/imageUtils';
 import { getCurrentUKTime } from '../utils/timeUtils';
 import { useAuth } from '../context/AuthContext';
 import SalesApeButton from '../components/SalesApeButton';
 import SalesApeStatus from '../components/SalesApeStatus';
+import ImageGalleryModal from '../components/ImageGalleryModal';
+import PackageSelectionModal from '../components/PackageSelectionModal';
+import InvoiceModal from '../components/InvoiceModal';
+import SendContractModal from '../components/SendContractModal';
+import PresentationGallery from '../components/PresentationGallery';
+import { Image, ShoppingCart, FileText, Presentation } from 'lucide-react';
 
 const LeadDetail = () => {
   const { id } = useParams();
@@ -42,6 +48,25 @@ const LeadDetail = () => {
 
   // Photo modal state
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
+
+  // Image Gallery, Package Selection, and Invoice modal states
+  const [showImageGallery, setShowImageGallery] = useState(false);
+  const [showPackageModal, setShowPackageModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [currentInvoice, setCurrentInvoice] = useState(null);
+  const [leadPhotos, setLeadPhotos] = useState([]);
+
+  // Presentation Gallery state (for viewer flow)
+  const [showPresentationGallery, setShowPresentationGallery] = useState(false);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
+  const [selectedPhotos, setSelectedPhotos] = useState([]);
+  const [selectedPackage, setSelectedPackage] = useState(null);
+  const [imageSelectionMode, setImageSelectionMode] = useState(false);
+
+  // Contract modal state
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [contractInvoiceData, setContractInvoiceData] = useState(null);
+  const [contractItems, setContractItems] = useState([]);
 
   // Reschedule modal state (kept for potential future use)
   const [newDate, setNewDate] = useState('');
@@ -313,6 +338,27 @@ const LeadDetail = () => {
     }
   }, [id]);
 
+  // Fetch photos for this lead with pagination
+  const fetchPhotos = useCallback(async () => {
+    if (!id) return;
+    try {
+      // Limit to 50 photos initially (can be increased if needed)
+      const response = await axios.get('/api/photos', {
+        params: { 
+          leadId: id,
+          limit: 50, // Reasonable limit for detail view
+          fields: 'minimal' // Only fetch needed fields
+        }
+      });
+      if (response.data.success) {
+        setLeadPhotos(response.data.photos || []);
+      }
+    } catch (error) {
+      console.error('Error fetching photos:', error);
+      setLeadPhotos([]);
+    }
+  }, [id]);
+
   const fetchConversationHistory = useCallback(async () => {
     if (!lead || !messagesExpanded) return;
     
@@ -357,6 +403,34 @@ const LeadDetail = () => {
     // Don't reset lastFetchedIdRef here - let the fetch effect handle it
   }, [id]);
 
+  // Cleanup image queue on unmount (prevents stale image loads)
+  useEffect(() => {
+    return () => {
+      clearImageQueue();
+    };
+  }, []);
+
+  // Preload adjacent lead images for instant navigation (Netflix technique)
+  useEffect(() => {
+    if (allLeads.length > 0 && currentIndex >= 0) {
+      // Preload previous lead's image
+      if (currentIndex > 0) {
+        const prevLead = allLeads[currentIndex - 1];
+        if (prevLead?.image_url) {
+          loadImageWithPriority(prevLead.image_url, 5).catch(() => {});
+        }
+      }
+      // Preload next lead's image
+      if (currentIndex < allLeads.length - 1) {
+        const nextLead = allLeads[currentIndex + 1];
+        if (nextLead?.image_url) {
+          loadImageWithPriority(nextLead.image_url, 5).catch(() => {});
+        }
+      }
+    }
+  }, [allLeads, currentIndex]);
+
+  // Handle route changes including browser back button
   useEffect(() => {
     // Only run if we're actually on the lead detail route (exact match)
     const isOnLeadDetailRoute = location.pathname === `/leads/${id}`;
@@ -367,6 +441,8 @@ const LeadDetail = () => {
       if (!isOnLeadDetailRoute) {
         initializedRef.current = false;
         locationStateRef.current = null;
+        // Reset last fetched ID so component can re-fetch if navigated back to
+        lastFetchedIdRef.current = null;
       }
       return;
     }
@@ -410,6 +486,22 @@ const LeadDetail = () => {
     }
   }, [id, location.pathname, location.state, allLeads.length, fetchAllLeads]);
 
+  // Handle browser back/forward navigation - ensure component responds to route changes
+  useEffect(() => {
+    const handlePopState = () => {
+      // When browser back/forward is used, reset refs to allow proper re-initialization
+      console.log('🔙 Browser navigation detected, resetting refs');
+      initializedRef.current = false;
+      locationStateRef.current = null;
+      // Don't reset lastFetchedIdRef - let the fetch effect handle it based on ID change
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
   // Separate effect for initial data fetching - runs when ID changes
   useEffect(() => {
     // Only fetch if we haven't fetched this ID yet or if lead is null (page refresh)
@@ -421,8 +513,9 @@ const LeadDetail = () => {
       fetchSale();
       fetchBookingHistory();
       fetchUpcomingCallbacks();
+      fetchPhotos();
     }
-  }, [id, fetchLead, fetchTemplates, fetchSale, fetchBookingHistory, fetchUpcomingCallbacks]);
+  }, [id, fetchLead, fetchTemplates, fetchSale, fetchBookingHistory, fetchUpcomingCallbacks, fetchPhotos]);
 
   // Handle lead list updates (navigation arrows)
   useEffect(() => {
@@ -575,6 +668,7 @@ const LeadDetail = () => {
         state: {
           statusFilter: filterContext.statusFilter,
           searchTerm: filterContext.searchTerm,
+          currentPage: location.state?.currentPage || 1, // Preserve page
           filteredLeads: allLeads
         }
       });
@@ -594,6 +688,7 @@ const LeadDetail = () => {
         state: {
           statusFilter: filterContext.statusFilter,
           searchTerm: filterContext.searchTerm,
+          currentPage: location.state?.currentPage || 1, // Preserve page
           filteredLeads: allLeads
         }
       });
@@ -856,9 +951,39 @@ const LeadDetail = () => {
     const [callbackNote, setCallbackNote] = useState('');
     const [pendingStatus, setPendingStatus] = useState(null);
     const [showNoAnswerModal, setShowNoAnswerModal] = useState(false);
+    const [hasNoAnswerBefore, setHasNoAnswerBefore] = useState(false);
+    const [noAnswerCount, setNoAnswerCount] = useState(0);
 
-    // Status options matching LeadStatusDropdown
-    const statusOptions = [
+    // Check if "No answer" has been selected before by checking booking history
+    useEffect(() => {
+      if (lead && lead.booking_history) {
+        try {
+          const history = typeof lead.booking_history === 'string' 
+            ? JSON.parse(lead.booking_history) 
+            : lead.booking_history;
+          
+          if (Array.isArray(history)) {
+            // Count how many times "No answer" (or x2/x3) has been selected
+            const noAnswerEntries = history.filter(entry => 
+              entry.action === 'CALL_STATUS_UPDATE' && 
+              entry.details?.callStatus && 
+              (entry.details.callStatus === 'No answer' || 
+               entry.details.callStatus === 'No Answer x2' || 
+               entry.details.callStatus === 'No Answer x3')
+            );
+            
+            const hasNoAnswer = noAnswerEntries.length > 0;
+            setHasNoAnswerBefore(hasNoAnswer);
+            setNoAnswerCount(noAnswerEntries.length);
+          }
+        } catch (e) {
+          console.warn('Error parsing booking_history:', e);
+        }
+      }
+    }, [lead]);
+
+    // Base status options with workflow triggers
+    const baseStatusOptions = [
       { value: 'No answer', label: 'No answer', trigger: 'email' },
       { value: 'Left Message', label: 'Left Message', trigger: 'email' },
       { value: 'Not interested', label: 'Not interested', trigger: 'close' },
@@ -867,6 +992,25 @@ const LeadDetail = () => {
       { value: 'Sales/converted - purchased', label: 'Sales/converted - purchased', trigger: 'callback' },
       { value: 'Not Qualified', label: 'Not Qualified', trigger: 'close' }
     ];
+
+    // Dynamically build status options - add x2/x3 if "No answer" was selected before
+    const statusOptions = useMemo(() => {
+      const options = [...baseStatusOptions];
+      
+      if (hasNoAnswerBefore) {
+        // Find the index of "No answer" and insert x2/x3 after it
+        const noAnswerIndex = options.findIndex(opt => opt.value === 'No answer');
+        if (noAnswerIndex !== -1) {
+          // Insert x2 and x3 options after "No answer"
+          options.splice(noAnswerIndex + 1, 0,
+            { value: 'No Answer x2', label: 'No Answer x2', trigger: null }, // No email trigger
+            { value: 'No Answer x3', label: 'No Answer x3', trigger: null }  // No email trigger
+          );
+        }
+      }
+      
+      return options;
+    }, [hasNoAnswerBefore]);
 
     // Fetch current call_status from lead
     useEffect(() => {
@@ -905,10 +1049,16 @@ const LeadDetail = () => {
         return;
       }
 
-      // If status is "No answer", show confirmation modal before sending email
+      // If status is "No answer", show confirmation modal before sending email (only first time)
       if (status === 'No answer') {
         setPendingStatus(status);
         setShowNoAnswerModal(true);
+        return;
+      }
+
+      // For "No Answer x2" or "No Answer x3", proceed directly (no email)
+      if (status === 'No Answer x2' || status === 'No Answer x3') {
+        await updateStatus(status);
         return;
       }
 
@@ -939,6 +1089,8 @@ const LeadDetail = () => {
           // This ensures the lead appears in the correct folder when navigating back
           const statusToFilterMap = {
             'No answer': 'No answer',
+            'No Answer x2': 'No answer',
+            'No Answer x3': 'No answer',
             'Left Message': 'Left Message',
             'Not interested': 'Not interested',
             'Call back': 'Call back',
@@ -967,11 +1119,19 @@ const LeadDetail = () => {
             }
           }
 
-          // Navigate back to leads page with the appropriate status filter
+          // Navigate back to leads page with the appropriate status filter and preserved page
           // This "moves" the lead to the correct folder
           setTimeout(() => {
+            // Ensure page is saved to sessionStorage for browser back button
+            const pageToRestore = location.state?.currentPage || 
+                                 parseInt(sessionStorage.getItem('leadsPage') || '1', 10);
+            sessionStorage.setItem('leadsPage', pageToRestore.toString());
+            
             navigate('/leads', { 
-              state: { statusFilter: filterStatus },
+              state: { 
+                statusFilter: filterStatus,
+                currentPage: pageToRestore
+              },
               replace: false 
             });
           }, 500); // Small delay to allow alert to be seen
@@ -1016,6 +1176,8 @@ const LeadDetail = () => {
     const getStatusColor = (status) => {
       switch (status) {
         case 'No answer':
+        case 'No Answer x2':
+        case 'No Answer x3':
         case 'Left Message':
           return 'bg-yellow-100 text-yellow-800 border-yellow-300';
         case 'Call back':
@@ -1328,7 +1490,8 @@ const LeadDetail = () => {
           onClick={() => navigate('/leads', {
             state: { 
               statusFilter: filterContext.statusFilter,
-              searchTerm: filterContext.searchTerm
+              searchTerm: filterContext.searchTerm,
+              currentPage: location.state?.currentPage || 1 // Preserve page from navigation state
             }
           })}
           className="mt-4 btn-primary"
@@ -1355,12 +1518,20 @@ const LeadDetail = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => navigate('/leads', {
+                onClick={() => {
+                  // Ensure page is saved to sessionStorage for browser back button
+                  const pageToRestore = location.state?.currentPage || 
+                                       parseInt(sessionStorage.getItem('leadsPage') || '1', 10);
+                  sessionStorage.setItem('leadsPage', pageToRestore.toString());
+                  
+                  navigate('/leads', {
                   state: { 
                     statusFilter: filterContext.statusFilter,
-                    searchTerm: filterContext.searchTerm
+                      searchTerm: filterContext.searchTerm,
+                      currentPage: pageToRestore
                   }
-                })}
+                  });
+                }}
                 className="p-2 rounded-md text-gray-400 hover:text-gray-600"
               >
                 <FiArrowLeft className="h-5 w-5" />
@@ -1936,7 +2107,8 @@ const LeadDetail = () => {
                                 }
                               }
                             }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            className="w-full px-4 py-3 text-base border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            style={{ minHeight: '48px' }}
                           >
                             <option value="">Select a template...</option>
                             {replyMode === 'sms' ? (
@@ -2293,16 +2465,62 @@ const LeadDetail = () => {
             <div className="space-y-6">
               <div className="card">
                 <div className="mb-4">
-                  <div className="mx-auto w-full max-w-xs aspect-square bg-gray-300 flex items-center justify-center rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300">
+                  <div className="mx-auto w-full max-w-xs aspect-square bg-gray-300 flex items-center justify-center rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 relative">
                     {lead.image_url ? (
+                      <>
+                        {/* Check for unsupported formats first */}
+                        {(lead.image_url.toLowerCase().includes('.heic') ||
+                          lead.image_url.toLowerCase().includes('.heif')) ? (
+                          <div
+                            className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300 cursor-pointer"
+                            onClick={() => setPhotoModalOpen(true)}
+                            title="HEIC format - click to try viewing"
+                          >
+                            <span className="text-4xl mb-2">📷</span>
+                            <span className="text-xs text-gray-500">HEIC Format</span>
+                          </div>
+                        ) : (lead.image_url.toLowerCase().includes('.pdf')) ? (
+                          <div
+                            className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300 cursor-pointer"
+                            onClick={() => window.open(lead.image_url, '_blank')}
+                            title="PDF file - click to open"
+                          >
+                            <span className="text-4xl mb-2">📄</span>
+                            <span className="text-xs text-gray-500">PDF File</span>
+                          </div>
+                        ) : (lead.image_url.toLowerCase().includes('.mp4') ||
+                          lead.image_url.toLowerCase().includes('.webm') ||
+                          lead.image_url.toLowerCase().includes('.mov')) ? (
+                          <video
+                            src={lead.image_url}
+                            className="w-full h-full object-cover cursor-pointer"
+                            muted
+                            loop
+                            playsInline
+                            autoPlay
+                            preload="auto"
+                            onClick={() => setPhotoModalOpen(true)}
+                          />
+                        ) : (
                       <LazyImage
-                        src={getOptimizedImageUrl(lead.image_url, 'optimized')}
+                        src={lead.image_url}
                         alt={lead.name}
                         className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
-                        fallbackClassName="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300"
-                        lazy={false} // Don't use lazy loading for main lead image
+                        lazy={false}
+                        enableFadeIn={true}
+                        showBlurPlaceholder={true}
                         onClick={() => setPhotoModalOpen(true)}
                       />
+                        )}
+                        {/* Media type badge */}
+                        {(lead.image_url.toLowerCase().includes('.gif') ||
+                          lead.image_url.toLowerCase().includes('.mp4') ||
+                          lead.image_url.toLowerCase().includes('.webm')) && (
+                          <span className="absolute top-2 right-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded uppercase font-medium">
+                            {lead.image_url.toLowerCase().includes('.gif') ? 'GIF' : 'VIDEO'}
+                          </span>
+                        )}
+                      </>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
                         <span className="text-6xl font-medium text-gray-600">
@@ -2312,7 +2530,9 @@ const LeadDetail = () => {
                     )}
                   </div>
                   {lead.image_url && (
-                    <p className="text-xs text-gray-500 mt-2">Click photo to view full screen</p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Click {lead.image_url.toLowerCase().includes('.mp4') || lead.image_url.toLowerCase().includes('.webm') ? 'video' : 'photo'} to view full screen
+                    </p>
                   )}
                 </div>
                 <h2 className="text-xl font-semibold text-gray-900 mb-2">{lead.name}</h2>
@@ -2378,6 +2598,79 @@ const LeadDetail = () => {
                       fetchLead();
                     }}
                   />
+                </div>
+              )}
+
+              {/* Images & Packages Buttons - For Viewers and Admins */}
+              {!editing && (user?.role === 'viewer' || user?.role === 'admin') && (
+                <div className="mt-4 space-y-2">
+                  {/* Start Sale Button - Main CTA - Goes to Package Selection first */}
+                  {leadPhotos.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setSelectedPhotoIds([]);
+                        setSelectedPhotos([]);
+                        setSelectedPackage(null);
+                        setImageSelectionMode(false);
+                        setShowPackageModal(true);
+                      }}
+                      className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                    >
+                      <ShoppingCart className="w-5 h-5 mr-2" />
+                      <span className="font-medium">Start Sale</span>
+                      <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                        {leadPhotos.length} photos
+                      </span>
+                    </button>
+                  )}
+
+                  {/* View Gallery Button - For browsing photos */}
+                  <button
+                    onClick={() => {
+                      setImageSelectionMode(false);
+                      setShowPresentationGallery(true);
+                    }}
+                    className="w-full flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all shadow-md"
+                  >
+                    <Presentation className="w-4 h-4 mr-2" />
+                    <span>View Gallery</span>
+                    {leadPhotos.length > 0 && (
+                      <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                        {leadPhotos.length}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Quick View Images Button (secondary) */}
+                  <button
+                    onClick={() => setShowImageGallery(true)}
+                    className="w-full flex items-center justify-center px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-all text-sm"
+                  >
+                    <Image className="w-4 h-4 mr-2" />
+                    <span>Quick View Images</span>
+                  </button>
+
+                  {/* Continue with Selection Button (when photos already selected) */}
+                  {selectedPhotoIds.length > 0 && (
+                    <button
+                      onClick={() => setShowPackageModal(true)}
+                      className="w-full flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 transition-all shadow-md"
+                    >
+                      <ShoppingCart className="w-4 h-4 mr-2" />
+                      <span>Continue Sale ({selectedPhotoIds.length} photos selected)</span>
+                    </button>
+                  )}
+
+                  {/* View Invoice Button (if invoice exists) */}
+                  {currentInvoice && (
+                    <button
+                      onClick={() => setShowInvoiceModal(true)}
+                      className="w-full flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md"
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      <span>View Invoice</span>
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -2518,6 +2811,151 @@ const LeadDetail = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Presentation Gallery - Fullscreen slideshow for viewer presentation */}
+      <PresentationGallery
+        isOpen={showPresentationGallery}
+        onClose={() => setShowPresentationGallery(false)}
+        photos={leadPhotos}
+        leadId={lead?.id}
+        leadName={lead?.name || 'Client'}
+        initialSelectedIds={selectedPhotoIds}
+        imageLimit={selectedPackage?.imageCount ?? selectedPackage?.image_count}
+        selectionMode={imageSelectionMode}
+        onProceedToPackage={(photoIds, photos) => {
+          setSelectedPhotoIds(photoIds);
+          setSelectedPhotos(photos);
+          setShowPresentationGallery(false);
+          setImageSelectionMode(false);
+          setShowPackageModal(true);
+        }}
+      />
+
+      {/* Image Gallery Modal - Quick view for managing photos */}
+      <ImageGalleryModal
+        isOpen={showImageGallery}
+        onClose={() => setShowImageGallery(false)}
+        leadId={lead?.id}
+        leadName={lead?.name}
+        onSelectionComplete={(photos, photoIds) => {
+          setLeadPhotos(photos);
+          setSelectedPhotoIds(photoIds);
+          setSelectedPhotos(photos);
+          console.log('Selected photos:', photoIds);
+        }}
+      />
+
+      {/* Package Selection Modal */}
+      <PackageSelectionModal
+        isOpen={showPackageModal}
+        onClose={() => {
+          setShowPackageModal(false);
+          // Don't clear package if photos are selected (user might come back)
+          if (selectedPhotoIds.length === 0) {
+            setSelectedPackage(null);
+          }
+        }}
+        lead={lead}
+        selectedPhotoCount={selectedPhotoIds.length}
+        selectedPhotoIds={selectedPhotoIds}
+        initialPackage={selectedPackage}
+        onTrimSelection={() => {
+          setShowPackageModal(false);
+          setImageSelectionMode(true);
+          setShowPresentationGallery(true);
+        }}
+        onPackageSelected={(pkg) => {
+          // Store selected package and open gallery for image selection
+          setSelectedPackage(pkg);
+          setShowPackageModal(false);
+          setImageSelectionMode(true);
+          setShowPresentationGallery(true);
+        }}
+        onChangeImages={(pkg) => {
+          // Go back to gallery to change images (keep the package)
+          setSelectedPackage(pkg);
+          setShowPackageModal(false);
+          setImageSelectionMode(true);
+          setShowPresentationGallery(true);
+        }}
+        onGenerateInvoice={async (data) => {
+          try {
+            const response = await axios.post('/api/invoices', {
+              leadId: data.leadId,
+              items: data.items,
+              selectedPhotoIds: selectedPhotoIds
+            });
+
+            if (response.data.success) {
+              setCurrentInvoice(response.data.invoice);
+              setShowPackageModal(false);
+              setSelectedPackage(null);
+              setSelectedPhotoIds([]);
+              setSelectedPhotos([]);
+              setShowInvoiceModal(true);
+            }
+          } catch (err) {
+            console.error('Error creating invoice:', err);
+            alert('Failed to create invoice. Please try again.');
+          }
+        }}
+        onSendContract={(data) => {
+          // Store the package and invoice data for the contract
+          setSelectedPackage(data.package);
+          setContractItems(data.items || []);
+          setContractInvoiceData({
+            subtotal: data.totals.subtotal,
+            vatAmount: data.totals.vatAmount,
+            total: data.totals.total,
+            items: data.totals.items
+          });
+          setShowPackageModal(false);
+          setShowContractModal(true);
+        }}
+      />
+
+      {/* Invoice Modal */}
+      <InvoiceModal
+        isOpen={showInvoiceModal}
+        onClose={() => setShowInvoiceModal(false)}
+        invoice={currentInvoice}
+        lead={lead}
+        onPaymentRecorded={(updatedInvoice) => {
+          setCurrentInvoice(updatedInvoice);
+        }}
+        onSignatureSaved={(updatedInvoice) => {
+          setCurrentInvoice(updatedInvoice);
+        }}
+        onComplete={(completedInvoice) => {
+          setCurrentInvoice(completedInvoice);
+          // Refresh lead data
+          fetchLead();
+          alert('Sale completed successfully!');
+        }}
+      />
+
+      {/* Send Contract Modal */}
+      {showContractModal && lead && (
+        <SendContractModal
+          isOpen={showContractModal}
+          onClose={() => {
+            setShowContractModal(false);
+            setContractInvoiceData(null);
+            setContractItems([]);
+          }}
+          lead={lead}
+          packageData={selectedPackage}
+          invoiceData={contractInvoiceData}
+          onContractSent={(contract) => {
+            console.log('Contract sent:', contract);
+            setShowContractModal(false);
+            setContractInvoiceData(null);
+            setContractItems([]);
+            setSelectedPackage(null);
+            fetchLead();
+          }}
+        />
       )}
     </>
   );

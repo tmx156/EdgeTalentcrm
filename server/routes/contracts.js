@@ -425,11 +425,26 @@ router.get('/verify/:token', async (req, res) => {
  * @access  Public
  */
 router.get('/preview/:token', async (req, res) => {
+  // Helper to return HTML error page (for iframe display)
+  const sendHtmlError = (status, title, message) => {
+    res.status(status).setHeader('Content-Type', 'text/html').send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>${title}</title></head>
+      <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
+        <h1 style="color: #dc2626;">${title}</h1>
+        <p style="color: #666;">${message}</p>
+      </body>
+      </html>
+    `);
+  };
+
   try {
     const { token } = req.params;
+    console.log('📄 PDF Preview requested for token:', token?.substring(0, 10) + '...');
 
     if (!token) {
-      return res.status(400).json({ message: 'Contract token is required' });
+      return sendHtmlError(400, 'Invalid Request', 'Contract token is required');
     }
 
     // Find contract by token
@@ -439,20 +454,32 @@ router.get('/preview/:token', async (req, res) => {
       .eq('contract_token', token)
       .single();
 
-    if (error || !contract) {
-      return res.status(404).json({ message: 'Invalid or expired contract link' });
+    if (error) {
+      console.error('Database error fetching contract:', error);
+      return sendHtmlError(404, 'Contract Not Found', 'The contract could not be found in the database.');
     }
+
+    if (!contract) {
+      return sendHtmlError(404, 'Contract Not Found', 'Invalid or expired contract link.');
+    }
+
+    console.log('📄 Found contract, generating PDF...');
+    console.log('Contract data keys:', Object.keys(contract.contract_data || {}));
 
     // Generate PDF
     const pdfBuffer = await generateContractPDF(contract.contract_data);
 
+    console.log('✅ PDF generated successfully, size:', pdfBuffer.length, 'bytes');
+
     // Set headers for PDF display
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="contract_${contract.id}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
     res.send(pdfBuffer);
   } catch (error) {
-    console.error('Error generating PDF preview:', error);
-    res.status(500).json({ message: 'Failed to generate PDF', error: error.message });
+    console.error('❌ Error generating PDF preview:', error);
+    console.error('Stack:', error.stack);
+    sendHtmlError(500, 'PDF Generation Failed', `Error: ${error.message}`);
   }
 });
 

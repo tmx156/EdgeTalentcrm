@@ -755,3 +755,367 @@
 .booking-sale {
   @apply bg-blue-200 border-blue-400;
 }
+
+/* ===== PERFORMANCE OPTIMIZATIONS FOR 500K+ LEADS ===== */
+
+/* react-window list optimization */
+.ReactVirtualized__List,
+.ReactVirtualized__Grid,
+[class*="FixedSizeList"] > div {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto !important; /* Disable smooth scroll for instant response */
+}
+
+/* GPU layer for virtual list container */
+[class*="FixedSizeList"] {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Optimize each row - contain paint to prevent full repaints */
+[class*="FixedSizeList"] > div > div {
+  contain: layout style paint;
+  backface-visibility: hidden;
+}
+
+/* Legacy virtual scroll support */
+.virtual-scroll-container {
+  transform: translateZ(0);
+  -webkit-overflow-scrolling: touch;
+  overflow-anchor: none;
+}
+
+/* Image loading optimization */
+.lazy-image-container {
+  contain: layout style;
+  position: relative;
+}
+
+/* Placeholder animation for loading images */
+.image-placeholder {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: imagePlaceholderShimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes imagePlaceholderShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Fade-in for loaded images */
+.image-fade-in {
+  animation: imageFadeIn 0.3s ease-out;
+}
+
+@keyframes imageFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Video and GIF hover indicator */
+.media-play-indicator {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.media-play-indicator::after {
+  content: "▶";
+  color: white;
+  font-size: 1.5rem;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.media-container:hover .media-play-indicator {
+  opacity: 1;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  .image-placeholder {
+    animation: none;
+    background: #f0f0f0;
+  }
+
+  .image-fade-in {
+    animation: none;
+  }
+
+  .virtual-list-item {
+    will-change: auto;
+  }
+}
+
+/* Optimize text rendering for large lists */
+.text-optimize {
+  text-rendering: optimizeSpeed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Table row performance - isolate paint to each row */
+.table-row-optimized {
+  contain: layout style paint;
+  content-visibility: auto; /* Skip rendering of off-screen rows */
+  contain-intrinsic-size: 60px; /* Approximate row height */
+}
+
+/* Thumbnail optimization */
+.thumbnail-optimized {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  contain: layout style;
+}
+
+/* Memory-efficient backgrounds */
+.bg-pattern-subtle {
+  background-image: none; /* Remove heavy patterns on lists */
+}
+
+/* Optimize transitions for many items */
+.transition-fast {
+  transition-duration: 100ms !important;
+}
+
+/* Force GPU compositing for critical elements */
+.gpu-accelerated {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* ===== REACT-VIRTUOSO OPTIMIZATIONS (Instagram-style) ===== */
+
+/* Virtuoso list container - enable hardware acceleration */
+[data-virtuoso-scroller] {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto !important; /* Instant scroll for 60fps */
+}
+
+/* Virtuoso item wrapper - contain paint for isolated repaints */
+[data-virtuoso-scroller] > div > div {
+  contain: layout style paint;
+  will-change: transform;
+}
+
+/* Virtuoso viewport - prevent layout thrashing */
+[data-viewport-type="element"] {
+  contain: strict;
+}
+
+/* Instagram-style shimmer placeholder animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Blur placeholder shimmer effect */
+.blur-placeholder {
+  background: linear-gradient(90deg, #e8e8e8 0%, #f5f5f5 50%, #e8e8e8 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Image blur-to-clear transition (Facebook/Instagram technique) */
+.image-blur-transition {
+  transition: filter 0.3s ease-out, opacity 0.2s ease-out;
+}
+
+.image-blur-transition.loading {
+  filter: blur(10px);
+  opacity: 0.7;
+}
+
+.image-blur-transition.loaded {
+  filter: blur(0);
+  opacity: 1;
+}
+
+/* Smooth scroll restoration for Virtuoso */
+[data-virtuoso-scroller]:focus-visible {
+  outline: none;
+}
+
+/* Optimize hover states for virtual list items */
+[data-virtuoso-scroller] [role="listitem"]:hover {
+  transition: background-color 75ms ease-out;
+}
+
+/* ========================================
+   PRESENTATION GALLERY - SLIDESHOW STYLES
+   ======================================== */
+
+/* Slideshow Image Container */
+.slideshow-image {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.8s ease-in-out;
+  z-index: 0;
+}
+
+.slideshow-image.active {
+  opacity: 1;
+  z-index: 1;
+}
+
+.slideshow-image.previous {
+  opacity: 0;
+  z-index: 0;
+}
+
+.slideshow-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: transform 0.3s ease;
+}
+
+/* Thumbnail Strip */
+.thumbnail-strip {
+  display: flex;
+  overflow-x: auto;
+  gap: 8px;
+  padding: 16px 24px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.7));
+  backdrop-filter: blur(10px);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.thumbnail-strip::-webkit-scrollbar {
+  height: 6px;
+}
+
+.thumbnail-strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thumbnail-strip::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.thumbnail-strip::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Individual Thumbnail */
+.thumbnail {
+  flex-shrink: 0;
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+  position: relative;
+  opacity: 0.6;
+}
+
+.thumbnail:hover {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+.thumbnail.current {
+  border-color: white;
+  opacity: 1;
+  transform: scale(1.1);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+}
+
+.thumbnail.selected {
+  border-color: #a855f7;
+  opacity: 1;
+}
+
+.thumbnail.selected.current {
+  border-color: #a855f7;
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.5);
+}
+
+.thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Selection Animation */
+@keyframes selectPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.thumbnail.selected::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(168, 85, 247, 0.2);
+  z-index: 1;
+}
+
+/* Auto-play Progress Indicator */
+@keyframes autoPlayProgress {
+  0% {
+    width: 0%;
+  }
+  100% {
+    width: 100%;
+  }
+}
+
+.auto-play-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #a855f7, #7c3aed);
+  animation: autoPlayProgress 4s linear infinite;
+}
+
+/* Upload Progress Bar Stripes Animation */
+@keyframes progress-stripes {
+  0% {
+    background-position: 1rem 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+/* Gallery Controls Hover Effects */
+.gallery-control {
+  transition: all 0.2s ease;
+}
+
+.gallery-control:hover {
+  transform: scale(1.1);
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.gallery-control:active {
+  transform: scale(0.95);
+}

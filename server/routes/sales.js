@@ -186,7 +186,7 @@ const transporter = nodemailer.createTransport({
   rateLimit: 5 // Maximum messages per rateDelta
 });
 
-// SMS sending is handled via BulkSMS in utils/smsService
+// SMS sending is handled via The SMS Works in utils/smsService
 
 // Get all sales with filtering and pagination
 router.get('/', auth, async (req, res) => {
@@ -772,7 +772,7 @@ router.post('/:saleId/send-receipt/email', auth, async (req, res) => {
   }
 });
 
-// Send receipt via SMS (BulkSMS)
+// Send receipt via SMS (The SMS Works)
 router.post('/:saleId/send-receipt/sms', auth, async (req, res) => {
   try {
     const { phone, templateId } = req.body;
