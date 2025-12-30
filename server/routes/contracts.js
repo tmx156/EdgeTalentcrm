@@ -9,9 +9,9 @@ const { auth } = require('../middleware/auth');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 const { generateContractPDF, buildContractData } = require('../utils/contractGenerator');
 const cloudinaryService = require('../utils/cloudinaryService');
+const { sendEmail } = require('../utils/emailService');
 
 const router = express.Router();
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
@@ -23,20 +23,6 @@ function generateContractToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-/**
- * Create email transporter
- */
-function createEmailTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: process.env.SMTP_SECURE === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS
-    }
-  });
-}
 
 /**
  * @route   POST /api/contracts/create
@@ -281,145 +267,108 @@ router.post('/send/:contractId', auth, async (req, res) => {
 
     const customerName = contract.contract_data?.customerName || contract.lead?.name || 'Customer';
 
-    // Send email
+    // Send email using Gmail API
     try {
-      const transporter = createEmailTransporter();
-
       // Get contract details for email
       const contractData = contract.contract_data || {};
       const totalAmount = contractData.total ? `£${parseFloat(contractData.total).toFixed(2)}` : '';
       const packageInfo = contractData.notes || '';
 
-      const mailOptions = {
-        from: `"Edge Talent" <${process.env.SMTP_FROM || process.env.SMTP_USER || 'hello@edgetalent.co.uk'}>`,
-        to: recipientEmail,
-        subject: `Edge Talent - Your Contract is Ready for Signing`,
-        html: `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f5f5f5; }
-              .container { max-width: 600px; margin: 0 auto; background: #ffffff; }
-              .header { background: #1a1a2e; padding: 30px 20px; text-align: center; }
-              .header h1 { color: #ffffff; margin: 0; font-size: 28px; letter-spacing: 3px; }
-              .header p { color: #cccccc; margin: 5px 0 0 0; font-size: 14px; }
-              .content { padding: 40px 30px; }
-              .greeting { font-size: 18px; margin-bottom: 20px; }
-              .intro { margin-bottom: 25px; color: #555; }
-              .button-container { text-align: center; margin: 30px 0; }
-              .button { display: inline-block; background: #1a1a2e; color: #ffffff !important; padding: 16px 50px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; }
-              .button:hover { background: #2a2a4e; }
-              .instructions { background: #f8f9fa; border-radius: 8px; padding: 25px; margin: 25px 0; }
-              .instructions h3 { color: #1a1a2e; margin-top: 0; margin-bottom: 15px; font-size: 16px; }
-              .instructions ol { margin: 0; padding-left: 20px; color: #555; }
-              .instructions li { margin-bottom: 10px; }
-              .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
-              .warning strong { color: #856404; }
-              .link-backup { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0; word-break: break-all; font-size: 13px; color: #666; }
-              .order-summary { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
-              .order-summary h4 { margin: 0 0 10px 0; color: #1a1a2e; }
-              .order-summary p { margin: 5px 0; color: #555; }
-              .footer { background: #f5f5f5; padding: 25px; text-align: center; color: #888; font-size: 12px; }
-              .footer p { margin: 5px 0; }
-              .contact { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>EDGE TALENT</h1>
-                <p>Professional Photography Services</p>
-              </div>
-              <div class="content">
-                <p class="greeting">Dear ${customerName},</p>
+      const emailSubject = `Edge Talent - Your Contract is Ready for Signing`;
+      const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background: #f5f5f5; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; }
+    .header { background: #1a1a2e; padding: 30px 20px; text-align: center; }
+    .header h1 { color: #ffffff; margin: 0; font-size: 28px; letter-spacing: 3px; }
+    .header p { color: #cccccc; margin: 5px 0 0 0; font-size: 14px; }
+    .content { padding: 40px 30px; }
+    .greeting { font-size: 18px; margin-bottom: 20px; }
+    .intro { margin-bottom: 25px; color: #555; }
+    .button-container { text-align: center; margin: 30px 0; }
+    .button { display: inline-block; background: #1a1a2e; color: #ffffff !important; padding: 16px 50px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; }
+    .instructions { background: #f8f9fa; border-radius: 8px; padding: 25px; margin: 25px 0; }
+    .instructions h3 { color: #1a1a2e; margin-top: 0; margin-bottom: 15px; font-size: 16px; }
+    .instructions ol { margin: 0; padding-left: 20px; color: #555; }
+    .instructions li { margin-bottom: 10px; }
+    .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
+    .warning strong { color: #856404; }
+    .link-backup { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0; word-break: break-all; font-size: 13px; color: #666; }
+    .order-summary { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    .order-summary h4 { margin: 0 0 10px 0; color: #1a1a2e; }
+    .order-summary p { margin: 5px 0; color: #555; }
+    .footer { background: #f5f5f5; padding: 25px; text-align: center; color: #888; font-size: 12px; }
+    .footer p { margin: 5px 0; }
+    .contact { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>EDGE TALENT</h1>
+      <p>Professional Photography Services</p>
+    </div>
+    <div class="content">
+      <p class="greeting">Dear ${customerName},</p>
+      <p class="intro">Thank you for choosing Edge Talent! Your contract is ready for review and signing. Please complete this within 7 days to confirm your order.</p>
+      ${totalAmount ? `
+      <div class="order-summary">
+        <h4>Order Summary</h4>
+        <p><strong>Total Amount:</strong> ${totalAmount} (inc. VAT)</p>
+        ${packageInfo ? `<p><strong>Details:</strong> ${packageInfo}</p>` : ''}
+      </div>
+      ` : ''}
+      <div class="button-container">
+        <a href="${contract.signing_url}" class="button">Review & Sign Contract</a>
+      </div>
+      <div class="instructions">
+        <h3>How to Complete Your Contract:</h3>
+        <ol>
+          <li><strong>Click the button above</strong> to open your contract</li>
+          <li><strong>Review the contract</strong> - Check all your details are correct</li>
+          <li><strong>Sign in the signature boxes</strong> - Use your mouse or finger to sign</li>
+          <li><strong>Complete all 5 signatures</strong> on both pages</li>
+          <li><strong>Click "Submit Signed Contract"</strong> to finish</li>
+        </ol>
+      </div>
+      <div class="warning">
+        <strong>⏰ Important:</strong> This link will expire in 7 days. Please complete your signing before then.
+      </div>
+      <p>If the button above doesn't work, copy and paste this link into your browser:</p>
+      <div class="link-backup">${contract.signing_url}</div>
+      <div class="contact">
+        <p>Need help? Contact us:</p>
+        <p>📧 <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
+        <p>🌐 <a href="https://www.edgetalent.co.uk">www.edgetalent.co.uk</a></p>
+      </div>
+    </div>
+    <div class="footer">
+      <p><strong>Edge Talent</strong></p>
+      <p>A trading name of S&A Advertising Ltd</p>
+      <p>Company No 8708429 | VAT Reg No 171339904</p>
+      <p>129A Weedington Rd, London NW5 4NX</p>
+    </div>
+  </div>
+</body>
+</html>`;
 
-                <p class="intro">Thank you for choosing Edge Talent! Your contract is ready for review and signing. Please complete this within 7 days to confirm your order.</p>
+      // Send via Gmail API (uses hello@edgetalent.co.uk - secondary account)
+      const emailResult = await sendEmail(
+        recipientEmail,
+        emailSubject,
+        emailHtml,
+        [], // no attachments
+        'secondary' // use hello@edgetalent.co.uk account
+      );
 
-                ${totalAmount ? `
-                <div class="order-summary">
-                  <h4>Order Summary</h4>
-                  <p><strong>Total Amount:</strong> ${totalAmount} (inc. VAT)</p>
-                  ${packageInfo ? `<p><strong>Details:</strong> ${packageInfo}</p>` : ''}
-                </div>
-                ` : ''}
-
-                <div class="button-container">
-                  <a href="${contract.signing_url}" class="button">Review & Sign Contract</a>
-                </div>
-
-                <div class="instructions">
-                  <h3>How to Complete Your Contract:</h3>
-                  <ol>
-                    <li><strong>Click the button above</strong> to open your contract</li>
-                    <li><strong>Review the PDF</strong> - Check all your details are correct</li>
-                    <li><strong>Scroll down</strong> to view the contract details and terms</li>
-                    <li><strong>Sign in the signature boxes</strong> - Use your mouse or finger to sign</li>
-                    <li><strong>Tick the confirmation boxes</strong> to acknowledge the terms</li>
-                    <li><strong>Click "Sign Contract"</strong> to submit</li>
-                  </ol>
-                </div>
-
-                <div class="warning">
-                  <strong>⏰ Important:</strong> This link will expire in 7 days. Please complete your signing before then. If you have any issues, contact us immediately.
-                </div>
-
-                <p>If the button above doesn't work, copy and paste this link into your browser:</p>
-                <div class="link-backup">${contract.signing_url}</div>
-
-                <div class="contact">
-                  <p>Need help or have questions? Contact us:</p>
-                  <p>📧 Email: <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
-                  <p>🌐 Website: <a href="https://www.edgetalent.co.uk">www.edgetalent.co.uk</a></p>
-                </div>
-              </div>
-              <div class="footer">
-                <p><strong>Edge Talent</strong></p>
-                <p>A trading name of S&A Advertising Ltd</p>
-                <p>Company No 8708429 | VAT Reg No 171339904</p>
-                <p>129A Weedington Rd, London NW5 4NX</p>
-              </div>
-            </div>
-          </body>
-          </html>
-        `,
-        text: `
-Dear ${customerName},
-
-Thank you for choosing Edge Talent! Your contract is ready for review and signing.
-
-${totalAmount ? `Order Total: ${totalAmount} (inc. VAT)` : ''}
-${packageInfo ? `Details: ${packageInfo}` : ''}
-
-HOW TO COMPLETE YOUR CONTRACT:
-================================
-
-1. Click the link below to open your contract
-2. Review the PDF - Check all your details are correct
-3. Scroll down to view the contract details and terms
-4. Sign in the signature boxes using your mouse or finger
-5. Tick the confirmation boxes to acknowledge the terms
-6. Click "Sign Contract" to submit
-
-SIGN YOUR CONTRACT HERE:
-${contract.signing_url}
-
-⏰ IMPORTANT: This link will expire in 7 days. Please complete your signing before then.
-
-Need help? Contact us:
-Email: hello@edgetalent.co.uk
-Website: www.edgetalent.co.uk
-
----
-Edge Talent
-A trading name of S&A Advertising Ltd
-Company No 8708429 | VAT Reg No 171339904
-129A Weedington Rd, London NW5 4NX
-        `
-      };
-
-      await transporter.sendMail(mailOptions);
-      console.log(`Contract email sent to ${recipientEmail} from hello@edgetalent.co.uk`);
+      if (emailResult.success) {
+        console.log(`✅ Contract email sent to ${recipientEmail} via Gmail API`);
+      } else {
+        console.error('❌ Contract email failed:', emailResult.error);
+      }
     } catch (emailError) {
       console.error('Email sending failed:', emailError);
       // Continue even if email fails - URL can still be shared manually
