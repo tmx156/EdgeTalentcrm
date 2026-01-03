@@ -209,26 +209,63 @@ const LeadDetail = () => {
   // Define fetchAllLeads before it's used in useEffect
   const fetchAllLeads = useCallback(async () => {
     try {
-      // Use filter context if available, otherwise fetch all leads
+      // Use location.state directly to avoid timing issues with filterContext state
+      // (React state updates are async, so filterContext may not be set yet when this runs)
+      const statusFilter = location.state?.statusFilter || filterContext.statusFilter;
+      const searchTerm = location.state?.searchTerm || filterContext.searchTerm;
+
       const params = {};
-      if (filterContext.statusFilter && filterContext.statusFilter !== 'all') {
-        params.status = filterContext.statusFilter;
+      if (statusFilter && statusFilter !== 'all') {
+        params.status = statusFilter;
       }
-      if (filterContext.searchTerm) {
-        params.search = filterContext.searchTerm;
+      if (searchTerm) {
+        params.search = searchTerm;
       }
 
-      // Fetch all leads by setting a high limit (1000 should be sufficient for most use cases)
-      // This ensures navigation works through all available leads, not just the first 50
-      params.limit = 1000;
-      params.page = 1;
+      // For navigation, we need ALL filtered leads, so we'll fetch in pages and combine
+      // This works for both regular status filters and call_status filters
+      const allFilteredLeads = [];
+      let currentPage = 1;
+      let hasMore = true;
+      const pageSize = 100; // Fetch in chunks of 100
 
-      const response = await axios.get('/api/leads', { params });
-      const leads = response.data.leads || response.data || [];
+      while (hasMore) {
+        params.page = currentPage;
+        params.limit = pageSize;
+
+        const response = await axios.get('/api/leads', { params });
+        const pageLeads = response.data.leads || response.data || [];
+        
+        if (pageLeads.length === 0) {
+          hasMore = false;
+        } else {
+          allFilteredLeads.push(...pageLeads);
+          
+          // Check if there are more pages
+          const totalPages = response.data.totalPages || 1;
+          if (currentPage >= totalPages || pageLeads.length < pageSize) {
+            hasMore = false;
+          } else {
+            currentPage++;
+          }
+        }
+      }
+
+      console.log(`✅ Fetched ${allFilteredLeads.length} total leads for navigation (status: ${statusFilter || 'all'})`);
 
       // If we have filtered leads from navigation state, use those instead
-      const leadsToUse = filterContext.filteredLeads.length > 0 ? filterContext.filteredLeads : leads;
+      const filteredLeadsFromState = location.state?.filteredLeads || filterContext.filteredLeads;
+      const leadsToUse = filteredLeadsFromState?.length > 0 ? filteredLeadsFromState : allFilteredLeads;
       setAllLeads(leadsToUse);
+
+      // Also update filterContext to match what we're using (for display and navigation)
+      if (statusFilter !== filterContext.statusFilter || searchTerm !== filterContext.searchTerm) {
+        setFilterContext({
+          statusFilter: statusFilter || 'all',
+          searchTerm: searchTerm || '',
+          filteredLeads: leadsToUse
+        });
+      }
 
       // Find current lead's position - handle both string and ObjectId formats
       const index = leadsToUse.findIndex(lead =>
@@ -243,7 +280,7 @@ const LeadDetail = () => {
       setAllLeads([]);
       setCurrentIndex(0);
     }
-  }, [id, filterContext]);
+  }, [id, filterContext, location.state]);
 
   // Define all fetch functions before they're used in useEffect hooks
   const fetchTemplates = useCallback(async () => {
@@ -459,7 +496,7 @@ const LeadDetail = () => {
       // Always try to set up navigation context
       if (location.state) {
         const { statusFilter, searchTerm, filteredLeads } = location.state;
-        console.log('🔍 LeadDetail: Setting up navigation context');
+        console.log('🔍 LeadDetail: Setting up navigation context', { statusFilter, searchTerm, hasFilteredLeads: !!filteredLeads?.length });
 
         setFilterContext({
           statusFilter: statusFilter || 'all',
@@ -475,16 +512,18 @@ const LeadDetail = () => {
         }
       }
 
-      // Fallback: if we don't have leads but have an ID, fetch all leads (page refresh case)
-      if (id && allLeads.length === 0 && !location.state?.filteredLeads) {
-        console.log('⚠️ LeadDetail: No leads available, fetching all');
-        fetchAllLeads();
-      }
-
       initializedRef.current = true;
       locationStateRef.current = location.state;
     }
   }, [id, location.pathname, location.state, allLeads.length, fetchAllLeads]);
+
+  // Fetch all leads for navigation if not provided via location.state
+  useEffect(() => {
+    if (allLeads.length === 0 && id) {
+      console.log('📥 LeadDetail: Fetching leads for navigation (no state provided)');
+      fetchAllLeads();
+    }
+  }, [id, allLeads.length, fetchAllLeads]);
 
   // Handle browser back/forward navigation - ensure component responds to route changes
   useEffect(() => {

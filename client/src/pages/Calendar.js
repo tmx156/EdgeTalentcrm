@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   FiCalendar, FiClock, FiMapPin, FiUser, FiX, FiPhone, FiMail,
   FiFileText, FiActivity, FiCheckCircle,
@@ -82,6 +82,16 @@ const Calendar = () => {
   const [sendSms, setSendSms] = useState(true);
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [bookingTemplates, setBookingTemplates] = useState([]);
+
+  // Get currently selected template's settings
+  const selectedTemplate = useMemo(() => {
+    if (!selectedTemplateId || !bookingTemplates.length) return null;
+    return bookingTemplates.find(t => t._id === selectedTemplateId) || bookingTemplates[0];
+  }, [selectedTemplateId, bookingTemplates]);
+
+  // Check if template supports email/sms
+  const templateSupportsEmail = selectedTemplate?.sendEmail !== false;
+  const templateSupportsSms = selectedTemplate?.sendSMS !== false;
   const [updatingNotes, setUpdatingNotes] = useState(false);
   const [isBookingInProgress, setIsBookingInProgress] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -2842,6 +2852,17 @@ const Calendar = () => {
                           <p className="text-xs text-gray-500 mt-1">
                             Emails sent via Gmail API
                           </p>
+                          {/* Show warning if template doesn't support selected channels */}
+                          {sendEmail && !templateSupportsEmail && (
+                            <p className="text-xs text-amber-600 mt-1">
+                              ⚠️ This template has email disabled - email will not be sent
+                            </p>
+                          )}
+                          {sendSms && !templateSupportsSms && (
+                            <p className="text-xs text-amber-600 mt-1">
+                              ⚠️ This template has SMS disabled - SMS will not be sent
+                            </p>
+                          )}
                         </>
                       ) : (
                         <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3">
@@ -3274,6 +3295,16 @@ const Calendar = () => {
                                   </option>
                                 ))}
                               </select>
+                              {sendEmail && !templateSupportsEmail && (
+                                <p className="text-xs text-amber-600 mt-1">
+                                  ⚠️ This template has email disabled - email will not be sent
+                                </p>
+                              )}
+                              {sendSms && !templateSupportsSms && (
+                                <p className="text-xs text-amber-600 mt-1">
+                                  ⚠️ This template has SMS disabled - SMS will not be sent
+                                </p>
+                              )}
                               <p className="text-xs text-gray-500 mt-1">
                                 Emails sent via Gmail API
                               </p>

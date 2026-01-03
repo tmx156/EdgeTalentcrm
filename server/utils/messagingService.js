@@ -347,13 +347,22 @@ class MessagingService {
       
       const processedTemplate = this.processTemplate(template, lead, user, effectiveBookingDate, bookerInfo);
 
-      // Determine effective channels (override template defaults if options provided)
-      const effectiveSendEmail = typeof options.sendEmail === 'boolean' ? options.sendEmail : !!template.send_email;
-      const effectiveSendSms = typeof options.sendSms === 'boolean' ? options.sendSms : !!template.send_sms;
+      // Determine effective channels
+      // IMPORTANT: Only send if BOTH user wants it AND template allows it
+      const userWantsEmail = typeof options.sendEmail === 'boolean' ? options.sendEmail : true;
+      const userWantsSms = typeof options.sendSms === 'boolean' ? options.sendSms : true;
+      const templateAllowsEmail = template.send_email !== false; // Default to true if not set
+      const templateAllowsSms = template.send_sms !== false; // Default to true if not set
 
-      // If neither channel selected, do nothing
+      const effectiveSendEmail = userWantsEmail && templateAllowsEmail;
+      const effectiveSendSms = userWantsSms && templateAllowsSms;
+
+      console.log(`📧 Booking confirmation channels: userWantsEmail=${userWantsEmail}, templateAllowsEmail=${templateAllowsEmail}, effectiveSendEmail=${effectiveSendEmail}`);
+      console.log(`📱 Booking confirmation channels: userWantsSms=${userWantsSms}, templateAllowsSms=${templateAllowsSms}, effectiveSendSms=${effectiveSendSms}`);
+
+      // If neither channel selected/allowed, do nothing
       if (!effectiveSendEmail && !effectiveSendSms) {
-        console.log('ℹ️ Booking confirmation suppressed (both email and SMS unchecked)');
+        console.log('ℹ️ Booking confirmation suppressed (both email and SMS disabled by user or template)');
         return null;
       }
 
@@ -680,9 +689,13 @@ class MessagingService {
         reminder_days: reminderDays
       };
 
-      // Send actual messages (placeholder for now)
-      await this.sendEmail(message);
-      if (template.send_sms) {
+      // Send actual messages - respect template settings
+      const emailAccount = template.email_account || 'primary';
+
+      if (template.send_email !== false && lead.email) {
+        await this.sendEmail(message, emailAccount);
+      }
+      if (template.send_sms !== false && lead.phone) {
         await this.sendSMS(message);
       }
 

@@ -353,13 +353,35 @@ router.get('/', auth, async (req, res) => {
     const from = (pageInt - 1) * validatedLimit;
     const to = from + validatedLimit - 1;
 
+    // Check if we're filtering by call_status (requires JavaScript filtering)
+    // Note: Case-sensitive mapping - must match exactly what's in custom_fields.call_status
+    const statusToCallStatusMap = {
+      'No answer': 'No answer',
+      'No Answer x2': 'No Answer x2',
+      'No Answer x3': 'No Answer x3',
+      'No photo': 'No photo',
+      'Left Message': 'Left Message',
+      'Not interested': 'Not interested',
+      'Call back': 'Call back',  // Database has "Call back" (two words)
+      'Wrong number': 'Wrong number',  // Database has "Wrong number" (lowercase 'n')
+      'Sales/converted - purchased': 'Sales/converted - purchased',
+      'Not Qualified': 'Not Qualified'
+    };
+    const isCallStatusFilter = status && status !== 'all' && status !== 'sales' && statusToCallStatusMap[status];
+    
     // Build Supabase queries (data + count) with consistent filters
     // Include custom_fields for call_status filtering
+    // For call_status filtering, we need to fetch more leads to filter in JavaScript
+    // so we don't use range() initially - we'll paginate after filtering
     let dataQuery = supabase
       .from('leads')
       .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, has_sale, created_at, assigned_at, booked_at, custom_fields', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(from, to);
+      .order('created_at', { ascending: false });
+    
+    // Only apply range for non-call_status filters (standard status filters)
+    if (!isCallStatusFilter) {
+      dataQuery = dataQuery.range(from, to);
+    }
 
     let countQuery = supabase
       .from('leads')
@@ -395,26 +417,15 @@ router.get('/', auth, async (req, res) => {
         dataQuery = dataQuery.eq('has_sale', 1);
         countQuery = countQuery.eq('has_sale', 1);
       } else {
-        // For booker users, check both status and call_status (in custom_fields)
-        // Map new status filters to call_status values
-        const statusToCallStatusMap = {
-          'No answer': 'No answer',
-          'Left Message': 'Left Message',
-          'Not interested': 'Not interested',
-          'Call back': 'Call back',
-          'Wrong Number': 'Wrong number',
-          'Sales/converted - purchased': 'Sales/converted - purchased',
-          'Not Qualified': 'Not Qualified'
-        };
-        
+        // For all users, check both status and call_status (in custom_fields)
         const callStatusValue = statusToCallStatusMap[status];
         
-        if (req.user.role === 'booker' && callStatusValue) {
-          // For booker users filtering by call_status, we'll filter after fetching
+        if (callStatusValue) {
+          // For call_status filtering (applies to all users), we'll filter after fetching
           // since Supabase JSONB filtering can be complex
-          // Set a flag to filter by call_status in JavaScript
-          console.log(`📊 Booker filtering by call_status: ${callStatusValue} (will filter after fetch)`);
           // Don't apply status filter here - we'll filter by call_status after fetching
+          // Also don't apply range - we'll fetch more and paginate after filtering
+          console.log(`📊 Filtering by call_status: ${callStatusValue} (will filter after fetch, then paginate)`);
         } else {
           // Standard status filter
           dataQuery = dataQuery.eq('status', status);
@@ -498,61 +509,48 @@ router.get('/', auth, async (req, res) => {
       throw leadsError;
     }
 
-    // For booker users filtering by call_status, filter the results in JavaScript
-    let filteredLeads = leads || [];
-    if (status && status !== 'all' && status !== 'sales' && req.user.role === 'booker') {
-      const statusToCallStatusMap = {
-        'No answer': 'No answer',
-        'Left Message': 'Left Message',
-        'Not interested': 'Not interested',
-        'Call back': 'Call back',
-        'Wrong Number': 'Wrong number',
-        'Sales/converted - purchased': 'Sales/converted - purchased',
-        'Not Qualified': 'Not Qualified'
-      };
-      
-      const callStatusValue = statusToCallStatusMap[status];
-      if (callStatusValue) {
-        filteredLeads = (leads || []).filter(lead => {
-          try {
-            if (lead.custom_fields) {
-              const customFields = typeof lead.custom_fields === 'string' 
-                ? JSON.parse(lead.custom_fields) 
-                : lead.custom_fields;
-              return customFields?.call_status === callStatusValue;
-            }
-          } catch (e) {
-            return false;
-          }
-          return false;
-        });
-        console.log(`📊 Filtered ${filteredLeads.length} leads by call_status: ${callStatusValue}`);
+    // Helper function to get call_status from custom_fields
+    const getCallStatus = (lead) => {
+      try {
+        if (lead.custom_fields) {
+          const customFields = typeof lead.custom_fields === 'string' 
+            ? JSON.parse(lead.custom_fields) 
+            : lead.custom_fields;
+          return customFields?.call_status || null;
+        }
+      } catch (e) {
+        return null;
       }
+      return null;
+    };
+
+    // For call_status filtering (applies to all users), filter the results in JavaScript
+    let filteredLeads = leads || [];
+    let allFilteredLeadsForCount = null;
+    if (isCallStatusFilter) {
+      const callStatusValue = statusToCallStatusMap[status];
+      // Filter by call_status BUT exclude leads that have progressed beyond "Assigned"
+      // Once a lead is Booked, Attended, Cancelled, etc. it should only appear in that folder
+      const progressedStatuses = ['Booked', 'Attended', 'Cancelled', 'Rejected', 'Sale'];
+      allFilteredLeadsForCount = (leads || []).filter(lead => {
+        const hasMatchingCallStatus = getCallStatus(lead) === callStatusValue;
+        const hasProgressed = progressedStatuses.includes(lead.status);
+        // Only include if call_status matches AND lead hasn't progressed to a final status
+        return hasMatchingCallStatus && !hasProgressed;
+      });
+      console.log(`📊 Filtered ${allFilteredLeadsForCount.length} leads by call_status: ${callStatusValue} (excluded progressed leads)`);
+      
+      // Apply pagination to filtered results
+      filteredLeads = allFilteredLeadsForCount.slice(from, to + 1);
+      console.log(`📄 Paginated to ${filteredLeads.length} leads (page ${pageInt}, showing ${from} to ${Math.min(to, allFilteredLeadsForCount.length - 1)} of ${allFilteredLeadsForCount.length})`);
     }
 
-    // Get total count - for call_status filters, use filtered count
+    // Get total count - for call_status filters, use the pre-paginated filtered count
     let total = typeof totalCount === 'number' ? totalCount : 0;
-    if (status && status !== 'all' && status !== 'sales' && req.user.role === 'booker') {
-      const statusToCallStatusMap = {
-        'No answer': 'No answer',
-        'Left Message': 'Left Message',
-        'Not interested': 'Not interested',
-        'Call back': 'Call back',
-        'Wrong Number': 'Wrong number',
-        'Sales/converted - purchased': 'Sales/converted - purchased',
-        'Not Qualified': 'Not Qualified'
-      };
-      const callStatusValue = statusToCallStatusMap[status];
-      if (callStatusValue) {
-        // For call_status filter, count the filtered leads
-        total = filteredLeads.length;
-      } else {
-        if (!total) {
-          const { count, error: countError } = await countQuery;
-          if (countError) throw countError;
-          total = count || 0;
-        }
-      }
+    if (isCallStatusFilter && allFilteredLeadsForCount !== null) {
+      // For call_status filter, use the count from filtered leads (before pagination)
+      total = allFilteredLeadsForCount.length;
+      console.log(`📊 Total count for call_status filter: ${total}`);
     } else {
       if (!total) {
         const { count, error: countError } = await countQuery;
@@ -5007,14 +5005,23 @@ router.post('/bulk-communication', auth, async (req, res) => {
         });
 
         // Create a custom template object
+        // IMPORTANT: Respect template's send_email/send_sms settings
+        const wantsEmail = (communicationType === 'email' || communicationType === 'both');
+        const wantsSms = (communicationType === 'sms' || communicationType === 'both');
+        const templateAllowsEmail = template.send_email !== false;
+        const templateAllowsSms = template.send_sms !== false;
+
         const customTemplate = {
           ...template,
           subject: emailSubject,
           email_body: emailBody,
           sms_body: smsBody,
-          send_email: (communicationType === 'email' || communicationType === 'both'),
-          send_sms: (communicationType === 'sms' || communicationType === 'both')
+          send_email: wantsEmail && templateAllowsEmail,
+          send_sms: wantsSms && templateAllowsSms,
+          email_account: template.email_account || 'primary'
         };
+
+        console.log(`📧 Template settings: send_email=${customTemplate.send_email}, send_sms=${customTemplate.send_sms}, email_account=${customTemplate.email_account}`);
 
         // Use MessagingService.processTemplate
         const processedTemplate = MessagingService.processTemplate(customTemplate, lead, req.user, lead.date_booked, lead.time_booked);
@@ -5087,8 +5094,8 @@ router.post('/bulk-communication', auth, async (req, res) => {
               channel: 'email',
             };
             
-            console.log(`📧 Sending email to ${lead.email}...`);
-            const emailResult = await MessagingService.sendEmail(message);
+            console.log(`📧 Sending email to ${lead.email} using account: ${customTemplate.email_account}...`);
+            const emailResult = await MessagingService.sendEmail(message, customTemplate.email_account);
             emailSent = emailResult;
             
             if (emailResult) {
@@ -5710,14 +5717,46 @@ router.patch('/:id/call-status', auth, async (req, res) => {
 
     // ROLE-BASED ACCESS CONTROL
     if (req.user.role !== 'admin' && lead.booker_id !== req.user.id) {
-      return res.status(403).json({ 
-        message: 'Access denied. You can only update leads assigned to you.' 
+      return res.status(403).json({
+        message: 'Access denied. You can only update leads assigned to you.'
       });
+    }
+
+    // AUTO-UPGRADE LOGIC for No Answer statuses
+    // When user selects "No answer", check current call_status and auto-upgrade
+    let finalCallStatus = callStatus;
+    if (callStatus === 'No answer') {
+      // Get current call_status from lead
+      let currentCallStatus = lead.call_status;
+
+      // Also check custom_fields for backward compatibility
+      if (!currentCallStatus && lead.custom_fields) {
+        try {
+          const cf = typeof lead.custom_fields === 'string'
+            ? JSON.parse(lead.custom_fields)
+            : lead.custom_fields;
+          currentCallStatus = cf?.call_status;
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+
+      // Auto-upgrade based on current status
+      if (currentCallStatus === 'No answer') {
+        finalCallStatus = 'No Answer x2';
+        console.log(`📞 Auto-upgrading lead ${leadId} from "No answer" to "No Answer x2"`);
+      } else if (currentCallStatus === 'No Answer x2') {
+        finalCallStatus = 'No Answer x3';
+        console.log(`📞 Auto-upgrading lead ${leadId} from "No Answer x2" to "No Answer x3"`);
+      } else if (currentCallStatus === 'No Answer x3') {
+        finalCallStatus = 'No Answer x3'; // Keep at max
+        console.log(`📞 Lead ${leadId} already at "No Answer x3" (max reached)`);
+      }
     }
 
     // Prepare update data - use dedicated call_status column
     const updateData = {
-      call_status: callStatus,  // Store in dedicated column (not custom_fields)
+      call_status: finalCallStatus,  // Store in dedicated column (use finalCallStatus for auto-upgrade)
       updated_at: new Date().toISOString()
     };
 
@@ -5733,7 +5772,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       console.warn('Error parsing custom_fields:', e);
       customFields = {};
     }
-    customFields.call_status = callStatus;
+    customFields.call_status = finalCallStatus;
     updateData.custom_fields = JSON.stringify(customFields);
 
     // Get callback time and note if provided
@@ -5762,8 +5801,8 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     // Return success immediately (don't wait for booking history or workflows)
     // This makes the UI feel instant and responsive
     const workflowResult = {
-      emailScheduled: emailTriggers.includes(callStatus) && lead.email,
-      callbackScheduled: callbackTriggers.includes(callStatus) && callbackTime
+      emailScheduled: emailTriggers.includes(finalCallStatus) && lead.email,
+      callbackScheduled: callbackTriggers.includes(finalCallStatus) && callbackTime
     };
 
     // Emit real-time update
@@ -5771,7 +5810,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       global.io.emit('lead_updated', {
         leadId: leadId,
         action: 'call_status_updated',
-        callStatus: callStatus,
+        callStatus: finalCallStatus,
         updatedBy: req.user.name,
         workflowResult: workflowResult,
         timestamp: new Date()
@@ -5782,7 +5821,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
     res.json({
       success: true,
       message: 'Call status updated successfully',
-      callStatus: callStatus,
+      callStatus: finalCallStatus,
       workflowResult: workflowResult,
       lead: updatedLead
     });
@@ -5794,7 +5833,8 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       try {
       // Check booking history BEFORE adding new entry (to determine if email should be sent)
       let shouldSendEmail = true;
-      if (callStatus === 'No answer' && emailTriggers.includes(callStatus) && lead.email) {
+      // Only send email for first "No answer" - use original callStatus to check if user clicked "No answer"
+      if (callStatus === 'No answer' && emailTriggers.includes('No answer') && lead.email) {
         try {
           const history = lead.booking_history || [];
           const parsedHistory = Array.isArray(history) ? history : 
@@ -5828,9 +5868,9 @@ router.patch('/:id/call-status', auth, async (req, res) => {
           req.user.id,
           req.user.name,
           {
-            callStatus: callStatus,
-            workflowTrigger: emailTriggers.includes(callStatus) && shouldSendEmail ? 'email'
-              : closeTriggers.includes(callStatus) ? 'close'
+            callStatus: finalCallStatus,
+            workflowTrigger: emailTriggers.includes(finalCallStatus) && shouldSendEmail ? 'email'
+              : closeTriggers.includes(finalCallStatus) ? 'close'
               : 'callback',
             updatedBy: req.user.name,
             timestamp: new Date()
@@ -5842,16 +5882,17 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       }
 
       // Email workflow: Send automatic email for "Left Message", "No answer", or "No photo"
-      if (emailTriggers.includes(callStatus) && lead.email && shouldSendEmail) {
+      // Only first "No answer" triggers email - x2/x3 don't (they're not in emailTriggers)
+      if (emailTriggers.includes(finalCallStatus) && lead.email && shouldSendEmail) {
         try {
         // Determine template type based on call status
         // Each status has its own template type
         let templateType = 'no_answer'; // default
-        if (callStatus === 'No photo') {
+        if (finalCallStatus === 'No photo') {
           templateType = 'no_photo';
-        } else if (callStatus === 'Left Message') {
+        } else if (finalCallStatus === 'Left Message') {
           templateType = 'no_answer'; // Left Message uses no_answer template (same workflow)
-        } else if (callStatus === 'No answer') {
+        } else if (finalCallStatus === 'No answer') {
           templateType = 'no_answer';
         }
         

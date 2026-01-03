@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  FiPlus, FiSearch, FiFilter, FiChevronRight, FiUserPlus, 
-  FiCalendar, FiWifi, FiUpload, FiTrash2, FiX, FiFileText, 
+import {
+  FiPlus, FiSearch, FiFilter, FiChevronRight, FiUserPlus,
+  FiCalendar, FiWifi, FiUpload, FiTrash2, FiX, FiFileText,
   FiCheck, FiPhone, FiMail, FiMapPin, FiActivity, FiUser,
   FiMessageSquare, FiClock, FiEye
 } from 'react-icons/fi';
@@ -29,24 +29,39 @@ const LeadsNew = () => {
     attended: 0,
     cancelled: 0,
     assigned: 0,
-    rejected: 0
+    rejected: 0,
+    noAnswerCall: 0,
+    leftMessage: 0,
+    notInterestedCall: 0,
+    callBack: 0,
+    wrongNumber: 0,
+    salesConverted: 0,
+    notQualified: 0
   });
 
   const [searchTerm, setSearchTerm] = useState('');
+  // Read statusFilter from URL query params first, then navigation state, then default to 'all'
   const [statusFilter, setStatusFilter] = useState(() => {
-    // Check if navigation state has statusFilter
-    return location.state?.statusFilter || 'all';
+    const urlParams = new URLSearchParams(location.search);
+    return urlParams.get('status') || location.state?.statusFilter || 'all';
   });
   const [dateFilter, setDateFilter] = useState('all'); // New: Date filter
   const [customDateStart, setCustomDateStart] = useState(''); // New: Custom date range start
   const [customDateEnd, setCustomDateEnd] = useState(''); // New: Custom date range end
-  const [currentPage, setCurrentPage] = useState(1);
+  // Read currentPage from URL query params
+  const [currentPage, setCurrentPage] = useState(() => {
+    const urlParams = new URLSearchParams(location.search);
+    return parseInt(urlParams.get('page')) || 1;
+  });
+  
+  // Track the last URL we wrote to prevent loops
+  const lastWrittenUrlRef = useRef('');
   const [totalPages, setTotalPages] = useState(1);
   const [totalLeads, setTotalLeads] = useState(0);
   const [leadsPerPage] = useState(30); // Optimized: Reduced from 50 to 30 for better performance
   const [selectedLeads, setSelectedLeads] = useState([]);
   const [viewMode, setViewMode] = useState('table'); // Default to table view
-  
+
   // Lightbox
   const [lightboxUrl, setLightboxUrl] = useState(null);
   
@@ -80,13 +95,14 @@ const LeadsNew = () => {
     image_url: ''
   });
 
-  // Debounced search - removed fetchLeads dependency to avoid infinite loop
+  // Reset page to 1 when filters change (except for pagination clicks)
+  // Note: statusFilter changes reset page immediately in the onClick handler, not here
   useEffect(() => {
     const timer = setTimeout(() => {
       setCurrentPage(1);
     }, 500);
     return () => clearTimeout(timer);
-  }, [searchTerm, statusFilter, dateFilter, customDateStart, customDateEnd]);
+  }, [searchTerm, dateFilter, customDateStart, customDateEnd]);
 
   // Helper function to calculate date range in GMT/London timezone
   // Memoized to prevent recreating Date objects on every render
@@ -242,6 +258,36 @@ const LeadsNew = () => {
     fetchLeads();
   }, [fetchLeads]);
 
+  // Smooth scroll to top when page changes
+  useEffect(() => {
+    const scrollToTop = () => {
+      const startPosition = window.pageYOffset;
+      const duration = 600; // ms
+      let startTime = null;
+
+      const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+      const animate = (currentTime) => {
+        if (!startTime) startTime = currentTime;
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeProgress = easeOutCubic(progress);
+
+        window.scrollTo(0, startPosition * (1 - easeProgress));
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        }
+      };
+
+      requestAnimationFrame(animate);
+    };
+
+    if (window.pageYOffset > 0) {
+      scrollToTop();
+    }
+  }, [currentPage]);
+
   // Combined useEffect for initial load and date filter changes
   useEffect(() => {
     if (user) {
@@ -253,21 +299,117 @@ const LeadsNew = () => {
   // Memoize status filter buttons array to prevent recreations
   const statusFilterButtons = useMemo(() => [
     { value: 'all', label: 'All', count: leadCounts.total },
-    { value: 'New', label: 'New', count: leadCounts.new },
-    { value: 'Booked', label: 'Booked', count: leadCounts.booked },
-    { value: 'Attended', label: 'Attended', count: leadCounts.attended },
-    { value: 'Cancelled', label: 'Cancelled', count: leadCounts.cancelled },
-    { value: 'Assigned', label: 'Assigned', count: leadCounts.assigned },
-    { value: 'Rejected', label: 'Rejected', count: leadCounts.rejected }
-  ], [leadCounts.total, leadCounts.new, leadCounts.booked, leadCounts.attended, leadCounts.cancelled, leadCounts.assigned, leadCounts.rejected]);
+    { value: 'Assigned', label: '👤 Assigned', count: leadCounts.assigned },
+    { value: 'Booked', label: '📅 Booked', count: leadCounts.booked },
+    { value: 'No answer', label: '📵 No answer', count: leadCounts.noAnswerCall },
+    { value: 'No Answer x2', label: '📵 No Answer x2', count: leadCounts.noAnswerX2 },
+    { value: 'No Answer x3', label: '📵 No Answer x3', count: leadCounts.noAnswerX3 },
+    { value: 'Left Message', label: '💬 Left Message', count: leadCounts.leftMessage },
+    { value: 'Not interested', label: '🚫 Not interested', count: leadCounts.notInterestedCall },
+    { value: 'Call back', label: '📞 Call back', count: leadCounts.callBack },
+    { value: 'Wrong number', label: '📞 Wrong number', count: leadCounts.wrongNumber },
+    { value: 'Sales/converted - purchased', label: '💰 Sales', count: leadCounts.salesConverted },
+    { value: 'Not Qualified', label: '❌ Not Qualified', count: leadCounts.notQualified }
+  ], [leadCounts.total, leadCounts.assigned, leadCounts.booked, leadCounts.noAnswerCall, leadCounts.noAnswerX2, leadCounts.noAnswerX3, leadCounts.leftMessage, leadCounts.notInterestedCall, leadCounts.callBack, leadCounts.wrongNumber, leadCounts.salesConverted, leadCounts.notQualified]);
 
-  // Handle navigation state changes from sidebar
+  // Handle navigation state from sidebar
   useEffect(() => {
     if (location.state?.statusFilter !== undefined) {
-      setStatusFilter(location.state.statusFilter);
-      setCurrentPage(1); // Reset to first page when filter changes
+      const navStatus = location.state.statusFilter;
+      const urlParams = new URLSearchParams(location.search);
+      const urlStatus = urlParams.get('status');
+      
+      console.log('🔵 [NavState] Effect triggered:', { navStatus, urlStatus, currentStatusFilter: statusFilter });
+      
+      // Only apply if URL doesn't already have this status
+      if (!urlStatus) {
+        console.log('🔵 [NavState] Applying navigation state:', navStatus);
+        setStatusFilter(navStatus);
+        setCurrentPage(1);
+        const newParams = new URLSearchParams();
+        if (navStatus !== 'all') {
+          newParams.set('status', navStatus);
+        }
+        const newUrl = newParams.toString() ? `${location.pathname}?${newParams.toString()}` : location.pathname;
+        lastWrittenUrlRef.current = newUrl;
+        navigate(newUrl, { replace: true });
+      } else {
+        console.log('🔵 [NavState] Skipping - URL already has status');
+      }
     }
-  }, [location.state?.statusFilter]);
+  }, [location.state?.statusFilter, navigate, location.pathname]);
+
+  // Sync URL when state changes (write direction)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const urlStatus = urlParams.get('status') || 'all';
+    const urlPage = parseInt(urlParams.get('page')) || 1;
+    
+    // Check if state differs from URL
+    const statusDiffers = statusFilter !== urlStatus;
+    const pageDiffers = currentPage !== urlPage;
+    
+    console.log('🟢 [URLSync-Write] Effect triggered:', {
+      statusFilter,
+      urlStatus,
+      currentPage,
+      urlPage,
+      statusDiffers,
+      pageDiffers,
+      locationSearch: location.search
+    });
+    
+    if (statusDiffers || pageDiffers) {
+      const newParams = new URLSearchParams();
+      if (statusFilter && statusFilter !== 'all') {
+        newParams.set('status', statusFilter);
+      }
+      if (currentPage > 1) {
+        newParams.set('page', currentPage.toString());
+      }
+      
+      const newUrl = newParams.toString() ? `${location.pathname}?${newParams.toString()}` : location.pathname;
+      console.log('🟢 [URLSync-Write] Updating URL:', { from: location.pathname + location.search, to: newUrl });
+      lastWrittenUrlRef.current = newUrl;
+      navigate(newUrl, { replace: true });
+    } else {
+      console.log('🟢 [URLSync-Write] No change needed - state matches URL');
+    }
+  }, [statusFilter, currentPage, navigate, location.pathname]);
+  
+  // Read from URL when URL changes (browser back/forward - read direction)
+  useEffect(() => {
+    const currentUrl = location.pathname + location.search;
+    // Skip if we just wrote this URL
+    if (currentUrl === lastWrittenUrlRef.current) {
+      console.log('🟡 [URLSync-Read] Skipping - we just wrote this URL:', currentUrl);
+      lastWrittenUrlRef.current = ''; // Reset so next external change is detected
+      return;
+    }
+    
+    const urlParams = new URLSearchParams(location.search);
+    const urlStatus = urlParams.get('status') || 'all';
+    const urlPage = parseInt(urlParams.get('page')) || 1;
+    
+    console.log('🟡 [URLSync-Read] Effect triggered:', {
+      currentUrl,
+      urlStatus,
+      urlPage,
+      currentStatusFilter: statusFilter,
+      currentPage,
+      lastWritten: lastWrittenUrlRef.current
+    });
+    
+    // Only update state if URL differs
+    if (urlStatus !== statusFilter) {
+      console.log('🟡 [URLSync-Read] Updating statusFilter:', { from: statusFilter, to: urlStatus });
+      setStatusFilter(urlStatus);
+    }
+    if (urlPage !== currentPage) {
+      console.log('🟡 [URLSync-Read] Updating currentPage:', { from: currentPage, to: urlPage });
+      setCurrentPage(urlPage);
+    }
+  }, [location.search]);
 
   // Memoized handleRowClick - removed filteredLeads to reduce memory usage
   const handleRowClick = useCallback((lead) => {
@@ -309,9 +451,40 @@ const LeadsNew = () => {
       'Attended': 'bg-green-100 text-green-800 border-green-300',
       'Cancelled': 'bg-red-100 text-red-800 border-red-300',
       'Assigned': 'bg-purple-100 text-purple-800 border-purple-300',
-      'Rejected': 'bg-gray-100 text-gray-800 border-gray-300'
+      'Rejected': 'bg-gray-100 text-gray-800 border-gray-300',
+      // Call status colors
+      'No answer': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+      'No Answer x2': 'bg-orange-100 text-orange-800 border-orange-300',
+      'No Answer x3': 'bg-red-100 text-red-800 border-red-300',
+      'Left Message': 'bg-yellow-100 text-yellow-800 border-yellow-300',
+      'Not interested': 'bg-red-100 text-red-800 border-red-300',
+      'Call back': 'bg-purple-100 text-purple-800 border-purple-300',
+      'Wrong number': 'bg-teal-100 text-teal-800 border-teal-300',
+      'No photo': 'bg-purple-100 text-purple-800 border-purple-300',
+      'Sales/converted - purchased': 'bg-green-100 text-green-800 border-green-300',
+      'Not Qualified': 'bg-red-100 text-red-800 border-red-300'
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-300';
+  }, []);
+
+  // Get the display status - show main status for progressed leads, otherwise prefer call_status
+  const getDisplayStatus = useCallback((lead) => {
+    // If lead has progressed (Booked, Attended, Cancelled, Rejected, Sale), show main status
+    const progressedStatuses = ['Booked', 'Attended', 'Cancelled', 'Rejected', 'Sale'];
+    if (progressedStatuses.includes(lead.status)) {
+      return lead.status;
+    }
+
+    // For non-progressed leads, prefer call_status if available
+    if (lead.call_status) {
+      return lead.call_status;
+    }
+    // Check custom_fields for backward compatibility
+    if (lead.custom_fields?.call_status) {
+      return lead.custom_fields.call_status;
+    }
+    // Fall back to main status
+    return lead.status;
   }, []);
 
   const formatDate = useCallback((date) => {
@@ -901,12 +1074,17 @@ const LeadsNew = () => {
                 }
                 switch(filter.value) {
                   case 'all': return 'bg-gray-600 text-white shadow-lg transform scale-105';
-                  case 'New': return 'bg-amber-600 text-white shadow-lg transform scale-105';
+                  case 'Assigned': return 'bg-orange-600 text-white shadow-lg transform scale-105';
                   case 'Booked': return 'bg-blue-600 text-white shadow-lg transform scale-105';
-                  case 'Attended': return 'bg-green-600 text-white shadow-lg transform scale-105';
-                  case 'Cancelled': return 'bg-red-600 text-white shadow-lg transform scale-105';
-                  case 'Assigned': return 'bg-purple-600 text-white shadow-lg transform scale-105';
-                  case 'Rejected': return 'bg-gray-600 text-white shadow-lg transform scale-105';
+                  case 'No answer': return 'bg-yellow-600 text-white shadow-lg transform scale-105';
+                  case 'No Answer x2': return 'bg-orange-600 text-white shadow-lg transform scale-105';
+                  case 'No Answer x3': return 'bg-red-600 text-white shadow-lg transform scale-105';
+                  case 'Left Message': return 'bg-yellow-600 text-white shadow-lg transform scale-105';
+                  case 'Not interested': return 'bg-red-600 text-white shadow-lg transform scale-105';
+                  case 'Call back': return 'bg-purple-600 text-white shadow-lg transform scale-105';
+                  case 'Wrong Number': return 'bg-teal-600 text-white shadow-lg transform scale-105';
+                  case 'Sales/converted - purchased': return 'bg-green-600 text-white shadow-lg transform scale-105';
+                  case 'Not Qualified': return 'bg-red-600 text-white shadow-lg transform scale-105';
                   default: return 'bg-gray-600 text-white shadow-lg transform scale-105';
                 }
               };
@@ -914,7 +1092,12 @@ const LeadsNew = () => {
               return (
                 <button
                   key={filter.value}
-                  onClick={() => setStatusFilter(filter.value)}
+                  onClick={() => {
+                    console.log('🔴 [FilterClick] Button clicked:', { filter: filter.value, currentFilter: statusFilter, currentPage });
+                    setStatusFilter(filter.value);
+                    setCurrentPage(1); // Reset to page 1 immediately when filter changes
+                    console.log('🔴 [FilterClick] State updated:', { newFilter: filter.value, newPage: 1 });
+                  }}
                   className={`px-4 py-2 rounded-xl font-medium transition-all duration-200 whitespace-nowrap ${getFilterStyle()}`}
                 >
                   {filter.label}
@@ -942,7 +1125,7 @@ const LeadsNew = () => {
               {statusFilter === 'Assigned' ? 'Date Assigned:' : 'Date Added:'}
             </span>
           </div>
-          
+
           {/* Quick Filter Buttons and Custom Date Range - All in One Row */}
           <div className="flex flex-wrap items-center gap-2 w-full">
             <button
@@ -995,7 +1178,7 @@ const LeadsNew = () => {
             >
               All Time
             </button>
-            
+
             {/* Custom Date Range - Inline with buttons */}
             <div className="flex items-center gap-2 ml-auto">
               <input
@@ -1063,8 +1246,8 @@ const LeadsNew = () => {
                     />
                   )}
                   <div className="absolute top-3 right-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(lead.status)}`}>
-                      {lead.status}
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(getDisplayStatus(lead))}`}>
+                      {getDisplayStatus(lead)}
                     </span>
                   </div>
                   <div className="absolute bottom-3 left-3 flex items-center space-x-3">
@@ -1151,20 +1334,20 @@ const LeadsNew = () => {
               <table className="w-full">
               <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-4 text-left">
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-left">
                     <input
                       type="checkbox"
                       checked={selectedLeads.length === leads.length && leads.length > 0}
                       onChange={handleSelectAll}
-                      className="w-5 h-5 rounded text-blue-600 cursor-pointer"
+                      className="w-4 h-4 sm:w-5 sm:h-5 rounded text-blue-600 cursor-pointer"
                     />
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Lead</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Contact</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Assigned</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date Booked</th>
-                  <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-left text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider">Lead</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-left text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider hidden sm:table-cell">Contact</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-left text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider hidden lg:table-cell">Assigned</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-left text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-left text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider hidden md:table-cell">Date Booked</th>
+                  <th className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-left text-[10px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1174,7 +1357,7 @@ const LeadsNew = () => {
                     onClick={() => handleRowClick(lead)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
-                    <td className="px-6 py-4">
+                    <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4">
                       <input
                         type="checkbox"
                         checked={selectedLeads.includes(lead.id)}
@@ -1183,16 +1366,16 @@ const LeadsNew = () => {
                           handleSelectLead(lead.id);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-5 h-5 rounded text-blue-600 cursor-pointer"
+                        className="w-4 h-4 sm:w-5 sm:h-5 rounded text-blue-600 cursor-pointer"
                       />
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-3">
+                    <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4">
+                      <div className="flex items-center space-x-2 sm:space-x-3">
                         {lead.image_url ? (
                           <LazyImage
                             src={getOptimizedImageUrl(lead.image_url, 'thumbnail')}
                             alt={lead.name}
-                            className="w-10 h-10 rounded-full object-cover cursor-zoom-in"
+                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover cursor-zoom-in flex-shrink-0"
                             onClick={(e) => {
                               e.stopPropagation();
                               const full = getOptimizedImageUrl(lead.image_url, 'original') || lead.image_url;
@@ -1200,55 +1383,55 @@ const LeadsNew = () => {
                             }}
                           />
                         ) : (
-                          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                            <FiUser className="h-5 w-5 text-gray-500" />
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                            <FiUser className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" />
                           </div>
                         )}
-                        <div>
-                          <div className="font-medium text-gray-900">{lead.name}</div>
-                          <div className="text-sm text-gray-500">{lead.postcode}</div>
+                        <div className="min-w-0">
+                          <div className="font-medium text-gray-900 text-xs sm:text-sm truncate max-w-[80px] sm:max-w-[120px] lg:max-w-none">{lead.name}</div>
+                          <div className="text-[10px] sm:text-sm text-gray-500">{lead.postcode}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm">
+                    <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 hidden sm:table-cell">
+                      <div className="text-xs sm:text-sm">
                         <div className="text-gray-900">{lead.phone}</div>
                         {lead.email && (
-                          <div className="text-gray-500">{lead.email}</div>
+                          <div className="text-gray-500 truncate max-w-[120px] lg:max-w-none">{lead.email}</div>
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-purple-600 font-medium">
-                        {lead.booker ? `Assigned to: ${lead.booker.name}` : 'Not assigned'}
+                    <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 hidden lg:table-cell">
+                      <div className="text-xs sm:text-sm text-purple-600 font-medium">
+                        {lead.booker ? `${lead.booker.name}` : 'Not assigned'}
                       </div>
                     </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(lead.status)}`}>
-                        {lead.status}
+                    <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4">
+                      <span className={`px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold border whitespace-nowrap ${getStatusColor(getDisplayStatus(lead))}`}>
+                        {getDisplayStatus(lead)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
+                    <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-xs sm:text-sm text-gray-900 hidden md:table-cell">
                       {formatDate(lead.date_booked)}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
+                    <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4">
+                      <div className="flex items-center space-x-0.5 sm:space-x-2">
                         <button
                           onClick={(e) => handleBookLead(lead, e)}
-                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                          className="p-1.5 sm:p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                           title="Book Appointment"
                         >
-                          <FiCalendar className="h-4 w-4" />
+                          <FiCalendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                         </button>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             handleRowClick(lead);
                           }}
-                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          className="p-1.5 sm:p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="View Details"
                         >
-                          <FiEye className="h-4 w-4" />
+                          <FiEye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                         </button>
                       </div>
                     </td>
@@ -1275,7 +1458,11 @@ const LeadsNew = () => {
         {totalPages > 1 && (
           <div className="mt-8 flex items-center justify-center space-x-2">
             <button
-              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              onClick={() => {
+                const newPage = Math.max(1, currentPage - 1);
+                console.log('🔵 [Pagination] Previous clicked:', { currentPage, newPage, statusFilter });
+                setCurrentPage(newPage);
+              }}
               disabled={currentPage === 1}
               className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             >
@@ -1295,7 +1482,10 @@ const LeadsNew = () => {
                 return (
                   <button
                     key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
+                    onClick={() => {
+                      console.log('🔵 [Pagination] Page number clicked:', { pageNum, currentPage, statusFilter });
+                      setCurrentPage(pageNum);
+                    }}
                     className={`w-10 h-10 rounded-xl font-medium transition-all duration-200 ${
                       currentPage === pageNum
                         ? 'bg-blue-600 text-white shadow-lg'
@@ -1309,7 +1499,11 @@ const LeadsNew = () => {
             </div>
             
             <button
-              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              onClick={() => {
+                const newPage = Math.min(totalPages, currentPage + 1);
+                console.log('🔵 [Pagination] Next clicked:', { currentPage, newPage, totalPages, statusFilter });
+                setCurrentPage(newPage);
+              }}
               disabled={currentPage === totalPages}
               className="px-4 py-2 bg-white border border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
             >

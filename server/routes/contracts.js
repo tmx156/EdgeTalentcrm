@@ -355,13 +355,13 @@ router.post('/send/:contractId', auth, async (req, res) => {
 </body>
 </html>`;
 
-      // Send via Gmail API (uses hello@edgetalent.co.uk - secondary account)
+      // Send via Gmail API (uses hello@edgetalent.co.uk - primary account)
       const emailResult = await sendEmail(
         recipientEmail,
         emailSubject,
         emailHtml,
         [], // no attachments
-        'secondary' // use hello@edgetalent.co.uk account
+        'primary' // use hello@edgetalent.co.uk account
       );
 
       if (emailResult.success) {

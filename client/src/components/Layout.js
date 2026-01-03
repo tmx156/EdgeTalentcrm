@@ -731,23 +731,24 @@ const Layout = ({ children }) => {
     { name: 'Users', href: '/users', icon: FiUser, adminOnly: true },
   ];
 
-  const leadsStatusOptions = user?.role === 'booker' ? [
+  const leadsStatusOptions = [
     { name: 'All Leads', status: 'all', icon: '📊', color: 'text-gray-600' },
+    { name: 'New', status: 'New', icon: '🆕', color: 'text-blue-600' },
     { name: 'Assigned', status: 'Assigned', icon: '👤', color: 'text-orange-600' },
-    { name: 'Booked', status: 'Booked', icon: '📅', color: 'text-blue-600' },
-    { name: 'No answer', status: 'No answer', icon: '📵', color: 'text-yellow-600' },
-    { name: 'Left Message', status: 'Left Message', icon: '💬', color: 'text-yellow-600' },
-    { name: 'Not interested', status: 'Not interested', icon: '🚫', color: 'text-red-600' },
-    { name: 'Call back', status: 'Call back', icon: '📞', color: 'text-purple-600' },
-    { name: 'Wrong number', status: 'Wrong Number', icon: '📞', color: 'text-teal-600' },
-    { name: 'Sales/converted - purchased', status: 'Sales/converted - purchased', icon: '💰', color: 'text-green-600' },
-    { name: 'Not Qualified', status: 'Not Qualified', icon: '❌', color: 'text-red-600' },
-  ] : [
-    { name: 'All Leads', status: 'all', icon: '📊', color: 'text-gray-600' },
-    { name: 'New Leads', status: 'New', icon: '🆕', color: 'text-orange-600' },
     { name: 'Booked', status: 'Booked', icon: '📅', color: 'text-blue-600' },
     { name: 'Attended', status: 'Attended', icon: '✅', color: 'text-green-600' },
     { name: 'Cancelled', status: 'Cancelled', icon: '❌', color: 'text-red-600' },
+    { name: 'No answer', status: 'No answer', icon: '📵', color: 'text-yellow-600' },
+    { name: 'No Answer x2', status: 'No Answer x2', icon: '📵', color: 'text-orange-600' },
+    { name: 'No Answer x3', status: 'No Answer x3', icon: '📵', color: 'text-red-600' },
+    { name: 'No photo', status: 'No photo', icon: '📷', color: 'text-purple-600' },
+    { name: 'Left Message', status: 'Left Message', icon: '💬', color: 'text-yellow-600' },
+    { name: 'Not interested', status: 'Not interested', icon: '🚫', color: 'text-red-600' },
+    { name: 'Call back', status: 'Call back', icon: '📞', color: 'text-purple-600' },
+    { name: 'Wrong number', status: 'Wrong number', icon: '📞', color: 'text-teal-600' },
+    { name: 'Sales/converted - purchased', status: 'Sales/converted - purchased', icon: '💰', color: 'text-green-600' },
+    { name: 'Not Qualified', status: 'Not Qualified', icon: '❌', color: 'text-red-600' },
+    { name: 'Rejected', status: 'Rejected', icon: '🚫', color: 'text-red-600' },
   ];
 
   const filteredNavigation = navigation.filter(item => {
@@ -771,11 +772,13 @@ const Layout = ({ children }) => {
   const handleLeadsNavigation = (status = 'all') => {
     // Keep dropdown open - only close sidebar on mobile
     setSidebarOpen(false);
-    
-    // Navigate to leads page with status filter
-    navigate('/leads', { 
+
+    // Navigate to leads page with status in URL query params (not just state)
+    // This prevents race condition where URL is read before state is applied
+    const url = status === 'all' ? '/leads' : `/leads?status=${encodeURIComponent(status)}`;
+    navigate(url, {
       state: { statusFilter: status },
-      replace: false 
+      replace: false
     });
   };
 

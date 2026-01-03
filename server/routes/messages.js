@@ -207,18 +207,20 @@ router.post('/send', auth, async (req, res) => {
       };
     } else {
       // Use template content - adapt template format
+      // IMPORTANT: Respect template's send_email/send_sms settings
       const adaptedTemplate = {
         ...template,
         emailBody: template.email_body || template.content,
         smsBody: template.sms_body || template.content,
-        sendEmail: true, // Default values
-        sendSMS: true
+        sendEmail: template.send_email !== false, // Respect template setting
+        sendSMS: template.send_sms !== false, // Respect template setting
+        emailAccount: template.email_account || 'primary'
       };
 
       processedTemplate = MessagingService.processTemplate(
-        adaptedTemplate, 
-        lead, 
-        req.user, 
+        adaptedTemplate,
+        lead,
+        req.user,
         lead.date_booked
       );
     }
@@ -252,24 +254,27 @@ router.post('/send', auth, async (req, res) => {
       return res.status(500).json({ message: 'Failed to create message' });
     }
 
-    // Send messages
-    const adaptedTemplate = {
+    // Send messages - respect template settings
+    const sendTemplate = {
       ...template,
       emailBody: template.email_body || template.content,
       smsBody: template.sms_body || template.content,
       sendEmail: template.send_email !== false,
-      sendSMS: template.send_sms !== false
+      sendSMS: template.send_sms !== false,
+      emailAccount: template.email_account || 'primary'
     };
 
+    console.log(`📧 Message send settings: sendEmail=${sendTemplate.sendEmail}, sendSMS=${sendTemplate.sendSMS}, emailAccount=${sendTemplate.emailAccount}`);
+
     try {
-      if (adaptedTemplate.sendEmail && lead.email) {
+      if (sendTemplate.sendEmail && lead.email) {
         await MessagingService.sendEmail({
           ...newMessage,
           to: lead.email,
           leadName: lead.name
-        });
+        }, sendTemplate.emailAccount);
       }
-      if (adaptedTemplate.sendSMS && lead.phone) {
+      if (sendTemplate.sendSMS && lead.phone) {
         await MessagingService.sendSMS({
           ...newMessage,
           to: lead.phone,
@@ -354,21 +359,24 @@ router.post('/:id/resend', auth, async (req, res) => {
       .eq('id', message.template_id)
       .single();
 
-    // Resend messages
+    // Resend messages - respect template settings
     try {
       if (template) {
         const adaptedTemplate = {
           ...template,
           sendEmail: template.send_email !== false,
-          sendSMS: template.send_sms !== false
+          sendSMS: template.send_sms !== false,
+          emailAccount: template.email_account || 'primary'
         };
+
+        console.log(`📧 Resend settings: sendEmail=${adaptedTemplate.sendEmail}, sendSMS=${adaptedTemplate.sendSMS}, emailAccount=${adaptedTemplate.emailAccount}`);
 
         if (adaptedTemplate.sendEmail && message.leads?.email) {
           await MessagingService.sendEmail({
             ...message,
             to: message.leads.email,
             leadName: message.leads.name
-          });
+          }, adaptedTemplate.emailAccount);
         }
         if (adaptedTemplate.sendSMS && message.leads?.phone) {
           await MessagingService.sendSMS({

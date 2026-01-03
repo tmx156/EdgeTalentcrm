@@ -46,7 +46,11 @@ const Leads = () => {
   const searchInputRef = useRef(null);
   const cursorPositionRef = useRef(null);
   const isTypingRef = useRef(false);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(() => {
+    // Initialize from sessionStorage if available (for browser back button support)
+    const savedStatusFilter = sessionStorage.getItem('leadsStatusFilter');
+    return savedStatusFilter || 'all';
+  });
   const [dateFilter, setDateFilter] = useState('all'); // New: Date filter
   const [customDateStart, setCustomDateStart] = useState(''); // New: Custom date range start
   const [customDateEnd, setCustomDateEnd] = useState(''); // New: Custom date range end
@@ -60,6 +64,12 @@ const Leads = () => {
   useEffect(() => {
     sessionStorage.setItem('leadsPage', currentPage.toString());
   }, [currentPage]);
+
+  // Save statusFilter to sessionStorage whenever it changes (for pagination persistence)
+  useEffect(() => {
+    sessionStorage.setItem('leadsStatusFilter', statusFilter);
+  }, [statusFilter]);
+
   const [totalPages, setTotalPages] = useState(1);
   const [totalLeads, setTotalLeads] = useState(0);
   const [leadsPerPage] = useState(40); // Set to 40 leads per page
@@ -131,6 +141,9 @@ const Leads = () => {
 
   // Track if we're restoring from navigation to prevent filter resets
   const isRestoringFromNavigation = useRef(false);
+
+  // Track initial mount to prevent resetting page when filters are restored from sessionStorage
+  const isInitialMount = useRef(true);
 
   // Handle status filter and page from navigation (works for both programmatic and browser back button)
   useEffect(() => {
@@ -558,10 +571,14 @@ const Leads = () => {
   }, [dateFilter, customDateStart, customDateEnd]);
 
   // Reset to first page when any filter changes (prevents out-of-bounds pages)
-  // BUT skip if we're restoring from navigation (to preserve the page)
+  // BUT skip if we're restoring from navigation OR on initial mount (to preserve the page from sessionStorage)
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     if (!isRestoringFromNavigation.current) {
-    setCurrentPage(1);
+      setCurrentPage(1);
     }
   }, [dateFilter, customDateStart, customDateEnd, statusFilter]);
 
@@ -1936,10 +1953,10 @@ const Leads = () => {
       {user?.role === 'booker' ? (
         // Booker-specific folders - All statuses from LeadStatusDropdown
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10 gap-4">
-          <div 
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'all' 
-                ? 'border-blue-500 bg-blue-50' 
+              statusFilter === 'all'
+                ? 'border-blue-500 bg-blue-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('all')}
@@ -1949,11 +1966,11 @@ const Leads = () => {
               <div className="text-sm text-gray-600">All Leads</div>
             </div>
           </div>
-          
-          <div 
+
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Assigned' 
-                ? 'border-orange-500 bg-orange-50' 
+              statusFilter === 'Assigned'
+                ? 'border-orange-500 bg-orange-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Assigned')}
@@ -1965,11 +1982,11 @@ const Leads = () => {
               <div className="text-sm text-gray-600">👤 Assigned</div>
             </div>
           </div>
-          
-          <div 
+
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Booked' 
-                ? 'border-blue-500 bg-blue-50' 
+              statusFilter === 'Booked'
+                ? 'border-blue-500 bg-blue-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Booked')}
@@ -1981,12 +1998,12 @@ const Leads = () => {
               <div className="text-sm text-gray-600">📅 Booked</div>
             </div>
           </div>
-          
+
           {/* No answer */}
-          <div 
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'No answer' 
-                ? 'border-yellow-500 bg-yellow-50' 
+              statusFilter === 'No answer'
+                ? 'border-yellow-500 bg-yellow-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('No answer')}
@@ -1998,12 +2015,12 @@ const Leads = () => {
               <div className="text-sm text-gray-600">📵 No answer</div>
             </div>
           </div>
-          
+
           {/* Left Message */}
-          <div 
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Left Message' 
-                ? 'border-yellow-500 bg-yellow-50' 
+              statusFilter === 'Left Message'
+                ? 'border-yellow-500 bg-yellow-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Left Message')}
@@ -2015,12 +2032,12 @@ const Leads = () => {
               <div className="text-sm text-gray-600">💬 Left Message</div>
             </div>
           </div>
-          
+
           {/* Not interested */}
-          <div 
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Not interested' 
-                ? 'border-red-500 bg-red-50' 
+              statusFilter === 'Not interested'
+                ? 'border-red-500 bg-red-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Not interested')}
@@ -2032,12 +2049,12 @@ const Leads = () => {
               <div className="text-sm text-gray-600">🚫 Not interested</div>
             </div>
           </div>
-          
+
           {/* Call back */}
-          <div 
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Call back' 
-                ? 'border-purple-500 bg-purple-50' 
+              statusFilter === 'Call back'
+                ? 'border-purple-500 bg-purple-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Call back')}
@@ -2049,12 +2066,12 @@ const Leads = () => {
               <div className="text-sm text-gray-600">📞 Call back</div>
             </div>
           </div>
-          
+
           {/* Wrong number */}
-          <div 
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Wrong Number' 
-                ? 'border-teal-500 bg-teal-50' 
+              statusFilter === 'Wrong Number'
+                ? 'border-teal-500 bg-teal-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Wrong Number')}
@@ -2066,12 +2083,12 @@ const Leads = () => {
               <div className="text-sm text-gray-600">📞 Wrong number</div>
             </div>
           </div>
-          
+
           {/* Sales/converted - purchased */}
-          <div 
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Sales/converted - purchased' 
-                ? 'border-green-500 bg-green-50' 
+              statusFilter === 'Sales/converted - purchased'
+                ? 'border-green-500 bg-green-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Sales/converted - purchased')}
@@ -2083,12 +2100,12 @@ const Leads = () => {
               <div className="text-sm text-gray-600">💰 Sales</div>
             </div>
           </div>
-          
+
           {/* Not Qualified */}
-          <div 
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Not Qualified' 
-                ? 'border-red-500 bg-red-50' 
+              statusFilter === 'Not Qualified'
+                ? 'border-red-500 bg-red-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Not Qualified')}
@@ -2104,10 +2121,10 @@ const Leads = () => {
       ) : (
         // Admin/Viewer folders (original)
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
-          <div 
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'all' 
-                ? 'border-blue-500 bg-blue-50' 
+              statusFilter === 'all'
+                ? 'border-blue-500 bg-blue-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('all')}
@@ -2117,11 +2134,11 @@ const Leads = () => {
               <div className="text-sm text-gray-600">All Leads</div>
             </div>
           </div>
-          
-          <div 
+
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'New' 
-                ? 'border-orange-500 bg-orange-50' 
+              statusFilter === 'New'
+                ? 'border-orange-500 bg-orange-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('New')}
@@ -2133,11 +2150,11 @@ const Leads = () => {
               <div className="text-sm text-gray-600">🆕 New</div>
             </div>
           </div>
-          
-          <div 
+
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Booked' 
-                ? 'border-blue-500 bg-blue-50' 
+              statusFilter === 'Booked'
+                ? 'border-blue-500 bg-blue-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Booked')}
@@ -2149,11 +2166,11 @@ const Leads = () => {
               <div className="text-sm text-gray-600">📅 Booked</div>
             </div>
           </div>
-          
-          <div 
+
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Attended' 
-                ? 'border-green-500 bg-green-50' 
+              statusFilter === 'Attended'
+                ? 'border-green-500 bg-green-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Attended')}
@@ -2165,11 +2182,11 @@ const Leads = () => {
               <div className="text-sm text-gray-600">✅ Attended</div>
             </div>
           </div>
-          
-          <div 
+
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Cancelled' 
-                ? 'border-red-500 bg-red-50' 
+              statusFilter === 'Cancelled'
+                ? 'border-red-500 bg-red-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Cancelled')}
@@ -2181,11 +2198,11 @@ const Leads = () => {
               <div className="text-sm text-gray-600">❌ Cancelled</div>
             </div>
           </div>
-          
-          <div 
+
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Assigned' 
-                ? 'border-orange-500 bg-orange-50' 
+              statusFilter === 'Assigned'
+                ? 'border-orange-500 bg-orange-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => setStatusFilter('Assigned')}
@@ -2197,11 +2214,11 @@ const Leads = () => {
               <div className="text-sm text-gray-600">👤 Assigned</div>
             </div>
           </div>
-          
-          <div 
+
+          <div
             className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-200 ${
-              statusFilter === 'Rejected' 
-                ? 'border-red-500 bg-red-50' 
+              statusFilter === 'Rejected'
+                ? 'border-red-500 bg-red-50'
                 : 'border-gray-200 bg-white hover:border-gray-300'
             }`}
             onClick={() => {

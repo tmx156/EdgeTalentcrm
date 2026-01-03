@@ -756,13 +756,17 @@ router.post('/:id/test/:leadId', auth, async (req, res) => {
     }
 
     // Adapt template format for MessagingService
+    // IMPORTANT: Respect template's send_email/send_sms settings
     const adaptedTemplate = {
       ...template,
       emailBody: template.email_body || template.content,
       smsBody: template.sms_body || template.content,
-      sendEmail: true, // Default values since we don't have these columns yet
-      sendSMS: true
+      sendEmail: template.send_email !== false, // Respect template setting
+      sendSMS: template.send_sms !== false, // Respect template setting
+      emailAccount: template.email_account || 'primary'
     };
+
+    console.log(`📧 Test send settings: sendEmail=${adaptedTemplate.sendEmail}, sendSMS=${adaptedTemplate.sendSMS}, emailAccount=${adaptedTemplate.emailAccount}`);
 
     // Process template with actual lead data
     const processedTemplate = MessagingService.processTemplate(
@@ -792,9 +796,9 @@ router.post('/:id/test/:leadId', auth, async (req, res) => {
       return res.status(500).json({ message: 'Error creating test message' });
     }
 
-    // Send test messages
+    // Send test messages - respect template settings
     if (adaptedTemplate.sendEmail) {
-      await MessagingService.sendEmail(message);
+      await MessagingService.sendEmail(message, adaptedTemplate.emailAccount);
     }
     if (adaptedTemplate.sendSMS) {
       await MessagingService.sendSMS(message);

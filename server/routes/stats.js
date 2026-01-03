@@ -128,8 +128,34 @@ router.get('/leads', auth, async (req, res) => {
       throw error;
     }
 
+    // Helper function to get call_status from custom_fields
+    const getCallStatus = (lead) => {
+      // First check call_status column directly
+      if (lead.call_status) {
+        return lead.call_status;
+      }
+      // Fall back to custom_fields for backward compatibility
+      try {
+        if (lead.custom_fields) {
+          const customFields = typeof lead.custom_fields === 'string'
+            ? JSON.parse(lead.custom_fields)
+            : lead.custom_fields;
+          return customFields?.call_status || null;
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    };
+
+    // Statuses that indicate a lead has "progressed" and should not appear in call_status folders
+    const progressedStatuses = ['Booked', 'Attended', 'Cancelled', 'Rejected', 'Sale'];
+
+    // Helper to check if lead has NOT progressed (still eligible for call_status filtering)
+    const hasNotProgressed = (lead) => !progressedStatuses.includes(lead.status);
+
     // Simple count by status
-    // For booker users, also count by call_status in custom_fields
+    // For all users (admin and booker), count by both status and call_status
     const result = {
       total: count || 0,
       new: leads?.filter(l => l.status === 'New').length || 0,
@@ -141,34 +167,20 @@ router.get('/leads', auth, async (req, res) => {
       callback: leads?.filter(l => l.status === 'Call Back').length || 0,
       noAnswer: leads?.filter(l => l.status === 'No Answer').length || 0,
       notInterested: leads?.filter(l => l.status === 'Not Interested').length || 0,
-      wrongNumber: leads?.filter(l => l.status === 'Wrong number').length || 0
+      wrongNumber: leads?.filter(l => l.status === 'Wrong number').length || 0,
+      // Add call_status-based counts for ALL users (admin and booker)
+      // IMPORTANT: Exclude leads that have progressed to Booked/Attended/etc.
+      noAnswerCall: leads?.filter(l => getCallStatus(l) === 'No answer' && hasNotProgressed(l)).length || 0,
+      noAnswerX2: leads?.filter(l => getCallStatus(l) === 'No Answer x2' && hasNotProgressed(l)).length || 0,
+      noAnswerX3: leads?.filter(l => getCallStatus(l) === 'No Answer x3' && hasNotProgressed(l)).length || 0,
+      leftMessage: leads?.filter(l => getCallStatus(l) === 'Left Message' && hasNotProgressed(l)).length || 0,
+      notInterestedCall: leads?.filter(l => getCallStatus(l) === 'Not interested' && hasNotProgressed(l)).length || 0,
+      callBack: leads?.filter(l => getCallStatus(l) === 'Call back' && hasNotProgressed(l)).length || 0,
+      wrongNumberCall: leads?.filter(l => getCallStatus(l) === 'Wrong number' && hasNotProgressed(l)).length || 0,
+      salesConverted: leads?.filter(l => getCallStatus(l) === 'Sales/converted - purchased' && hasNotProgressed(l)).length || 0,
+      notQualified: leads?.filter(l => getCallStatus(l) === 'Not Qualified' && hasNotProgressed(l)).length || 0,
+      noPhoto: leads?.filter(l => (getCallStatus(l) === 'No photo' || l.status === 'No photo') && hasNotProgressed(l)).length || 0
     };
-
-    // For booker users, add call_status-based counts
-    if (req.user.role === 'booker') {
-      // Helper function to get call_status from custom_fields
-      const getCallStatus = (lead) => {
-        try {
-          if (lead.custom_fields) {
-            const customFields = typeof lead.custom_fields === 'string' 
-              ? JSON.parse(lead.custom_fields) 
-              : lead.custom_fields;
-            return customFields?.call_status || null;
-          }
-        } catch (e) {
-          return null;
-        }
-        return null;
-      };
-
-      result.noAnswerCall = leads?.filter(l => getCallStatus(l) === 'No answer').length || 0;
-      result.leftMessage = leads?.filter(l => getCallStatus(l) === 'Left Message').length || 0;
-      result.notInterestedCall = leads?.filter(l => getCallStatus(l) === 'Not interested').length || 0;
-      result.callBack = leads?.filter(l => getCallStatus(l) === 'Call back').length || 0;
-      result.wrongNumber = leads?.filter(l => getCallStatus(l) === 'Wrong number').length || 0;
-      result.salesConverted = leads?.filter(l => getCallStatus(l) === 'Sales/converted - purchased').length || 0;
-      result.notQualified = leads?.filter(l => getCallStatus(l) === 'Not Qualified').length || 0;
-    }
 
     console.log(`✅ Lead counts: Total=${result.total}, New=${result.new}, Booked=${result.booked}`);
 

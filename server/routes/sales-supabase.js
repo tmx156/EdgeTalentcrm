@@ -1055,14 +1055,24 @@ router.post('/bulk-communication', auth, async (req, res) => {
         });
 
         // Use the same approach as calendar system - create a custom template object
+        // IMPORTANT: Respect template's send_email/send_sms settings
+        // Only send if BOTH template allows it AND communicationType requests it
+        const wantsEmail = (communicationType === 'email' || communicationType === 'both');
+        const wantsSms = (communicationType === 'sms' || communicationType === 'both');
+        const templateAllowsEmail = template.send_email !== false; // Default to true if not set
+        const templateAllowsSms = template.send_sms !== false; // Default to true if not set
+
         const customTemplate = {
           ...template,
           subject: emailSubject,
           email_body: emailBody,
           sms_body: smsBody,
-          send_email: (communicationType === 'email' || communicationType === 'both'),
-          send_sms: (communicationType === 'sms' || communicationType === 'both')
+          send_email: wantsEmail && templateAllowsEmail,
+          send_sms: wantsSms && templateAllowsSms,
+          email_account: template.email_account || 'primary' // Preserve email account selection
         };
+
+        console.log(`📧 Template settings: send_email=${customTemplate.send_email}, send_sms=${customTemplate.send_sms}, email_account=${customTemplate.email_account}`);
 
         // Use MessagingService.processTemplate like calendar system does
         const processedTemplate = MessagingService.processTemplate(customTemplate, lead, req.user, null, null);
@@ -1135,8 +1145,8 @@ router.post('/bulk-communication', auth, async (req, res) => {
               channel: 'email',
             };
             
-            console.log(`📧 Sending email to ${lead.email}...`);
-            const emailResult = await MessagingService.sendEmail(message);
+            console.log(`📧 Sending email to ${lead.email} using account: ${customTemplate.email_account}...`);
+            const emailResult = await MessagingService.sendEmail(message, customTemplate.email_account);
             emailSent = emailResult;
             
             if (emailResult) {

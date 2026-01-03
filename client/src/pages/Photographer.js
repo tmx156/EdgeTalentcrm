@@ -33,7 +33,7 @@ const Photographer = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const abortControllerRef = useRef(null);
   const PHOTOS_PER_PAGE = 30; // Optimal for performance (Pinterest uses 20-30)
-  
+
   // Viewport optimization - only render 20 images at once
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 });
   const [imagesPerRow, setImagesPerRow] = useState(6); // Default, will be calculated
