@@ -3519,8 +3519,24 @@ const Calendar = () => {
                               <button
                                 onClick={() => {
                                   if (user?.role === 'viewer' || user?.role === 'admin') {
-                                    // Use new package selection flow
-                                    setShowPackageModal(true);
+                                    const leadId = selectedEvent?.extendedProps?.lead?.id;
+                                    // Load any previously saved selections from localStorage
+                                    const savedKey = `selectedPhotos_${leadId}`;
+                                    const savedSelection = localStorage.getItem(savedKey);
+                                    let initialPhotoIds = [];
+                                    if (savedSelection) {
+                                      try {
+                                        initialPhotoIds = JSON.parse(savedSelection);
+                                      } catch (e) {
+                                        console.warn('Failed to parse saved photo selection:', e);
+                                      }
+                                    }
+                                    // Start with image selection, then package selection
+                                    setSelectedPhotoIds(initialPhotoIds);
+                                    setSelectedPhotos([]);
+                                    setSelectedPackage(null);
+                                    setImageSelectionMode(true);
+                                    setShowPresentationGallery(true);
                                   }
                                 }}
                                 disabled={selectedEvent.extendedProps?.status === 'Attended' || !(user?.role === 'admin' || user?.role === 'viewer')}
@@ -4326,10 +4342,24 @@ const Calendar = () => {
                     </button>
                     <button
                       onClick={() => {
-                        setSelectedPhotoIds([]);
+                        const leadId = selectedEvent?.extendedProps?.lead?.id;
+                        // Load any previously saved selections from localStorage
+                        const savedKey = `selectedPhotos_${leadId}`;
+                        const savedSelection = localStorage.getItem(savedKey);
+                        let initialPhotoIds = [];
+                        if (savedSelection) {
+                          try {
+                            initialPhotoIds = JSON.parse(savedSelection);
+                          } catch (e) {
+                            console.warn('Failed to parse saved photo selection:', e);
+                          }
+                        }
+                        // Start with image selection, then package selection
+                        setSelectedPhotoIds(initialPhotoIds);
                         setSelectedPhotos([]);
                         setSelectedPackage(null);
-                        setShowPackageModal(true);
+                        setImageSelectionMode(true);
+                        setShowPresentationGallery(true);
                       }}
                       className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all duration-300 shadow text-xs font-medium"
                     >
@@ -4425,26 +4455,6 @@ const Calendar = () => {
             setImageSelectionMode(true);
             setShowPresentationGallery(true);
           }}
-          onGenerateInvoice={async (data) => {
-            try {
-              const response = await axios.post('/api/invoices', {
-                leadId: data.leadId,
-                items: data.items,
-                selectedPhotoIds: selectedPhotoIds
-              });
-
-              if (response.data.success) {
-                setCurrentInvoice(response.data.invoice);
-                setShowPackageModal(false);
-                setSelectedPackage(null);
-                setSelectedPhotoIds([]);
-                setShowInvoiceModal(true);
-              }
-            } catch (err) {
-              console.error('Error creating invoice:', err);
-              alert('Failed to create invoice. Please try again.');
-            }
-          }}
           onSendContract={(data) => {
             // Store the package and invoice data for the contract
             setSelectedPackage(data.package);
@@ -4476,6 +4486,11 @@ const Calendar = () => {
           onProceedToPackage={(photoIds, photos) => {
             setSelectedPhotoIds(photoIds);
             setSelectedPhotos(photos);
+            // Persist selection to localStorage
+            const leadId = selectedEvent?.extendedProps?.lead?.id;
+            if (leadId && photoIds.length > 0) {
+              localStorage.setItem(`selectedPhotos_${leadId}`, JSON.stringify(photoIds));
+            }
             setShowPresentationGallery(false);
             if (imageSelectionMode && selectedPackage) {
               // Already have package selected, proceed to invoice
@@ -4523,8 +4538,14 @@ const Calendar = () => {
           lead={selectedEvent.extendedProps.lead}
           packageData={selectedPackage}
           invoiceData={contractInvoiceData}
+          selectedPhotoIds={selectedPhotoIds}
           onContractSent={(contract) => {
             console.log('Contract sent:', contract);
+            // Clear saved photo selection from localStorage since contract is now sent
+            const leadId = selectedEvent?.extendedProps?.lead?.id;
+            if (leadId) {
+              localStorage.removeItem(`selectedPhotos_${leadId}`);
+            }
             // Optionally close other modals and show success
           }}
         />

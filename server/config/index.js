@@ -80,13 +80,6 @@ const config = {
     s3Bucket: process.env.AWS_S3_BUCKET || 'edgetalent-photos'
   },
 
-  // Cloudinary Configuration (legacy - still used for some features)
-  cloudinary: {
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME || null,
-    apiKey: process.env.CLOUDINARY_API_KEY || null,
-    apiSecret: process.env.CLOUDINARY_API_SECRET || null
-  },
-
   // Redis (if needed)
   REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
 

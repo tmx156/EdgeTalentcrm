@@ -11,6 +11,7 @@ const SendContractModal = ({
   lead,
   packageData,
   invoiceData,
+  selectedPhotoIds = [],
   onContractSent
 }) => {
   const [loading, setLoading] = useState(false);
@@ -19,6 +20,8 @@ const SendContractModal = ({
   const [contract, setContract] = useState(null);
   const [emailSent, setEmailSent] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [contractStatus, setContractStatus] = useState('draft'); // 'draft' | 'sent' | 'signed'
+  const [checkingStatus, setCheckingStatus] = useState(false);
 
   // Current step: 'edit' | 'review' | 'send'
   const [step, setStep] = useState('edit');
@@ -159,7 +162,8 @@ const SendContractModal = ({
             ...invoiceData,
             ...contractDetails
           },
-          contractDetails: contractDetails
+          contractDetails: contractDetails,
+          selectedPhotoIds: selectedPhotoIds
         })
       });
 
@@ -222,11 +226,44 @@ const SendContractModal = ({
       }
 
       setEmailSent(true);
+      setContractStatus('sent');
       onContractSent?.(contract);
     } catch (err) {
       setError(err.message);
     } finally {
       setSending(false);
+    }
+  };
+
+  // Check contract status (to see if it has been signed)
+  const checkContractStatus = async () => {
+    if (!contract?.id) return;
+
+    setCheckingStatus(true);
+    try {
+      const response = await fetch(`/api/contracts/${contract.id}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const status = data.contract?.status || data.status || 'draft';
+        setContractStatus(status);
+
+        // Update contract data if signed
+        if (status === 'signed' && data.contract) {
+          setContract(prev => ({
+            ...prev,
+            ...data.contract
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('Error checking contract status:', err);
+    } finally {
+      setCheckingStatus(false);
     }
   };
 
@@ -850,6 +887,64 @@ const SendContractModal = ({
                   <ExternalLink className="w-4 h-4" />
                   <span>Preview Signing Page</span>
                 </a>
+              )}
+
+              {/* Signature Status Indicator */}
+              {(emailSent || contractStatus === 'sent' || contractStatus === 'signed') && (
+                <div className="mt-6 pt-4 border-t border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-700">Signature Status</span>
+                    <button
+                      onClick={checkContractStatus}
+                      disabled={checkingStatus}
+                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center space-x-1"
+                    >
+                      <Loader className={`w-3 h-3 ${checkingStatus ? 'animate-spin' : ''}`} />
+                      <span>{checkingStatus ? 'Checking...' : 'Refresh Status'}</span>
+                    </button>
+                  </div>
+
+                  {contractStatus === 'signed' ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                          <CheckCircle className="w-6 h-6 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-green-800">Contract Signed</p>
+                          <p className="text-sm text-green-600">
+                            The customer has signed the contract successfully.
+                          </p>
+                        </div>
+                      </div>
+                      {contract?.signed_pdf_url && (
+                        <a
+                          href={contract.signed_pdf_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-3 inline-flex items-center space-x-1 text-sm text-green-700 hover:text-green-900"
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span>Download Signed Contract</span>
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
+                          <Clock className="w-6 h-6 text-amber-600" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-amber-800">Signature Pending</p>
+                          <p className="text-sm text-amber-600">
+                            Waiting for the customer to sign the contract.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
                 </>
               )}

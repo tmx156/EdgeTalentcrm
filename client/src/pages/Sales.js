@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { FiDollarSign, FiTrendingUp, FiCalendar, FiUser, FiCreditCard, FiFilter, FiEye, FiPlus, FiTrash2, FiMail, FiMessageSquare, FiSend } from 'react-icons/fi';
+import { FiDollarSign, FiTrendingUp, FiCalendar, FiUser, FiCreditCard, FiFilter, FiEye, FiPlus, FiTrash2, FiMail, FiMessageSquare, FiSend, FiFileText, FiImage, FiCheckCircle, FiClock, FiDownload, FiExternalLink, FiChevronDown } from 'react-icons/fi';
 import axios from 'axios';
 import SalesCommunicationModal from '../components/SalesCommunicationModal';
 import MessageHistory from '../components/MessageHistory';
+import OptimizedImage from '../components/OptimizedImage';
+import { getOptimizedImageUrl } from '../utils/imageUtils';
 
 const Sales = () => {
   const { user } = useAuth();
@@ -29,7 +31,10 @@ const Sales = () => {
   const [showCommunicationModal, setShowCommunicationModal] = useState(false);
   
   const [activeTab, setActiveTab] = useState('details');
-  
+  const [fullSaleDetails, setFullSaleDetails] = useState(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [showAllPhotos, setShowAllPhotos] = useState(false);
+
   const [financeData, setFinanceData] = useState({
     totalAmount: '',
     paymentAmount: '',
@@ -99,7 +104,7 @@ const Sales = () => {
     try {
       console.log('📈 Fetching stats with params:', { dateRange, paymentType: filter === 'all' ? undefined : filter });
       const response = await axios.get('/api/sales/stats', {
-        params: { 
+        params: {
           dateRange,
           paymentType: filter === 'all' ? undefined : filter
         }
@@ -113,11 +118,29 @@ const Sales = () => {
     }
   };
 
+  const fetchSaleDetails = async (saleId) => {
+    try {
+      setLoadingDetails(true);
+      const response = await axios.get(`/api/sales/${saleId}/details`);
+      if (response.data.success) {
+        setFullSaleDetails(response.data.sale);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching sale details:', error);
+      setFullSaleDetails(null);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
 
-  const handleViewDetails = (sale) => {
+  const handleViewDetails = async (sale) => {
     setSelectedSale(sale);
+    setFullSaleDetails(null);
     setActiveTab('details');
+    setShowAllPhotos(false);
     setShowModal(true);
+    // Fetch full details including contract and photos
+    await fetchSaleDetails(sale.id);
   };
 
   const handleCreateFinance = (sale) => {
@@ -736,7 +759,145 @@ const Sales = () => {
                       </div>
                     </div>
 
-                    {selectedSale.notes && (
+                    {/* Contract Section */}
+                    <div className="mt-6 bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-2xl border border-purple-200">
+                      <h4 className="font-bold text-gray-800 mb-4 flex items-center">
+                        <FiFileText className="h-5 w-5 text-purple-600 mr-2" />
+                        Contract Information
+                      </h4>
+                      {loadingDetails ? (
+                        <div className="flex items-center justify-center py-4">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-500"></div>
+                          <span className="ml-2 text-gray-600">Loading contract details...</span>
+                        </div>
+                      ) : fullSaleDetails?.contract ? (
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="font-semibold text-gray-600">Status:</span>
+                            <span className={`flex items-center px-3 py-1 rounded-full text-sm font-semibold ${
+                              fullSaleDetails.contract.status === 'signed'
+                                ? 'bg-green-100 text-green-800'
+                                : fullSaleDetails.contract.status === 'sent'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {fullSaleDetails.contract.status === 'signed' ? (
+                                <><FiCheckCircle className="h-4 w-4 mr-1" /> Signed</>
+                              ) : fullSaleDetails.contract.status === 'sent' ? (
+                                <><FiClock className="h-4 w-4 mr-1" /> Pending Signature</>
+                              ) : (
+                                fullSaleDetails.contract.status
+                              )}
+                            </span>
+                          </div>
+                          {fullSaleDetails.contract.signed_at && (
+                            <div className="flex justify-between">
+                              <span className="font-semibold text-gray-600">Signed At:</span>
+                              <span className="text-gray-900">{formatDate(fullSaleDetails.contract.signed_at)}</span>
+                            </div>
+                          )}
+                          {fullSaleDetails.contract.signed_pdf_url && (
+                            <div className="flex justify-between items-center">
+                              <span className="font-semibold text-gray-600">Signed Contract:</span>
+                              <a
+                                href={fullSaleDetails.contract.signed_pdf_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 shadow-md hover:shadow-lg"
+                              >
+                                <FiDownload className="h-4 w-4 mr-2" />
+                                Download PDF
+                              </a>
+                            </div>
+                          )}
+                          {fullSaleDetails.contract.signing_url && fullSaleDetails.contract.status !== 'signed' && (
+                            <div className="flex justify-between items-center">
+                              <span className="font-semibold text-gray-600">Signing Link:</span>
+                              <a
+                                href={fullSaleDetails.contract.signing_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200 shadow-md hover:shadow-lg"
+                              >
+                                <FiExternalLink className="h-4 w-4 mr-2" />
+                                Open Signing Page
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 italic">No contract associated with this sale</p>
+                      )}
+                    </div>
+
+                    {/* Selected Photos Section */}
+                    <div className="mt-6 bg-gradient-to-br from-orange-50 to-yellow-50 p-6 rounded-2xl border border-orange-200">
+                      <h4 className="font-bold text-gray-800 mb-4 flex items-center">
+                        <FiImage className="h-5 w-5 text-orange-600 mr-2" />
+                        Selected Photos
+                        {fullSaleDetails?.selected_photos?.length > 0 && (
+                          <span className="ml-2 px-2 py-0.5 bg-orange-200 text-orange-800 text-xs rounded-full">
+                            {fullSaleDetails.selected_photos.length} photos
+                          </span>
+                        )}
+                      </h4>
+                      {loadingDetails ? (
+                        <div className="flex items-center justify-center py-4">
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500"></div>
+                          <span className="ml-2 text-gray-600">Loading photos...</span>
+                        </div>
+                      ) : fullSaleDetails?.selected_photos?.length > 0 ? (
+                        <>
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {(showAllPhotos
+                              ? fullSaleDetails.selected_photos
+                              : fullSaleDetails.selected_photos.slice(0, 4)
+                            ).map((photo) => (
+                              <div key={photo.id} className="relative group">
+                                <OptimizedImage
+                                  src={getOptimizedImageUrl(photo.cloudinary_secure_url || photo.cloudinary_url, 'thumbnail')}
+                                  alt={photo.filename || 'Selected photo'}
+                                  className="w-full h-32 object-cover rounded-lg shadow-md group-hover:shadow-xl transition-all duration-200"
+                                  fallbackSrc={photo.cloudinary_secure_url || photo.cloudinary_url}
+                                />
+                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 rounded-lg flex items-center justify-center">
+                                  <a
+                                    href={photo.cloudinary_secure_url || photo.cloudinary_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="opacity-0 group-hover:opacity-100 p-2 bg-white rounded-full shadow-lg transition-all duration-200"
+                                  >
+                                    <FiExternalLink className="h-4 w-4 text-gray-700" />
+                                  </a>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {fullSaleDetails.selected_photos.length > 4 && !showAllPhotos && (
+                            <button
+                              onClick={() => setShowAllPhotos(true)}
+                              className="mt-4 w-full flex items-center justify-center space-x-2 px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg transition-colors duration-200"
+                            >
+                              <FiChevronDown className="h-4 w-4" />
+                              <span>Show {fullSaleDetails.selected_photos.length - 4} more photos</span>
+                            </button>
+                          )}
+                          {showAllPhotos && fullSaleDetails.selected_photos.length > 4 && (
+                            <button
+                              onClick={() => setShowAllPhotos(false)}
+                              className="mt-4 w-full flex items-center justify-center space-x-2 px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-lg transition-colors duration-200"
+                            >
+                              <FiChevronDown className="h-4 w-4 rotate-180" />
+                              <span>Show less</span>
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-gray-500 italic">No photos selected for this sale</p>
+                      )}
+                    </div>
+
+                    {selectedSale.notes && !fullSaleDetails?.parsed_notes?.auto_created && (
                       <div className="mt-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
                         <h4 className="font-bold text-gray-800 mb-2">Notes</h4>
                         <p className="text-gray-600">{selectedSale.notes}</p>

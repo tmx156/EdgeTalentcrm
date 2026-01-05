@@ -9,7 +9,7 @@
 const PDFDocument = require('pdfkit');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
-const cloudinaryService = require('./cloudinaryService');
+const { uploadToS3 } = require('./s3Service');
 
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
 
@@ -326,32 +326,29 @@ async function generateAndUploadInvoicePDF(invoiceId) {
     // Generate PDF
     const pdfBuffer = await generateInvoicePDF(invoice, { includeSignaturePage: true });
 
-    // Upload to Cloudinary
-    const uploadResult = await cloudinaryService.uploadMedia(
+    // Upload to S3
+    const uploadResult = await uploadToS3(
       pdfBuffer,
-      'raw', // Upload as raw file
-      {
-        folder: `crm/invoices/${new Date().getFullYear()}`,
-        public_id: `invoice_${invoice.invoice_number.replace(/[^a-zA-Z0-9]/g, '_')}`,
-        resource_type: 'raw'
-      }
+      `invoice_${invoice.invoice_number.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
+      `invoices/${new Date().getFullYear()}`,
+      'application/pdf'
     );
 
-    if (!uploadResult.success) {
-      throw new Error('Failed to upload PDF to Cloudinary');
+    if (!uploadResult.url) {
+      throw new Error('Failed to upload PDF to S3');
     }
 
     // Update invoice with PDF URL
     await supabase
       .from('invoices')
-      .update({ pdf_url: uploadResult.secure_url })
+      .update({ pdf_url: uploadResult.url })
       .eq('id', invoiceId);
 
-    console.log(`PDF generated for invoice ${invoice.invoice_number}: ${uploadResult.secure_url}`);
+    console.log(`PDF generated for invoice ${invoice.invoice_number}: ${uploadResult.url}`);
 
     return {
       success: true,
-      pdfUrl: uploadResult.secure_url,
+      pdfUrl: uploadResult.url,
       invoiceNumber: invoice.invoice_number
     };
   } catch (error) {

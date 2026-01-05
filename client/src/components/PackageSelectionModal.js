@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { X, Check, Package, ShoppingCart, Star, Loader, ChevronDown, ChevronUp, Plus, Minus, Crown, AlertTriangle, Image, FileText } from 'lucide-react';
+import { X, Check, Package, Star, Loader, ChevronDown, ChevronUp, Plus, Minus, Crown, AlertTriangle, Image, FileText } from 'lucide-react';
 
 // Helper to get image count (handles both camelCase and snake_case from API/DB)
 const getImageCount = (pkg) => {
@@ -17,7 +17,6 @@ const PackageSelectionModal = ({
   onClose,
   lead,
   onPackagesSelected,
-  onGenerateInvoice,
   onSendContract, // Called when user wants to send contract for signing
   onPackageSelected, // Called when user selects package and wants to pick images
   onChangeImages, // Called when user wants to change/add images after already selecting some
@@ -173,39 +172,6 @@ const PackageSelectionModal = ({
   };
 
   // Handle generate invoice
-  const handleGenerateInvoice = () => {
-    const items = [];
-
-    if (selectedMainPackage) {
-      items.push({
-        packageId: selectedMainPackage.id,
-        code: selectedMainPackage.code,
-        name: selectedMainPackage.name,
-        quantity: 1
-      });
-    }
-
-    Object.entries(selectedIndividuals).forEach(([packageId, quantity]) => {
-      if (quantity > 0) {
-        const pkg = packages.individual.find(p => p.id === packageId);
-        if (pkg) {
-          items.push({
-            packageId: pkg.id,
-            code: pkg.code,
-            name: pkg.name,
-            quantity
-          });
-        }
-      }
-    });
-
-    onGenerateInvoice?.({
-      leadId: lead.id,
-      items,
-      totals
-    });
-  };
-
   // Validate image count against selected package limit
   const imageValidation = useMemo(() => {
     if (!selectedMainPackage) {
@@ -242,12 +208,6 @@ const PackageSelectionModal = ({
       limitMessage: `Please remove ${excess} photo${excess > 1 ? 's' : ''} to continue.`
     };
   }, [selectedMainPackage, selectedPhotoCount]);
-
-  // Check if we can generate invoice
-  const canGenerateInvoice = useMemo(() => {
-    const hasSelection = selectedMainPackage || Object.values(selectedIndividuals).some(q => q > 0);
-    return hasSelection && imageValidation.valid;
-  }, [selectedMainPackage, selectedIndividuals, imageValidation.valid]);
 
   // Get package tier icon
   const getTierIcon = (code) => {
@@ -290,7 +250,7 @@ const PackageSelectionModal = ({
         <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-green-600 to-emerald-600">
           <div className="flex items-center space-x-3">
             <div className="p-2 bg-white bg-opacity-20 rounded-lg">
-              <ShoppingCart className="w-5 h-5 text-white" />
+              <Package className="w-5 h-5 text-white" />
             </div>
             <div>
               <h2 className="text-xl font-semibold text-white">Select Package</h2>
@@ -613,18 +573,6 @@ const PackageSelectionModal = ({
                   </button>
                 )}
 
-                {/* Generate Invoice Button - Show when photos selected and package selected */}
-                {selectedMainPackage && selectedPhotoCount > 0 && (
-                  <button
-                    onClick={handleGenerateInvoice}
-                    disabled={!canGenerateInvoice || calculating}
-                    className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-                  >
-                    <ShoppingCart className="w-4 h-4" />
-                    <span>Generate Invoice</span>
-                  </button>
-                )}
-
                 {/* Send Contract Button - Show when package selected */}
                 {onSendContract && selectedMainPackage && (
                   <button
@@ -681,17 +629,6 @@ const PackageSelectionModal = ({
                       </button>
                     )}
 
-                    {/* Generate Invoice for Individual Items (fallback if no onSendContract) */}
-                    {!onSendContract && (
-                      <button
-                        onClick={handleGenerateInvoice}
-                        disabled={calculating}
-                        className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-                      >
-                        <ShoppingCart className="w-4 h-4" />
-                        <span>Generate Invoice</span>
-                      </button>
-                    )}
                   </>
                 )}
               </div>

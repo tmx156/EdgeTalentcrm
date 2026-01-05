@@ -9,8 +9,10 @@ const { auth } = require('../middleware/auth');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
 const { generateContractPDF, buildContractData } = require('../utils/contractGenerator');
-const cloudinaryService = require('../utils/cloudinaryService');
+const { uploadToS3 } = require('../utils/s3Service');
 const { sendEmail } = require('../utils/emailService');
 
 const router = express.Router();
@@ -35,7 +37,7 @@ router.post('/create', auth, async (req, res) => {
       return res.status(403).json({ message: 'Only viewers and admins can create contracts' });
     }
 
-    const { leadId, packageId, packageData, invoiceData, contractDetails } = req.body;
+    const { leadId, packageId, packageData, invoiceData, contractDetails, selectedPhotoIds } = req.body;
 
     if (!leadId) {
       return res.status(400).json({ message: 'Lead ID is required' });
@@ -111,7 +113,10 @@ router.post('/create', auth, async (req, res) => {
           noCancel: null,
           passDetails: null,
           happyPurchase: null
-        }
+        },
+
+        // Selected photo IDs for delivery after signing
+        selectedPhotoIds: selectedPhotoIds || []
       };
     } else {
       // Fallback: Build contract data from lead and package
@@ -135,6 +140,8 @@ router.post('/create', auth, async (req, res) => {
       if (contractData.signedAt && contractData.signedAt instanceof Date) {
         contractData.signedAt = contractData.signedAt.toISOString();
       }
+      // Add selected photo IDs for delivery after signing
+      contractData.selectedPhotoIds = selectedPhotoIds || [];
     }
 
     // Generate contract token
@@ -568,19 +575,16 @@ router.post('/sign/:token', async (req, res) => {
     try {
       const pdfBuffer = await generateContractPDF(signedContractData);
 
-      // Upload to Cloudinary
-      const uploadResult = await cloudinaryService.uploadMedia(
+      // Upload to S3
+      const uploadResult = await uploadToS3(
         pdfBuffer,
-        'raw',
-        {
-          folder: `crm/contracts/${new Date().getFullYear()}`,
-          public_id: `contract_${contract.id}_${Date.now()}`,
-          resource_type: 'raw'
-        }
+        `contract_${contract.id}_${Date.now()}.pdf`,
+        `contracts/${new Date().getFullYear()}`,
+        'application/pdf'
       );
 
-      if (uploadResult.success) {
-        pdfUrl = uploadResult.secure_url;
+      if (uploadResult.url) {
+        pdfUrl = uploadResult.url;
       }
     } catch (pdfError) {
       console.error('Error generating PDF:', pdfError);
@@ -607,31 +611,201 @@ router.post('/sign/:token', async (req, res) => {
 
     console.log(`Contract ${contract.id} signed successfully`);
 
-    // Send confirmation email to customer
+    // === AUTO-ACTIONS AFTER SIGNING ===
+
+    // 1. Fetch selected photos for delivery
+    const selectedPhotoIds = signedContractData.selectedPhotoIds || [];
+    let photoAttachments = [];
+
+    if (selectedPhotoIds.length > 0) {
+      try {
+        const { data: photos, error: photosError } = await supabase
+          .from('photos')
+          .select('id, cloudinary_secure_url, cloudinary_url, filename')
+          .in('id', selectedPhotoIds);
+
+        if (!photosError && photos && photos.length > 0) {
+          console.log(`Downloading ${photos.length} photos for delivery...`);
+
+          for (const photo of photos) {
+            try {
+              const imageUrl = photo.cloudinary_secure_url || photo.cloudinary_url;
+              if (imageUrl) {
+                const response = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 30000 });
+                const filename = photo.filename || `image_${photo.id}.jpg`;
+                const ext = filename.split('.').pop()?.toLowerCase() || 'jpg';
+
+                photoAttachments.push({
+                  buffer: Buffer.from(response.data),
+                  filename: filename,
+                  contentType: ext === 'png' ? 'image/png' : 'image/jpeg'
+                });
+                console.log(`Downloaded photo: ${filename}`);
+              }
+            } catch (downloadError) {
+              console.error(`Failed to download photo ${photo.id}:`, downloadError.message);
+            }
+          }
+        }
+      } catch (photoError) {
+        console.error('Error fetching photos:', photoError);
+      }
+    }
+
+    // 2. Create sale record automatically
+    let saleRecord = null;
     try {
-      const transporter = createEmailTransporter();
+      const saleId = uuidv4();
+      // Store contract and photo info in notes as JSON for retrieval
+      const saleNotes = JSON.stringify({
+        auto_created: true,
+        contract_id: contract.id,
+        selected_photo_ids: selectedPhotoIds,
+        signed_pdf_url: pdfUrl,
+        message: `Auto-created from signed contract`
+      });
+      const saleData = {
+        id: saleId,
+        lead_id: contract.lead_id,
+        user_id: contract.created_by,
+        amount: parseFloat(signedContractData.total) || 0,
+        payment_method: signedContractData.paymentMethod || 'card',
+        payment_type: 'full_payment',
+        payment_status: 'Pending',
+        status: 'Pending',
+        notes: saleNotes,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: insertedSale, error: saleError } = await supabase
+        .from('sales')
+        .insert(saleData)
+        .select()
+        .single();
+
+      if (!saleError && insertedSale) {
+        saleRecord = insertedSale;
+        console.log(`✅ Sale ${saleId} auto-created for signed contract ${contract.id}`);
+
+        // Update lead status to 'Attended' and mark as having a sale
+        await supabase
+          .from('leads')
+          .update({
+            status: 'Attended',
+            has_sale: true,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', contract.lead_id);
+      } else {
+        console.error('Failed to create sale:', saleError);
+      }
+    } catch (saleError) {
+      console.error('Error creating sale:', saleError);
+    }
+
+    // 3. Send email with signed PDF and images attached
+    try {
       const customerEmail = signedContractData.email;
-      const customerName = signedContractData.customerName;
+      const customerName = signedContractData.customerName || 'Customer';
 
       if (customerEmail) {
-        await transporter.sendMail({
-          from: `"Edge Talent" <${process.env.SMTP_USER || 'noreply@edgetalent.co.uk'}>`,
-          to: customerEmail,
-          subject: 'Your Edge Talent Contract - Signed Successfully',
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h1 style="color: #1a1a2e;">Thank You, ${customerName}!</h1>
-              <p>Your contract has been signed successfully.</p>
-              ${pdfUrl ? `<p><a href="${pdfUrl}" style="color: #1a1a2e;">Click here to download your signed contract</a></p>` : ''}
-              <p>If you have any questions, please contact us at <a href="mailto:sales@edgetalent.co.uk">sales@edgetalent.co.uk</a></p>
-              <hr style="margin: 20px 0;">
-              <p style="color: #888; font-size: 12px;">Edge Talent | 129A Weedington Rd, London NW5 4NX</p>
-            </div>
-          `
-        });
+        const attachments = [];
+
+        // Add signed PDF if available
+        if (pdfUrl) {
+          try {
+            const pdfResponse = await axios.get(pdfUrl, { responseType: 'arraybuffer', timeout: 30000 });
+            attachments.push({
+              buffer: Buffer.from(pdfResponse.data),
+              filename: `signed_contract_${contract.id}.pdf`,
+              contentType: 'application/pdf'
+            });
+            console.log('Downloaded signed PDF for attachment');
+          } catch (pdfDownloadError) {
+            console.error('Failed to download signed PDF:', pdfDownloadError.message);
+          }
+        }
+
+        // Add selected images
+        attachments.push(...photoAttachments);
+
+        const emailSubject = 'Your Signed Contract and Selected Images - Edge Talent';
+        const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; color: white; border-radius: 8px 8px 0 0; }
+    .header h1 { margin: 0; font-size: 28px; }
+    .content { padding: 30px; background: #f9f9f9; }
+    .content p { margin: 0 0 15px 0; }
+    .highlight { background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; background: #f0f0f0; border-radius: 0 0 8px 8px; }
+    .footer p { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>EDGE TALENT</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank You for Your Purchase!</p>
+    </div>
+    <div class="content">
+      <p>Dear ${customerName},</p>
+      <p>Thank you for signing your contract with Edge Talent!</p>
+
+      <div class="highlight">
+        <p style="margin: 0;"><strong>Please find attached:</strong></p>
+        <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+          ${pdfUrl ? '<li>Your signed contract (PDF)</li>' : ''}
+          ${photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected image${photoAttachments.length > 1 ? 's' : ''}</li>` : ''}
+        </ul>
+      </div>
+
+      <p>If you have any questions about your order, please don't hesitate to contact us.</p>
+      <p>Best regards,<br><strong>The Edge Talent Team</strong></p>
+    </div>
+    <div class="footer">
+      <p><strong>Edge Talent</strong> | A trading name of S&A Advertising Ltd</p>
+      <p>Company No 8708429 | VAT Reg No 171339904</p>
+      <p>129A Weedington Rd, London NW5 4NX</p>
+      <p>Email: <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+        if (attachments.length > 0) {
+          const emailResult = await sendEmail(
+            customerEmail,
+            emailSubject,
+            emailHtml,
+            attachments,
+            'primary'
+          );
+
+          if (emailResult.success) {
+            console.log(`✅ Contract + images email sent to ${customerEmail} with ${attachments.length} attachments`);
+          } else {
+            console.error('❌ Failed to send email with attachments:', emailResult.error);
+          }
+        } else {
+          // No attachments, send simple confirmation
+          const emailResult = await sendEmail(
+            customerEmail,
+            'Your Edge Talent Contract - Signed Successfully',
+            emailHtml,
+            [],
+            'primary'
+          );
+          console.log(`Confirmation email sent to ${customerEmail}`);
+        }
       }
     } catch (emailError) {
-      console.error('Confirmation email failed:', emailError);
+      console.error('Error sending delivery email:', emailError);
     }
 
     res.json({

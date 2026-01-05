@@ -11,11 +11,8 @@ import { useAuth } from '../context/AuthContext';
 import SalesApeButton from '../components/SalesApeButton';
 import SalesApeStatus from '../components/SalesApeStatus';
 import ImageGalleryModal from '../components/ImageGalleryModal';
-import PackageSelectionModal from '../components/PackageSelectionModal';
-import InvoiceModal from '../components/InvoiceModal';
-import SendContractModal from '../components/SendContractModal';
 import PresentationGallery from '../components/PresentationGallery';
-import { Image, ShoppingCart, FileText, Presentation } from 'lucide-react';
+import { Image, FileText, Presentation } from 'lucide-react';
 
 const LeadDetail = () => {
   const { id } = useParams();
@@ -49,11 +46,8 @@ const LeadDetail = () => {
   // Photo modal state
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
 
-  // Image Gallery, Package Selection, and Invoice modal states
+  // Image Gallery modal state
   const [showImageGallery, setShowImageGallery] = useState(false);
-  const [showPackageModal, setShowPackageModal] = useState(false);
-  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [currentInvoice, setCurrentInvoice] = useState(null);
   const [leadPhotos, setLeadPhotos] = useState([]);
 
   // Presentation Gallery state (for viewer flow)
@@ -63,10 +57,6 @@ const LeadDetail = () => {
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [imageSelectionMode, setImageSelectionMode] = useState(false);
 
-  // Contract modal state
-  const [showContractModal, setShowContractModal] = useState(false);
-  const [contractInvoiceData, setContractInvoiceData] = useState(null);
-  const [contractItems, setContractItems] = useState([]);
 
   // Reschedule modal state (kept for potential future use)
   const [newDate, setNewDate] = useState('');
@@ -2640,29 +2630,9 @@ const LeadDetail = () => {
                 </div>
               )}
 
-              {/* Images & Packages Buttons - For Viewers and Admins */}
+              {/* Images & Gallery Button - For Viewers and Admins */}
               {!editing && (user?.role === 'viewer' || user?.role === 'admin') && (
                 <div className="mt-4 space-y-2">
-                  {/* Start Sale Button - Main CTA - Goes to Package Selection first */}
-                  {leadPhotos.length > 0 && (
-                    <button
-                      onClick={() => {
-                        setSelectedPhotoIds([]);
-                        setSelectedPhotos([]);
-                        setSelectedPackage(null);
-                        setImageSelectionMode(false);
-                        setShowPackageModal(true);
-                      }}
-                      className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
-                    >
-                      <ShoppingCart className="w-5 h-5 mr-2" />
-                      <span className="font-medium">Start Sale</span>
-                      <span className="ml-2 bg-white/20 px-2 py-0.5 rounded-full text-xs">
-                        {leadPhotos.length} photos
-                      </span>
-                    </button>
-                  )}
-
                   {/* View Gallery Button - For browsing photos */}
                   <button
                     onClick={() => {
@@ -2700,16 +2670,6 @@ const LeadDetail = () => {
                     </button>
                   )}
 
-                  {/* View Invoice Button (if invoice exists) */}
-                  {currentInvoice && (
-                    <button
-                      onClick={() => setShowInvoiceModal(true)}
-                      className="w-full flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md"
-                    >
-                      <FileText className="w-4 h-4 mr-2" />
-                      <span>View Invoice</span>
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -2885,117 +2845,6 @@ const LeadDetail = () => {
         }}
       />
 
-      {/* Package Selection Modal */}
-      <PackageSelectionModal
-        isOpen={showPackageModal}
-        onClose={() => {
-          setShowPackageModal(false);
-          // Don't clear package if photos are selected (user might come back)
-          if (selectedPhotoIds.length === 0) {
-            setSelectedPackage(null);
-          }
-        }}
-        lead={lead}
-        selectedPhotoCount={selectedPhotoIds.length}
-        selectedPhotoIds={selectedPhotoIds}
-        initialPackage={selectedPackage}
-        onTrimSelection={() => {
-          setShowPackageModal(false);
-          setImageSelectionMode(true);
-          setShowPresentationGallery(true);
-        }}
-        onPackageSelected={(pkg) => {
-          // Store selected package and open gallery for image selection
-          setSelectedPackage(pkg);
-          setShowPackageModal(false);
-          setImageSelectionMode(true);
-          setShowPresentationGallery(true);
-        }}
-        onChangeImages={(pkg) => {
-          // Go back to gallery to change images (keep the package)
-          setSelectedPackage(pkg);
-          setShowPackageModal(false);
-          setImageSelectionMode(true);
-          setShowPresentationGallery(true);
-        }}
-        onGenerateInvoice={async (data) => {
-          try {
-            const response = await axios.post('/api/invoices', {
-              leadId: data.leadId,
-              items: data.items,
-              selectedPhotoIds: selectedPhotoIds
-            });
-
-            if (response.data.success) {
-              setCurrentInvoice(response.data.invoice);
-              setShowPackageModal(false);
-              setSelectedPackage(null);
-              setSelectedPhotoIds([]);
-              setSelectedPhotos([]);
-              setShowInvoiceModal(true);
-            }
-          } catch (err) {
-            console.error('Error creating invoice:', err);
-            alert('Failed to create invoice. Please try again.');
-          }
-        }}
-        onSendContract={(data) => {
-          // Store the package and invoice data for the contract
-          setSelectedPackage(data.package);
-          setContractItems(data.items || []);
-          setContractInvoiceData({
-            subtotal: data.totals.subtotal,
-            vatAmount: data.totals.vatAmount,
-            total: data.totals.total,
-            items: data.totals.items
-          });
-          setShowPackageModal(false);
-          setShowContractModal(true);
-        }}
-      />
-
-      {/* Invoice Modal */}
-      <InvoiceModal
-        isOpen={showInvoiceModal}
-        onClose={() => setShowInvoiceModal(false)}
-        invoice={currentInvoice}
-        lead={lead}
-        onPaymentRecorded={(updatedInvoice) => {
-          setCurrentInvoice(updatedInvoice);
-        }}
-        onSignatureSaved={(updatedInvoice) => {
-          setCurrentInvoice(updatedInvoice);
-        }}
-        onComplete={(completedInvoice) => {
-          setCurrentInvoice(completedInvoice);
-          // Refresh lead data
-          fetchLead();
-          alert('Sale completed successfully!');
-        }}
-      />
-
-      {/* Send Contract Modal */}
-      {showContractModal && lead && (
-        <SendContractModal
-          isOpen={showContractModal}
-          onClose={() => {
-            setShowContractModal(false);
-            setContractInvoiceData(null);
-            setContractItems([]);
-          }}
-          lead={lead}
-          packageData={selectedPackage}
-          invoiceData={contractInvoiceData}
-          onContractSent={(contract) => {
-            console.log('Contract sent:', contract);
-            setShowContractModal(false);
-            setContractInvoiceData(null);
-            setContractItems([]);
-            setSelectedPackage(null);
-            fetchLead();
-          }}
-        />
-      )}
     </>
   );
 };

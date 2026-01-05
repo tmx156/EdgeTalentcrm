@@ -27,6 +27,7 @@ const OptimizedImage = memo(({
   fallback = null,
   onLoad,
   onError,
+  fallbackSrc, // Destructure to prevent passing to DOM
   ...props
 }) => {
   const [hasError, setHasError] = useState(false);

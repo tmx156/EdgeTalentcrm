@@ -13,7 +13,6 @@
 const express = require('express');
 const multer = require('multer');
 const { auth } = require('../middleware/auth');
-const cloudinaryService = require('../utils/cloudinaryService');
 const s3Service = require('../utils/s3Service');
 const dbManager = require('../database-connection-manager');
 const { createClient } = require('@supabase/supabase-js');
@@ -70,9 +69,8 @@ const PHOTO_DETAIL_FIELDS = `
   leads(id, name, phone)
 `;
 
-// Determine which storage service to use
-const USE_S3 = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY;
-console.log(`📦 Photo storage: ${USE_S3 ? 'AWS S3' : 'Cloudinary'}`);
+// Using AWS S3 for photo storage
+console.log('📦 Photo storage: AWS S3');
 
 const router = express.Router();
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
@@ -165,81 +163,28 @@ router.post('/upload', auth, upload.single('photo'), async (req, res) => {
     let uploadResult;
     let mediaData;
 
-    if (USE_S3) {
-      // Upload to AWS S3
-      try {
-        uploadResult = await s3Service.uploadToS3(
-          req.file.buffer,
-          req.file.originalname,
-          folder.replace(/\//g, '/'), // S3 uses forward slashes
-          req.file.mimetype
-        );
-
-        mediaData = {
-          cloudinary_public_id: uploadResult.key, // Use S3 key as ID
-          cloudinary_url: uploadResult.url,
-          cloudinary_secure_url: uploadResult.url, // S3 URLs are already HTTPS
-          cloudinary_folder: folder,
-          storage_provider: 's3',
-          s3_bucket: uploadResult.bucket,
-          s3_key: uploadResult.key,
-          filename: req.file.originalname,
-          file_size: req.file.buffer.length,
-          width: null, // S3 doesn't provide dimensions
-          height: null,
-          format: req.file.originalname.split('.').pop().toLowerCase(),
-          mime_type: req.file.mimetype,
-          lead_id: leadId || null,
-          photographer_id: req.user.role === 'photographer' ? req.user.id : null,
-          uploaded_by: req.user.id,
-          folder_path: folderPath || null,
-          tags: photoTags,
-          description: description || null,
-          is_primary: isPrimary === 'true' || isPrimary === true,
-          is_public: isPublic === 'true' || isPublic === true,
-          resource_type: isVideo ? 'video' : 'image',
-          duration: null,
-          thumbnail_url: null
-        };
-      } catch (s3Error) {
-        console.error('❌ S3 upload error:', s3Error);
-        return res.status(500).json({
-          message: `Failed to upload ${mediaType} to S3`,
-          error: s3Error.message
-        });
-      }
-    } else {
-      // Upload to Cloudinary (fallback)
-      uploadResult = await cloudinaryService.uploadMedia(req.file.buffer, mediaType, {
-        folder,
-        leadId,
-        photographerId: req.user.role === 'photographer' ? req.user.id : null,
-        tags: photoTags,
-        description,
-        transformations: isVideo ? {} : {
-          quality: 'auto',
-          fetch_format: 'auto'
-        }
-      });
-
-      if (!uploadResult.success) {
-        return res.status(500).json({
-          message: `Failed to upload ${mediaType} to Cloudinary`,
-          error: uploadResult.error
-        });
-      }
+    // Upload to AWS S3
+    try {
+      uploadResult = await s3Service.uploadToS3(
+        req.file.buffer,
+        req.file.originalname,
+        folder.replace(/\//g, '/'), // S3 uses forward slashes
+        req.file.mimetype
+      );
 
       mediaData = {
-        cloudinary_public_id: uploadResult.public_id,
+        cloudinary_public_id: uploadResult.key, // Use S3 key as ID
         cloudinary_url: uploadResult.url,
-        cloudinary_secure_url: uploadResult.secure_url,
-        cloudinary_folder: uploadResult.folder,
-        storage_provider: 'cloudinary',
+        cloudinary_secure_url: uploadResult.url, // S3 URLs are already HTTPS
+        cloudinary_folder: folder,
+        storage_provider: 's3',
+        s3_bucket: uploadResult.bucket,
+        s3_key: uploadResult.key,
         filename: req.file.originalname,
-        file_size: uploadResult.bytes,
-        width: uploadResult.width,
-        height: uploadResult.height,
-        format: uploadResult.format,
+        file_size: req.file.buffer.length,
+        width: null, // S3 doesn't provide dimensions
+        height: null,
+        format: req.file.originalname.split('.').pop().toLowerCase(),
         mime_type: req.file.mimetype,
         lead_id: leadId || null,
         photographer_id: req.user.role === 'photographer' ? req.user.id : null,
@@ -249,10 +194,16 @@ router.post('/upload', auth, upload.single('photo'), async (req, res) => {
         description: description || null,
         is_primary: isPrimary === 'true' || isPrimary === true,
         is_public: isPublic === 'true' || isPublic === true,
-        resource_type: uploadResult.resource_type || 'image',
-        duration: uploadResult.duration || null,
-        thumbnail_url: uploadResult.thumbnail_url || null
+        resource_type: isVideo ? 'video' : 'image',
+        duration: null,
+        thumbnail_url: null
       };
+    } catch (s3Error) {
+      console.error('❌ S3 upload error:', s3Error);
+      return res.status(500).json({
+        message: `Failed to upload ${mediaType} to S3`,
+        error: s3Error.message
+      });
     }
 
     console.log('📸 UPLOAD - Saving to DB:', { lead_id: mediaData.lead_id, photographer_id: mediaData.photographer_id });
@@ -265,11 +216,15 @@ router.post('/upload', auth, upload.single('photo'), async (req, res) => {
 
     if (dbError) {
       console.error('❌ Error saving photo metadata:', dbError);
-      // Try to delete from Cloudinary if DB save fails
-      await cloudinaryService.deleteImage(uploadResult.public_id);
-      return res.status(500).json({ 
+      // Try to delete from S3 if DB save fails
+      try {
+        await s3Service.deleteFromS3(uploadResult.key);
+      } catch (deleteErr) {
+        console.error('❌ Failed to cleanup S3 file:', deleteErr);
+      }
+      return res.status(500).json({
         message: 'Failed to save photo metadata',
-        error: dbError.message 
+        error: dbError.message
       });
     }
 

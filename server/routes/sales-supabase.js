@@ -518,6 +518,129 @@ router.get('/by-lead/:leadId', auth, async (req, res) => {
   }
 });
 
+// Get full sale details including contract and photos
+router.get('/:saleId/details', auth, async (req, res) => {
+  try {
+    const { saleId } = req.params;
+
+    // Get sale
+    const sales = await dbManager.query('sales', {
+      select: '*',
+      eq: { id: saleId }
+    });
+
+    if (!sales || sales.length === 0) {
+      return res.status(404).json({ message: 'Sale not found' });
+    }
+
+    const sale = sales[0];
+
+    // Get lead info
+    const leads = await dbManager.query('leads', {
+      select: '*',
+      eq: { id: sale.lead_id }
+    });
+    const lead = leads && leads.length > 0 ? leads[0] : null;
+
+    // Get user info
+    const users = await dbManager.query('users', {
+      select: 'id, name, email',
+      eq: { id: sale.user_id }
+    });
+    const user = users && users.length > 0 ? users[0] : null;
+
+    // Parse notes to get contract info
+    let saleNotes = {};
+    let contractId = null;
+    let selectedPhotoIds = [];
+    let signedPdfUrl = null;
+
+    if (sale.notes) {
+      try {
+        saleNotes = JSON.parse(sale.notes);
+        contractId = saleNotes.contract_id;
+        selectedPhotoIds = saleNotes.selected_photo_ids || [];
+        signedPdfUrl = saleNotes.signed_pdf_url;
+      } catch (e) {
+        // Notes is not JSON, keep as string
+        saleNotes = { message: sale.notes };
+      }
+    }
+
+    // Get contract if we have contract_id
+    let contract = null;
+    if (contractId) {
+      console.log(`Looking for contract by ID: ${contractId}`);
+      const contracts = await dbManager.query('contracts', {
+        select: '*',
+        eq: { id: contractId }
+      });
+      contract = contracts && contracts.length > 0 ? contracts[0] : null;
+    }
+
+    // If no contract found by ID, try to find by lead_id
+    if (!contract && sale.lead_id) {
+      console.log(`Looking for contract by lead_id: ${sale.lead_id}`);
+      const contracts = await dbManager.query('contracts', {
+        select: '*',
+        eq: { lead_id: sale.lead_id },
+        order: { created_at: 'desc' }
+      });
+
+      if (contracts && contracts.length > 0) {
+        contract = contracts[0];
+        console.log(`Found contract by lead_id: ${contract.id}, status: ${contract.status}`);
+      } else {
+        console.log(`No contracts found for lead_id: ${sale.lead_id}`);
+      }
+    }
+
+    // Extract photo IDs from contract if not already in sale notes
+    if (contract && selectedPhotoIds.length === 0) {
+      if (contract.contract_data?.selectedPhotoIds) {
+        selectedPhotoIds = contract.contract_data.selectedPhotoIds;
+        console.log(`Found ${selectedPhotoIds.length} photos in contract_data`);
+      }
+      if (!signedPdfUrl && contract.signed_pdf_url) {
+        signedPdfUrl = contract.signed_pdf_url;
+      }
+    }
+
+    // Get selected photos if we have IDs
+    let selectedPhotos = [];
+    if (selectedPhotoIds.length > 0) {
+      const photos = await dbManager.query('photos', {
+        select: 'id, filename, cloudinary_url, cloudinary_secure_url, description',
+        in: { id: selectedPhotoIds }
+      });
+      selectedPhotos = photos || [];
+    }
+
+    res.json({
+      success: true,
+      sale: {
+        ...sale,
+        parsed_notes: saleNotes,
+        lead: lead,
+        user: user,
+        contract: contract ? {
+          id: contract.id,
+          status: contract.status,
+          signed_at: contract.signed_at,
+          signed_pdf_url: contract.signed_pdf_url || signedPdfUrl,
+          signing_url: contract.signing_url,
+          expires_at: contract.expires_at,
+          contract_data: contract.contract_data
+        } : null,
+        selected_photos: selectedPhotos
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching sale details:', error);
+    res.status(500).json({ message: 'Error fetching sale details', error: error.message });
+  }
+});
+
 // Update existing sale
 router.put('/:saleId', auth, async (req, res) => {
   try {
@@ -805,12 +928,6 @@ router.delete('/bulk-delete', auth, async (req, res) => {
 
     const leadIds = [...new Set(salesResult.map(sale => sale.lead_id))];
 
-    // Delete related finance records first
-    for (const saleId of saleIds) {
-      await dbManager.delete('finance_payments', { eq: { finance_id: saleId } });
-      await dbManager.delete('finance', { eq: { sale_id: saleId } });
-    }
-
     // Delete the sales
     const deleteResult = await dbManager.delete('sales', { in: { id: saleIds } });
 
@@ -875,10 +992,6 @@ router.delete('/:saleId', auth, async (req, res) => {
     }
 
     const sale = saleResult[0];
-
-    // Delete related finance records first
-    await dbManager.delete('finance_payments', { eq: { finance_id: saleId } });
-    await dbManager.delete('finance', { eq: { sale_id: saleId } });
 
     // Delete the sale
     const deleteResult = await dbManager.delete('sales', { eq: { id: saleId } });
