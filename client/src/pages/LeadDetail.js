@@ -2659,17 +2659,6 @@ const LeadDetail = () => {
                     <span>Quick View Images</span>
                   </button>
 
-                  {/* Continue with Selection Button (when photos already selected) */}
-                  {selectedPhotoIds.length > 0 && (
-                    <button
-                      onClick={() => setShowPackageModal(true)}
-                      className="w-full flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 transition-all shadow-md"
-                    >
-                      <ShoppingCart className="w-4 h-4 mr-2" />
-                      <span>Continue Sale ({selectedPhotoIds.length} photos selected)</span>
-                    </button>
-                  )}
-
                 </div>
               )}
 
@@ -2827,7 +2816,6 @@ const LeadDetail = () => {
           setSelectedPhotos(photos);
           setShowPresentationGallery(false);
           setImageSelectionMode(false);
-          setShowPackageModal(true);
         }}
       />
 
