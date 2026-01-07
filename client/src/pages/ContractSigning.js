@@ -4,7 +4,7 @@ import { Check, RotateCcw, Loader, AlertTriangle, CheckCircle, FileText, Chevron
 
 /**
  * ContractSigning - Public page for customers to sign contracts
- * Displays the actual PDF contract and collects signatures
+ * Mobile-responsive design for all screen sizes
  */
 const ContractSigning = () => {
   const { token } = useParams();
@@ -140,18 +140,18 @@ const ContractSigning = () => {
   const signatureCount = Object.values(signatures).filter(Boolean).length;
 
   return (
-    <div className="min-h-screen bg-gray-800 py-4 px-2 md:px-4">
+    <div className="min-h-screen bg-gray-800 py-2 px-1 sm:py-4 sm:px-4">
       <div className="max-w-4xl mx-auto">
 
         {/* Progress Header */}
-        <div className="bg-white rounded-t-lg p-4 flex items-center justify-between border-b">
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">Edge Talent Contract</h1>
-            <p className="text-sm text-gray-500">{contractData.customerName}</p>
+        <div className="bg-white rounded-t-lg p-3 sm:p-4 flex items-center justify-between border-b">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-sm sm:text-lg font-bold text-gray-900 truncate">Edge Talent Contract</h1>
+            <p className="text-xs sm:text-sm text-gray-500 truncate">{contractData.customerName}</p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">Signatures: {signatureCount}/5</p>
-            <div className="w-32 h-2 bg-gray-200 rounded-full mt-1">
+          <div className="text-right ml-2 flex-shrink-0">
+            <p className="text-xs sm:text-sm text-gray-500">Signatures: {signatureCount}/5</p>
+            <div className="w-20 sm:w-32 h-2 bg-gray-200 rounded-full mt-1">
               <div className="h-2 bg-green-500 rounded-full transition-all" style={{ width: `${(signatureCount/5)*100}%` }}></div>
             </div>
           </div>
@@ -160,17 +160,17 @@ const ContractSigning = () => {
         {/* Page Tabs */}
         <div className="bg-gray-100 flex border-b">
           <button onClick={() => setCurrentPage(1)}
-            className={`flex-1 py-3 text-center font-medium transition-colors ${currentPage === 1 ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>
-            Page 1: Invoice & Order
+            className={`flex-1 py-2 sm:py-3 text-xs sm:text-sm text-center font-medium transition-colors ${currentPage === 1 ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>
+            Page 1: Invoice
           </button>
           <button onClick={() => setCurrentPage(2)}
-            className={`flex-1 py-3 text-center font-medium transition-colors ${currentPage === 2 ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>
-            Page 2: Confirmations
+            className={`flex-1 py-2 sm:py-3 text-xs sm:text-sm text-center font-medium transition-colors ${currentPage === 2 ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>
+            Page 2: Confirm
           </button>
         </div>
 
         {/* Contract Content */}
-        <div className="bg-white shadow-2xl">
+        <div className="bg-white shadow-2xl overflow-x-auto">
           {currentPage === 1 ? (
             <Page1Content contractData={contractData} signatures={signatures} setSignatures={setSignatures} formatCurrency={formatCurrency} formatDate={formatDate} />
           ) : (
@@ -179,18 +179,18 @@ const ContractSigning = () => {
         </div>
 
         {/* Submit Footer */}
-        <div className="bg-white rounded-b-lg p-4 border-t flex items-center justify-between">
-          <p className="text-sm text-gray-500">
+        <div className="bg-white rounded-b-lg p-3 sm:p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-2">
+          <p className="text-xs sm:text-sm text-gray-500">
             {signatureCount < 5 ? `${5 - signatureCount} signature(s) remaining` : 'All signatures complete!'}
           </p>
           <button onClick={handleSubmit} disabled={submitting || signatureCount < 5}
-            className="px-8 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
-            {submitting ? <><Loader className="w-5 h-5 animate-spin" /><span>Submitting...</span></> : <><Check className="w-5 h-5" /><span>Submit Signed Contract</span></>}
+            className="w-full sm:w-auto px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
+            {submitting ? <><Loader className="w-5 h-5 animate-spin" /><span>Submitting...</span></> : <><Check className="w-5 h-5" /><span>Submit Contract</span></>}
           </button>
         </div>
 
         {/* Footer */}
-        <div className="text-center text-xs text-gray-400 mt-4">
+        <div className="text-center text-xs text-gray-400 mt-4 px-2">
           <p>Edge Talent is a trading name of S&A Advertising Ltd</p>
           <p>Company No 8708429 | VAT Reg No 171339904</p>
         </div>
@@ -200,230 +200,197 @@ const ContractSigning = () => {
 };
 
 /**
- * Page 1 - Invoice & Order Form (matching PDF layout exactly)
+ * Page 1 - Invoice & Order Form (Mobile Responsive)
  */
 const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency, formatDate }) => {
   return (
-    <div className="p-6 text-sm" style={{ fontFamily: 'Arial, sans-serif', fontSize: '11px' }}>
-      {/* Header - matches PDF */}
-      <div className="flex justify-between items-start mb-4">
-        <p className="text-xs">www.edgetalent.co.uk</p>
+    <div className="p-3 sm:p-6 text-xs sm:text-sm">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
+        <p className="text-xs hidden sm:block">www.edgetalent.co.uk</p>
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-widest">EDGE TALENT</h1>
+          <h1 className="text-xl sm:text-3xl font-bold tracking-wider sm:tracking-widest">EDGE TALENT</h1>
           <p className="text-xs">129A Weedington Rd, London NW5 4NX</p>
         </div>
-        <div className="border border-black px-4 py-2">
+        <div className="border border-black px-3 py-1 sm:px-4 sm:py-2">
           <span className="text-xs">Date: </span>
-          <span className="font-medium">{formatDate(contractData.date)}</span>
+          <span className="font-medium text-xs sm:text-sm">{formatDate(contractData.date)}</span>
         </div>
       </div>
 
       {/* Title */}
       <div className="text-center mb-4">
-        <h2 className="text-xl font-bold mb-1">INVOICE & ORDER FORM</h2>
-        <p className="text-xs">PLEASE CHECK YOUR ORDER BEFORE LEAVING YOUR VIEWING</p>
-        <p className="text-xs">FOR ALL ENQUIRIES PLEASE EMAIL CUSTOMER SERVICES ON SALES@EDGETALENT.CO.UK</p>
+        <h2 className="text-base sm:text-xl font-bold mb-1">INVOICE & ORDER FORM</h2>
+        <p className="text-xs hidden sm:block">PLEASE CHECK YOUR ORDER BEFORE LEAVING YOUR VIEWING</p>
+        <p className="text-xs hidden sm:block">FOR ALL ENQUIRIES PLEASE EMAIL CUSTOMER SERVICES ON SALES@EDGETALENT.CO.UK</p>
       </div>
 
-      {/* Info Row - 4 columns with borders */}
-      <table className="w-full border border-black mb-4 text-xs">
-        <tbody>
-          <tr>
-            <td className="border-r border-black p-2 w-1/4">
-              <span className="text-gray-600">Customer Nos.</span><br/>
-              <span className="font-medium">{contractData.customerNumber || ''}</span>
-            </td>
-            <td className="border-r border-black p-2 w-1/4">
-              <span className="text-gray-600">Studio no.</span><br/>
-              <span className="font-medium">{contractData.studioNumber || ''}</span>
-            </td>
-            <td className="border-r border-black p-2 w-1/4">
-              <span className="text-gray-600">Photographer</span><br/>
-              <span className="font-medium">{contractData.photographer || ''}</span>
-            </td>
-            <td className="p-2 w-1/4">
-              <span className="text-gray-600">Invoice no.</span><br/>
-              <span className="font-medium">{contractData.invoiceNumber || ''}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      {/* Info Row - Stacked on mobile */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 border border-black mb-4 text-xs">
+        <div className="p-2 border-b sm:border-b-0 sm:border-r border-black">
+          <span className="text-gray-600">Customer Nos.</span><br/>
+          <span className="font-medium">{contractData.customerNumber || '-'}</span>
+        </div>
+        <div className="p-2 border-b sm:border-b-0 sm:border-r border-black">
+          <span className="text-gray-600">Studio no.</span><br/>
+          <span className="font-medium">{contractData.studioNumber || '-'}</span>
+        </div>
+        <div className="p-2 sm:border-r border-black">
+          <span className="text-gray-600">Photographer</span><br/>
+          <span className="font-medium">{contractData.photographer || '-'}</span>
+        </div>
+        <div className="p-2">
+          <span className="text-gray-600">Invoice no.</span><br/>
+          <span className="font-medium break-all">{contractData.invoiceNumber || '-'}</span>
+        </div>
+      </div>
 
       {/* Customer Details */}
-      <h3 className="font-bold mb-1">CUSTOMER DETAILS</h3>
-      <table className="w-full border border-black mb-4 text-xs">
-        <tbody>
-          <tr className="border-b border-black">
-            <td className="p-2" colSpan="3">
-              <span className="text-gray-600">NAME OF PERSON IN DIARY</span><br/>
-              <span className="font-medium">{contractData.customerName || ''}</span>
-            </td>
-            <td className="border-l border-black p-2 text-center w-24">
-              <span className="text-gray-600">VIP?</span><br/>
-              <span className="font-medium">{contractData.isVip ? 'YES' : 'NO'}</span>
-            </td>
-          </tr>
-          <tr className="border-b border-black">
-            <td className="p-2" colSpan="4">
-              <span className="text-gray-600">NAME OF CLIENT IF DIFFERENT</span><br/>
-              <span className="font-medium">{contractData.clientNameIfDifferent || ''}</span>
-            </td>
-          </tr>
-          <tr className="border-b border-black">
-            <td className="p-2" colSpan="4">
-              <span className="text-gray-600">ADDRESS</span><br/>
-              <span className="font-medium">{contractData.address || ''}</span>
-            </td>
-          </tr>
-          <tr className="border-b border-black">
-            <td className="p-2 text-right" colSpan="4">
-              <span className="text-gray-600">POSTCODE</span>
-              <span className="font-medium ml-2">{contractData.postcode || ''}</span>
-            </td>
-          </tr>
-          <tr>
-            <td className="p-2 w-1/2">
-              <span className="text-gray-600">PHONE/MOBILE NO.</span><br/>
-              <span className="font-medium">{contractData.phone || ''}</span>
-            </td>
-            <td className="border-l border-black p-2" colSpan="3">
-              <span className="text-gray-600">EMAIL:</span><br/>
-              <span className="font-medium">{contractData.email || ''}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      {/* Order Details with SUB TOTAL/TOTAL on right */}
-      <div className="flex gap-4 mb-2">
-        <div className="flex-1">
-          <h3 className="font-bold mb-1">ORDER DETAILS</h3>
-          <table className="w-full border border-black text-xs">
-            <tbody>
-              <tr className="border-b border-black">
-                <td className="p-2 w-36">DIGITAL IMAGES?</td>
-                <td className="border-l border-black p-2 w-20 text-center">{contractData.digitalImages ? 'YES' : 'NO'}</td>
-                <td className="border-l border-black p-2">QTY: <span className="font-medium">{contractData.digitalImagesQty || ''}</span></td>
-              </tr>
-              <tr className="border-b border-black">
-                <td className="p-2">DIGITAL Z-CARD?</td>
-                <td className="border-l border-black p-2 text-center">{contractData.digitalZCard ? 'YES' : 'NO'}</td>
-                <td className="border-l border-black p-2 text-gray-500">DIGITAL PDF ONLY</td>
-              </tr>
-              <tr className="border-b border-black">
-                <td className="p-2">EFOLIO?</td>
-                <td className="border-l border-black p-2 text-center">{contractData.efolio ? 'YES' : 'NO'}</td>
-                <td className="border-l border-black p-2">URL: <span className="font-medium">{contractData.efolioUrl || ''}</span></td>
-              </tr>
-              <tr className="border-b border-black">
-                <td className="p-2">PROJECT INFLUENCER?</td>
-                <td className="border-l border-black p-2 text-center">{contractData.projectInfluencer ? 'YES' : 'NO'}</td>
-                <td className="border-l border-black p-2">LOGIN: <span className="font-medium">{contractData.influencerLogin || ''}</span> &nbsp; PASSWORD: <span className="font-medium">{contractData.influencerPassword || ''}</span></td>
-              </tr>
-              <tr className="border-b border-black">
-                <td className="p-2" colSpan="3">
-                  I <span className="font-bold">{contractData.allowImageUse ? 'DO' : 'DO NOT'}</span> give permission for Edge Talent to use my images
-                </td>
-              </tr>
-              <tr>
-                <td className="p-2" colSpan="2">Digital Images checked & received?</td>
-                <td className="border-l border-black p-2 text-center">YES / NO / N.A</td>
-              </tr>
-            </tbody>
-          </table>
+      <h3 className="font-bold mb-1 text-sm">CUSTOMER DETAILS</h3>
+      <div className="border border-black mb-4 text-xs">
+        <div className="flex border-b border-black">
+          <div className="flex-1 p-2">
+            <span className="text-gray-600">NAME OF PERSON IN DIARY</span><br/>
+            <span className="font-medium">{contractData.customerName || ''}</span>
+          </div>
+          <div className="border-l border-black p-2 text-center w-16 sm:w-24">
+            <span className="text-gray-600">VIP?</span><br/>
+            <span className="font-medium">{contractData.isVip ? 'YES' : 'NO'}</span>
+          </div>
         </div>
-        <div className="w-28">
-          <table className="w-full border border-black text-xs h-full">
-            <tbody>
-              <tr className="border-b border-black">
-                <td className="p-2 text-center">
-                  <span className="text-gray-600">SUB TOTAL</span><br/>
-                  <span className="font-medium">{formatCurrency(contractData.subtotal)}</span>
-                </td>
-              </tr>
-              <tr>
-                <td className="p-2 text-center">
-                  <span className="font-bold">TOTAL</span><br/>
-                  <span className="font-bold text-base">{formatCurrency(contractData.total)}</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="p-2 border-b border-black">
+          <span className="text-gray-600">NAME OF CLIENT IF DIFFERENT</span><br/>
+          <span className="font-medium">{contractData.clientNameIfDifferent || '-'}</span>
+        </div>
+        <div className="p-2 border-b border-black">
+          <span className="text-gray-600">ADDRESS</span><br/>
+          <span className="font-medium">{contractData.address || '-'}</span>
+        </div>
+        <div className="p-2 border-b border-black">
+          <span className="text-gray-600">POSTCODE: </span>
+          <span className="font-medium">{contractData.postcode || '-'}</span>
+        </div>
+        <div className="flex flex-col sm:flex-row">
+          <div className="p-2 flex-1 border-b sm:border-b-0 sm:border-r border-black">
+            <span className="text-gray-600">PHONE/MOBILE NO.</span><br/>
+            <span className="font-medium">{contractData.phone || '-'}</span>
+          </div>
+          <div className="p-2 flex-1">
+            <span className="text-gray-600">EMAIL:</span><br/>
+            <span className="font-medium break-all">{contractData.email || '-'}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Order Details - Stacked on mobile */}
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mb-3">
+        <div className="flex-1">
+          <h3 className="font-bold mb-1 text-sm">ORDER DETAILS</h3>
+          <div className="border border-black text-xs">
+            <div className="flex border-b border-black">
+              <div className="p-2 flex-1">DIGITAL IMAGES?</div>
+              <div className="border-l border-black p-2 w-14 text-center">{contractData.digitalImages ? 'YES' : 'NO'}</div>
+              <div className="border-l border-black p-2 flex-1">QTY: <span className="font-medium">{contractData.digitalImagesQty || '-'}</span></div>
+            </div>
+            <div className="flex border-b border-black">
+              <div className="p-2 flex-1">DIGITAL Z-CARD?</div>
+              <div className="border-l border-black p-2 w-14 text-center">{contractData.digitalZCard ? 'YES' : 'NO'}</div>
+              <div className="border-l border-black p-2 flex-1 text-gray-500">DIGITAL PDF</div>
+            </div>
+            <div className="flex border-b border-black">
+              <div className="p-2 flex-1">EFOLIO?</div>
+              <div className="border-l border-black p-2 w-14 text-center">{contractData.efolio ? 'YES' : 'NO'}</div>
+              <div className="border-l border-black p-2 flex-1 truncate">URL: {contractData.efolioUrl || '-'}</div>
+            </div>
+            <div className="flex border-b border-black">
+              <div className="p-2 flex-1">PROJECT INFLUENCER?</div>
+              <div className="border-l border-black p-2 w-14 text-center">{contractData.projectInfluencer ? 'YES' : 'NO'}</div>
+              <div className="border-l border-black p-2 flex-1">-</div>
+            </div>
+            <div className="p-2 border-b border-black">
+              I <span className="font-bold">{contractData.allowImageUse ? 'DO' : 'DO NOT'}</span> give permission for Edge Talent to use my images
+            </div>
+            <div className="flex">
+              <div className="p-2 flex-1">Digital Images checked & received?</div>
+              <div className="border-l border-black p-2 w-20 text-center">N.A</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Totals Box */}
+        <div className="w-full sm:w-28">
+          <div className="border border-black text-xs h-full">
+            <div className="p-2 text-center border-b border-black">
+              <span className="text-gray-600">SUB TOTAL</span><br/>
+              <span className="font-medium">{formatCurrency(contractData.subtotal)}</span>
+            </div>
+            <div className="p-2 text-center">
+              <span className="font-bold">TOTAL</span><br/>
+              <span className="font-bold text-sm sm:text-base">{formatCurrency(contractData.total)}</span>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Notes */}
       <div className="mb-3">
         <span className="font-bold text-xs">NOTES:</span>
-        <div className="border border-black p-2 min-h-12 text-xs mt-1">{contractData.notes || ''}</div>
+        <div className="border border-black p-2 min-h-8 text-xs mt-1">{contractData.notes || ''}</div>
       </div>
 
-      {/* Terms */}
-      <div className="text-xs text-gray-700 mb-3 leading-tight" style={{ fontSize: '9px' }}>
-        <strong>Terms and Conditions:</strong> By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Payl8r documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not an talent casting company/talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk
-      </div>
+      {/* Terms - Collapsible on mobile */}
+      <details className="mb-3">
+        <summary className="text-xs font-bold cursor-pointer text-gray-700">Terms and Conditions (tap to read)</summary>
+        <div className="text-xs text-gray-600 mt-2 leading-tight" style={{ fontSize: '9px' }}>
+          By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Payl8r documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk
+        </div>
+      </details>
 
-      {/* Payment Details Table - matches PDF layout */}
-      <table className="w-full border border-black mb-3 text-xs">
-        <tbody>
-          <tr className="border-b border-black">
-            <td className="p-2 border-r border-black w-28">PAYMENT DETAILS</td>
-            <td className="p-2 border-r border-black text-center w-28">CREDIT/DEBIT CARD</td>
-            <td className="p-2 border-r border-black text-center w-16">CASH</td>
-            <td className="p-2 border-r border-black text-center w-20">FINANCE</td>
-            <td className="p-2 text-right">SUB TOTAL</td>
-          </tr>
-          <tr className="border-b border-black">
-            <td className="p-2 border-r border-black">PAYMENT TODAY</td>
-            <td className="p-2 border-r border-black text-center">{contractData.paymentMethod === 'card' ? '✓' : ''}</td>
-            <td className="p-2 border-r border-black text-center">{contractData.paymentMethod === 'cash' ? '✓' : ''}</td>
-            <td className="p-2 border-r border-black text-center">{contractData.paymentMethod === 'finance' ? '✓' : ''}</td>
-            <td className="p-2 text-right font-medium">{formatCurrency(contractData.subtotal)}</td>
-          </tr>
-          <tr className="border-b border-black">
-            <td className="p-2 border-r border-black text-xs text-gray-500" rowSpan="2">Viewer must initial any cash received and sign here</td>
-            <td className="p-2 border-r border-black" rowSpan="2"></td>
-            <td className="p-2 border-r border-black text-center" colSpan="2">VAT@20%</td>
-            <td className="p-2 text-right font-medium">{formatCurrency(contractData.vatAmount)}</td>
-          </tr>
-          <tr>
-            <td className="p-2 border-r border-black text-center" colSpan="2">
-              <span className="text-xs">AUTHORISATION CODE:</span><br/>
-              <span className="font-medium">{contractData.authCode || ''}</span>
-            </td>
-            <td className="p-2">
-              <div className="text-right">
-                <span className="font-bold">TOTAL</span><br/>
-                <span className="font-bold text-lg">{formatCurrency(contractData.total)}</span>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      {/* Payment Details - Simplified for mobile */}
+      <div className="border border-black mb-3 text-xs">
+        <div className="grid grid-cols-3 sm:grid-cols-5 border-b border-black">
+          <div className="p-2 font-medium col-span-3 sm:col-span-2">PAYMENT</div>
+          <div className="hidden sm:block p-2 text-center border-l border-black">CARD</div>
+          <div className="hidden sm:block p-2 text-center border-l border-black">CASH</div>
+          <div className="hidden sm:block p-2 text-center border-l border-black">FINANCE</div>
+        </div>
+        <div className="grid grid-cols-2 border-b border-black">
+          <div className="p-2">Payment Method:</div>
+          <div className="p-2 font-medium text-right">{contractData.paymentMethod?.toUpperCase() || 'CARD'}</div>
+        </div>
+        <div className="grid grid-cols-2 border-b border-black">
+          <div className="p-2">Subtotal:</div>
+          <div className="p-2 font-medium text-right">{formatCurrency(contractData.subtotal)}</div>
+        </div>
+        <div className="grid grid-cols-2 border-b border-black">
+          <div className="p-2">VAT @ 20%:</div>
+          <div className="p-2 font-medium text-right">{formatCurrency(contractData.vatAmount)}</div>
+        </div>
+        <div className="grid grid-cols-2 bg-gray-50">
+          <div className="p-2 font-bold">TOTAL:</div>
+          <div className="p-2 font-bold text-right text-base">{formatCurrency(contractData.total)}</div>
+        </div>
+      </div>
 
       {/* Main Signature Section */}
       <div className="mb-3">
-        <p className="text-xs font-bold mb-2">PLEASE SIGN BELOW TO INDICATE YOUR ACCEPTANCE OF THE ABOVE TERMS, AND ENSURE YOU RECEIVE YOUR OWN SIGNED COPY OF THIS INVOICE FOR YOUR RECORDS</p>
-        <table className="w-full border border-black">
-          <tbody>
-            <tr>
-              <td className="p-2 border-r border-black" style={{ width: '75%' }}>
-                <span className="text-xs">CUSTOMER SIGNATURE:</span>
-                <div className="mt-1">
-                  <SignaturePad
-                    onSignatureChange={(data) => setSignatures(prev => ({ ...prev, main: data }))}
-                    signature={signatures.main}
-                    height={70}
-                  />
-                </div>
-              </td>
-              <td className="p-2 text-center">
-                <span className="text-xs">DATE:</span>
-                <div className="font-medium mt-2">{formatDate(new Date())}</div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <p className="text-xs font-bold mb-2">PLEASE SIGN BELOW TO ACCEPT THE TERMS</p>
+        <div className="border border-black">
+          <div className="p-2">
+            <span className="text-xs text-gray-600">CUSTOMER SIGNATURE:</span>
+            <div className="mt-1">
+              <SignaturePad
+                onSignatureChange={(data) => setSignatures(prev => ({ ...prev, main: data }))}
+                signature={signatures.main}
+                height={80}
+              />
+            </div>
+          </div>
+          <div className="border-t border-black p-2 flex justify-between items-center bg-gray-50">
+            <span className="text-xs text-gray-600">DATE:</span>
+            <span className="font-medium text-sm">{formatDate(new Date())}</span>
+          </div>
+        </div>
       </div>
 
       {/* Footer */}
@@ -436,8 +403,7 @@ const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency,
 };
 
 /**
- * Page 2 - Confirmation Signatures (matching PDF layout exactly)
- * Signature boxes on LEFT, text on RIGHT
+ * Page 2 - Confirmation Signatures (Mobile Responsive)
  */
 const Page2Content = ({ contractData, signatures, setSignatures, formatDate }) => {
   const confirmations = [
@@ -455,7 +421,7 @@ const Page2Content = ({ contractData, signatures, setSignatures, formatDate }) =
       key: 'passDetails',
       text: 'I confirm that I am happy for Edge Talent to ',
       bold: 'pass on details and photos',
-      after: ' of the client named on this order form. Talent Agencies we pass your details to typically charge between £50 - £200 to register onto their books'
+      after: ' of the client named on this order form.'
     },
     {
       key: 'happyPurchase',
@@ -465,39 +431,39 @@ const Page2Content = ({ contractData, signatures, setSignatures, formatDate }) =
   ];
 
   return (
-    <div className="p-8" style={{ fontFamily: 'Arial, sans-serif' }}>
-      {/* Header - matches PDF */}
-      <div className="mb-8">
-        <p className="font-bold text-base mb-3">CUSTOMER NAME: <span className="font-normal">{contractData.customerName}</span></p>
-        <p className="font-bold text-base">DATE: <span className="font-normal">{formatDate(new Date())}</span></p>
+    <div className="p-3 sm:p-8">
+      {/* Header */}
+      <div className="mb-6">
+        <p className="font-bold text-sm sm:text-base mb-2">CUSTOMER NAME: <span className="font-normal">{contractData.customerName}</span></p>
+        <p className="font-bold text-sm sm:text-base">DATE: <span className="font-normal">{formatDate(new Date())}</span></p>
       </div>
 
-      {/* 4 Confirmation Boxes - signature LEFT, text RIGHT (matches PDF) */}
-      <div className="space-y-8">
+      {/* 4 Confirmation Boxes - Stacked on mobile */}
+      <div className="space-y-4 sm:space-y-6">
         {confirmations.map((conf) => (
-          <div key={conf.key} className="flex gap-8 items-start">
-            {/* Signature Box - LEFT side */}
-            <div className="w-44 flex-shrink-0">
+          <div key={conf.key} className="flex flex-col sm:flex-row gap-3 sm:gap-6 items-start border-b border-gray-200 pb-4 sm:border-0 sm:pb-0">
+            {/* Signature Box */}
+            <div className="w-full sm:w-44 flex-shrink-0 order-2 sm:order-1">
               <div className="border-2 border-black bg-white">
-                <p className="text-xs text-gray-500 px-2 pt-1">CLICK TO SIGN</p>
+                <p className="text-xs text-gray-500 px-2 pt-1">TAP TO SIGN</p>
                 <div className="relative">
                   <SignaturePad
                     onSignatureChange={(data) => setSignatures(prev => ({ ...prev, [conf.key]: data }))}
                     signature={signatures[conf.key]}
-                    height={80}
+                    height={70}
                     small
                   />
                   {!signatures[conf.key] && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <span className="text-gray-300 text-lg italic">Sign Here</span>
+                      <span className="text-gray-300 text-base italic">Sign Here</span>
                     </div>
                   )}
                 </div>
               </div>
             </div>
-            {/* Text - RIGHT side */}
-            <div className="flex-1 pt-4">
-              <p className="text-base leading-relaxed">
+            {/* Text */}
+            <div className="flex-1 order-1 sm:order-2">
+              <p className="text-sm sm:text-base leading-relaxed">
                 {conf.text}<strong>{conf.bold}</strong>{conf.after || ''}
               </p>
             </div>
@@ -509,18 +475,30 @@ const Page2Content = ({ contractData, signatures, setSignatures, formatDate }) =
 };
 
 /**
- * SignaturePad Component
- * Fixed: Only registers signature when actual drawing occurs (not on hover/mouseout)
+ * SignaturePad Component - Mobile Responsive
  */
 const SignaturePad = ({ onSignatureChange, signature, height = 100, small = false }) => {
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!signature);
   const [context, setContext] = useState(null);
-  // Track if any strokes were made during this drawing session
+  const [canvasWidth, setCanvasWidth] = useState(small ? 180 : 350);
   const hasDrawnRef = useRef(false);
 
-  const width = small ? 180 : 350;
+  // Responsive width
+  useEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current) {
+        const containerWidth = containerRef.current.offsetWidth - 10;
+        setCanvasWidth(Math.min(containerWidth, small ? 180 : 500));
+      }
+    };
+
+    updateWidth();
+    window.addEventListener('resize', updateWidth);
+    return () => window.removeEventListener('resize', updateWidth);
+  }, [small]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -529,14 +507,14 @@ const SignaturePad = ({ onSignatureChange, signature, height = 100, small = fals
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
 
-    canvas.width = width * dpr;
+    canvas.width = canvasWidth * dpr;
     canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
+    canvas.style.width = `${canvasWidth}px`;
     canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
 
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, canvasWidth, height);
     ctx.strokeStyle = '#1a1a2e';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
@@ -547,13 +525,13 @@ const SignaturePad = ({ onSignatureChange, signature, height = 100, small = fals
     if (signature) {
       const img = new Image();
       img.onload = () => {
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.drawImage(img, 0, 0, canvasWidth, height);
         setHasSignature(true);
         hasDrawnRef.current = true;
       };
       img.src = signature;
     }
-  }, [width, height]);
+  }, [canvasWidth, height]);
 
   const getPosition = useCallback((e) => {
     const canvas = canvasRef.current;
@@ -579,40 +557,33 @@ const SignaturePad = ({ onSignatureChange, signature, height = 100, small = fals
     const pos = getPosition(e);
     context.lineTo(pos.x, pos.y);
     context.stroke();
-    // Mark that actual drawing has occurred
     hasDrawnRef.current = true;
     setHasSignature(true);
   }, [isDrawing, context, getPosition]);
 
   const stopDrawing = useCallback(() => {
     if (!context) return;
-
-    // Only save signature if user was actually drawing AND made strokes
     const wasDrawing = isDrawing;
-
     context.closePath();
     setIsDrawing(false);
-
-    // Only trigger signature change if actual drawing occurred
     if (wasDrawing && hasDrawnRef.current && canvasRef.current) {
       onSignatureChange(canvasRef.current.toDataURL('image/png'));
     }
   }, [context, isDrawing, onSignatureChange]);
 
-  // Handle mouse leaving canvas - only stop if actively drawing
   const handleMouseOut = useCallback(() => {
-    if (!isDrawing) return; // Don't do anything if not drawing
+    if (!isDrawing) return;
     stopDrawing();
   }, [isDrawing, stopDrawing]);
 
   const clearCanvas = useCallback(() => {
     if (!context) return;
     context.fillStyle = '#ffffff';
-    context.fillRect(0, 0, width, height);
+    context.fillRect(0, 0, canvasWidth, height);
     setHasSignature(false);
     hasDrawnRef.current = false;
     onSignatureChange(null);
-  }, [context, width, height, onSignatureChange]);
+  }, [context, canvasWidth, height, onSignatureChange]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -621,7 +592,7 @@ const SignaturePad = ({ onSignatureChange, signature, height = 100, small = fals
     canvas.addEventListener('mousedown', startDrawing);
     canvas.addEventListener('mousemove', draw);
     canvas.addEventListener('mouseup', stopDrawing);
-    canvas.addEventListener('mouseleave', handleMouseOut); // Changed from mouseout to mouseleave
+    canvas.addEventListener('mouseleave', handleMouseOut);
     canvas.addEventListener('touchstart', startDrawing, { passive: false });
     canvas.addEventListener('touchmove', draw, { passive: false });
     canvas.addEventListener('touchend', stopDrawing);
@@ -638,21 +609,21 @@ const SignaturePad = ({ onSignatureChange, signature, height = 100, small = fals
   }, [startDrawing, draw, stopDrawing, handleMouseOut]);
 
   return (
-    <div className="relative">
+    <div className="relative w-full" ref={containerRef}>
       <canvas
         ref={canvasRef}
-        className="border border-gray-300 cursor-crosshair touch-none bg-white block"
-        style={{ width: `${width}px`, height: `${height}px` }}
+        className="border border-gray-300 cursor-crosshair touch-none bg-white block w-full"
+        style={{ height: `${height}px` }}
       />
       {!hasSignature && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <span className="text-gray-300 italic">Sign here</span>
+          <span className="text-gray-300 italic text-sm">Sign here</span>
         </div>
       )}
       {hasSignature && (
         <button type="button" onClick={clearCanvas}
-          className="absolute top-1 right-1 p-1 bg-gray-100 rounded hover:bg-gray-200">
-          <RotateCcw className="w-3 h-3 text-gray-500" />
+          className="absolute top-1 right-1 p-1.5 bg-gray-100 rounded hover:bg-gray-200">
+          <RotateCcw className="w-4 h-4 text-gray-500" />
         </button>
       )}
     </div>

@@ -220,7 +220,7 @@ router.get('/availability', async (req, res) => {
 router.post('/book/:identifier', async (req, res) => {
   try {
     const { identifier } = req.params;
-    const { date, time, datetime, name, email } = req.body;
+    const { date, time, datetime, name, email, paymentMethodId, stripeCustomerId } = req.body;
 
     if (!date || !time) {
       return res.status(400).json({
@@ -297,6 +297,16 @@ router.post('/book/:identifier', async (req, res) => {
       // Assign to Sally for SalesApe/public bookings
       booker_id: DEFAULT_SALESAPE_BOOKER_ID
     };
+
+    // Add Stripe payment info if provided
+    if (paymentMethodId) {
+      updateData.stripe_payment_method_id = paymentMethodId;
+      console.log(`💳 Stripe payment method saved: ${paymentMethodId}`);
+    }
+    if (stripeCustomerId) {
+      updateData.stripe_customer_id = stripeCustomerId;
+      console.log(`💳 Stripe customer ID saved: ${stripeCustomerId}`);
+    }
 
     if (DEFAULT_SALESAPE_BOOKER_ID) {
       console.log('📋 Booking assigned to Sally (SalesApe default booker)');

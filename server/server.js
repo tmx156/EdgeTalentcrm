@@ -61,6 +61,7 @@ const packagesRoutes = require('./routes/packages');
 const invoicesRoutes = require('./routes/invoices');
 const signatureRoutes = require('./routes/signature');
 const contractsRoutes = require('./routes/contracts');
+const stripeRoutes = require('./routes/stripe');
 // TEMPORARILY DISABLED: const scheduler = require('./utils/scheduler');
 // OLD IMAP-based email poller (replaced with Gmail API)
 // const { startEmailPoller } = require('./utils/emailPoller');
@@ -508,6 +509,8 @@ app.use('/api/contracts', contractsRoutes);
 // Public Booking API (for client self-service booking)
 const publicBookingRoutes = require('./routes/public-booking');
 app.use('/api/public/booking', publicBookingRoutes);
+// Stripe API (for payment processing and card holds)
+app.use('/api/stripe', stripeRoutes);
 // Gmail API Authentication Routes
 app.use('/api/gmail', gmailAuthRoutes);
 // Gmail Push Notification Webhook Routes

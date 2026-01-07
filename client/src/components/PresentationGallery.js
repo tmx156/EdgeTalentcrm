@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FiX, FiChevronLeft, FiChevronRight, FiPlay, FiPause,
-  FiCheck, FiPlus, FiShoppingBag, FiImage
+  FiCheck, FiPlus, FiShoppingBag, FiImage, FiCheckSquare, FiSquare,
+  FiMaximize, FiMinimize
 } from 'react-icons/fi';
 import { getCloudinaryUrl, getBlurPlaceholder } from '../utils/imageUtils';
 import OptimizedImage from './OptimizedImage';
@@ -29,10 +30,13 @@ const PresentationGallery = ({
   const [isPlaying, setIsPlaying] = useState(true);
   const [playInterval] = useState(4000); // 4 seconds per photo
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [isImmersive, setIsImmersive] = useState(false); // Hide UI for fullscreen view
+  const [isFullscreen, setIsFullscreen] = useState(false); // Browser native fullscreen
 
   // Refs
   const thumbnailContainerRef = useRef(null);
   const autoPlayRef = useRef(null);
+  const galleryContainerRef = useRef(null);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -42,8 +46,76 @@ const PresentationGallery = ({
       setSelectedIds(new Set(initialSelectedIds));
       setIsPlaying(true);
       setImageLoaded(false);
+      setIsImmersive(false);
     }
   }, [isOpen, initialSelectedIds]);
+
+  // Select All / Deselect All handler
+  const handleSelectAll = () => {
+    const allSelected = photos.length > 0 && selectedIds.size === photos.length;
+    if (allSelected) {
+      // Deselect all
+      setSelectedIds(new Set());
+    } else {
+      // Select all (respecting image limit if set)
+      if (imageLimit !== null && photos.length > imageLimit) {
+        // Select up to the limit
+        const limitedIds = photos.slice(0, imageLimit).map(p => p.id);
+        setSelectedIds(new Set(limitedIds));
+      } else {
+        setSelectedIds(new Set(photos.map(p => p.id)));
+      }
+    }
+  };
+
+  // Check if all photos are selected
+  const allSelected = photos.length > 0 && (
+    imageLimit !== null
+      ? selectedIds.size === imageLimit || selectedIds.size === photos.length
+      : selectedIds.size === photos.length
+  );
+
+  // Toggle browser native fullscreen
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        // Enter fullscreen
+        if (galleryContainerRef.current) {
+          await galleryContainerRef.current.requestFullscreen();
+          setIsFullscreen(true);
+          setIsImmersive(true); // Also enable immersive mode
+        }
+      } else {
+        // Exit fullscreen
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+        setIsImmersive(false);
+      }
+    } catch (err) {
+      console.error('Fullscreen error:', err);
+    }
+  }, []);
+
+  // Listen for fullscreen changes (e.g., user presses ESC to exit)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isNowFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isNowFullscreen);
+      if (!isNowFullscreen) {
+        setIsImmersive(false);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // Exit fullscreen when modal closes
+  useEffect(() => {
+    if (!isOpen && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, [isOpen]);
 
   // Preload next image with optimized URL
   const preloadImage = useCallback((index) => {
@@ -125,10 +197,25 @@ const PresentationGallery = ({
           setIsPlaying(prev => !prev);
           break;
         case 'Escape':
-          onClose();
+          if (isImmersive) {
+            setIsImmersive(false);
+          } else {
+            onClose();
+          }
           break;
         case 'Enter':
           toggleSelection(photos[currentIndex]?.id);
+          break;
+        case 'f':
+        case 'F':
+          toggleFullscreen();
+          break;
+        case 'a':
+        case 'A':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            handleSelectAll();
+          }
           break;
         default:
           break;
@@ -137,7 +224,7 @@ const PresentationGallery = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, currentIndex, goToNext, goToPrevious, onClose, photos]);
+  }, [isOpen, currentIndex, goToNext, goToPrevious, onClose, photos, isImmersive, handleSelectAll, toggleFullscreen]);
 
   // Scroll thumbnail into view
   useEffect(() => {
@@ -187,9 +274,11 @@ const PresentationGallery = ({
   const isCurrentSelected = selectedIds.has(currentPhoto?.id);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black">
+    <div ref={galleryContainerRef} className="fixed inset-0 z-50 bg-black">
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent p-4">
+      <div className={`absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent p-4 transition-all duration-300 ${
+        isImmersive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+      }`}>
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <div className="flex items-center space-x-4">
             <h2 className="text-white text-xl font-semibold">{leadName}'s Gallery</h2>
@@ -199,6 +288,25 @@ const PresentationGallery = ({
           </div>
 
           <div className="flex items-center space-x-3">
+            {/* Select All button */}
+            <button
+              onClick={handleSelectAll}
+              className="text-white/80 hover:text-white px-3 py-2 rounded-lg hover:bg-white/10 transition-colors flex items-center space-x-2"
+              title={allSelected ? 'Deselect All (Ctrl+A)' : 'Select All (Ctrl+A)'}
+            >
+              {allSelected ? (
+                <>
+                  <FiCheckSquare className="w-5 h-5" />
+                  <span className="text-sm font-medium">Deselect All</span>
+                </>
+              ) : (
+                <>
+                  <FiSquare className="w-5 h-5" />
+                  <span className="text-sm font-medium">Select All</span>
+                </>
+              )}
+            </button>
+
             {/* Image limit indicator - show when in selection mode with limit */}
             {selectionMode && imageLimit !== null && (
               <div className={`px-4 py-2 rounded-full flex items-center space-x-2 ${
@@ -232,6 +340,15 @@ const PresentationGallery = ({
               {isPlaying ? <FiPause className="w-6 h-6" /> : <FiPlay className="w-6 h-6" />}
             </button>
 
+            {/* Fullscreen toggle button */}
+            <button
+              onClick={toggleFullscreen}
+              className="text-white/80 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"
+              title={isFullscreen ? 'Exit Fullscreen (F)' : 'Fullscreen (F)'}
+            >
+              {isFullscreen ? <FiMinimize className="w-6 h-6" /> : <FiMaximize className="w-6 h-6" />}
+            </button>
+
             {/* Close button */}
             <button
               onClick={onClose}
@@ -245,7 +362,9 @@ const PresentationGallery = ({
       </div>
 
       {/* Main Image Container */}
-      <div className="absolute inset-0 flex items-center justify-center px-20 py-24">
+      <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${
+        isImmersive ? 'px-4 py-4' : 'px-20 py-24'
+      }`}>
         {/* Previous image (fading out) */}
         {previousPhoto && (
           <div className="slideshow-image previous">
@@ -283,7 +402,9 @@ const PresentationGallery = ({
 
         {/* Selection indicator on image */}
         {isCurrentSelected && (
-          <div className="absolute top-28 right-24 bg-purple-600 text-white p-3 rounded-full shadow-lg animate-pulse">
+          <div className={`absolute top-28 right-24 bg-purple-600 text-white p-3 rounded-full shadow-lg animate-pulse transition-all duration-300 ${
+            isImmersive ? 'opacity-0' : 'opacity-100'
+          }`}>
             <FiCheck className="w-8 h-8" />
           </div>
         )}
@@ -292,7 +413,9 @@ const PresentationGallery = ({
       {/* Navigation Arrows */}
       <button
         onClick={() => { goToPrevious(); setIsPlaying(false); }}
-        className="absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-all hover:scale-110"
+        className={`absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-all hover:scale-110 ${
+          isImmersive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
         title="Previous (←)"
       >
         <FiChevronLeft className="w-8 h-8" />
@@ -300,14 +423,18 @@ const PresentationGallery = ({
 
       <button
         onClick={() => { goToNext(); setIsPlaying(false); }}
-        className="absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-all hover:scale-110"
+        className={`absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-all hover:scale-110 ${
+          isImmersive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
         title="Next (→)"
       >
         <FiChevronRight className="w-8 h-8" />
       </button>
 
       {/* Selection Button */}
-      <div className="absolute bottom-36 left-1/2 -translate-x-1/2 z-20">
+      <div className={`absolute bottom-36 left-1/2 -translate-x-1/2 z-20 transition-all duration-300 ${
+        isImmersive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+      }`}>
         <button
           onClick={() => toggleSelection(currentPhoto?.id)}
           disabled={!isCurrentSelected && atLimit}
@@ -339,7 +466,9 @@ const PresentationGallery = ({
       </div>
 
       {/* Thumbnail Strip */}
-      <div className="absolute bottom-0 left-0 right-0 z-20">
+      <div className={`absolute bottom-0 left-0 right-0 z-20 transition-all duration-300 ${
+        isImmersive ? 'opacity-0 pointer-events-none translate-y-full' : 'opacity-100 translate-y-0'
+      }`}>
         <div
           ref={thumbnailContainerRef}
           className="thumbnail-strip"
@@ -379,7 +508,9 @@ const PresentationGallery = ({
 
       {/* Proceed to Package / Confirm Selection Button */}
       {selectedIds.size > 0 && (
-        <div className="absolute bottom-28 right-8 z-20">
+        <div className={`absolute bottom-28 right-8 z-20 transition-all duration-300 ${
+          isImmersive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}>
           <button
             onClick={handleProceedToPackage}
             className={`flex items-center space-x-3 text-white px-8 py-4 rounded-full text-lg font-semibold shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 ${
@@ -405,9 +536,21 @@ const PresentationGallery = ({
 
       {/* Auto-play indicator */}
       {isPlaying && (
-        <div className="absolute bottom-28 left-8 z-20 flex items-center space-x-2 text-white/60">
+        <div className={`absolute bottom-28 left-8 z-20 flex items-center space-x-2 text-white/60 transition-all duration-300 ${
+          isImmersive ? 'opacity-0' : 'opacity-100'
+        }`}>
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
           <span className="text-sm">Auto-playing</span>
+        </div>
+      )}
+
+      {/* Fullscreen mode exit hint */}
+      {isFullscreen && (
+        <div
+          className="absolute top-4 right-4 z-30 text-white/40 text-sm cursor-pointer hover:text-white/80 transition-colors"
+          onClick={toggleFullscreen}
+        >
+          Press F or ESC to exit fullscreen
         </div>
       )}
     </div>

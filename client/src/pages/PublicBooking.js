@@ -2,7 +2,136 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiCheck, FiChevronLeft, FiChevronRight, FiUser, FiMail, FiCalendar, FiClock, FiEdit2 } from 'react-icons/fi';
+import { FiCheck, FiChevronLeft, FiChevronRight, FiUser, FiMail, FiCalendar, FiClock, FiEdit2, FiCreditCard, FiShield, FiLock } from 'react-icons/fi';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Stripe promise will be loaded with publishable key
+let stripePromise = null;
+
+const getStripePromise = async () => {
+  if (!stripePromise) {
+    try {
+      const response = await axios.get('/api/stripe/config');
+      stripePromise = loadStripe(response.data.publishableKey);
+    } catch (error) {
+      console.error('Failed to load Stripe config:', error);
+    }
+  }
+  return stripePromise;
+};
+
+// Card Element styling
+const cardElementOptions = {
+  style: {
+    base: {
+      fontSize: '16px',
+      color: '#1a1a1a',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      '::placeholder': {
+        color: '#9ca3af',
+      },
+      iconColor: '#1a1a1a',
+    },
+    invalid: {
+      color: '#dc2626',
+      iconColor: '#dc2626',
+    },
+  },
+  hidePostalCode: true,
+};
+
+// CardForm component - uses Stripe hooks inside Elements provider
+const CardForm = ({ onCardComplete, onCardError, onProcessing, clientSecret, onSuccess }) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [localError, setLocalError] = useState(null);
+
+  const handleCardChange = (event) => {
+    if (event.error) {
+      setLocalError(event.error.message);
+      onCardError(event.error.message);
+    } else {
+      setLocalError(null);
+      onCardError(null);
+    }
+    onCardComplete(event.complete);
+  };
+
+  const handleSubmit = async () => {
+    if (!stripe || !elements) {
+      return { success: false, error: 'Stripe not loaded' };
+    }
+
+    onProcessing(true);
+    setLocalError(null);
+
+    try {
+      const cardElement = elements.getElement(CardElement);
+
+      const { error, setupIntent } = await stripe.confirmCardSetup(clientSecret, {
+        payment_method: {
+          card: cardElement,
+        },
+      });
+
+      if (error) {
+        setLocalError(error.message);
+        onCardError(error.message);
+        onProcessing(false);
+        return { success: false, error: error.message };
+      }
+
+      if (setupIntent.status === 'succeeded') {
+        onSuccess(setupIntent.payment_method);
+        onProcessing(false);
+        return { success: true, paymentMethodId: setupIntent.payment_method };
+      }
+
+      onProcessing(false);
+      return { success: false, error: 'Card setup incomplete' };
+    } catch (err) {
+      setLocalError(err.message);
+      onCardError(err.message);
+      onProcessing(false);
+      return { success: false, error: err.message };
+    }
+  };
+
+  // Expose handleSubmit to parent via ref-like pattern
+  React.useEffect(() => {
+    if (window) {
+      window.handleStripeSubmit = handleSubmit;
+    }
+    return () => {
+      if (window) {
+        delete window.handleStripeSubmit;
+      }
+    };
+  }, [stripe, elements, clientSecret]);
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl p-4 border-2 border-[#1a1a1a]/10 focus-within:border-[#2E7D32] transition-colors">
+        <CardElement options={cardElementOptions} onChange={handleCardChange} />
+      </div>
+      {localError && (
+        <motion.p
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-red-500 text-sm flex items-center gap-2"
+        >
+          <span className="w-4 h-4 rounded-full bg-red-100 flex items-center justify-center text-red-500 text-xs">!</span>
+          {localError}
+        </motion.p>
+      )}
+      <div className="flex items-center gap-2 text-[#1a1a1a]/40 text-xs">
+        <FiLock className="w-3 h-3" />
+        <span>Secured by Stripe. Your card details are encrypted.</span>
+      </div>
+    </div>
+  );
+};
 
 const PublicBooking = () => {
   const { leadId } = useParams();
@@ -15,17 +144,36 @@ const PublicBooking = () => {
   const [selectedTime, setSelectedTime] = useState(null);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date(2026, 0, 1));
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [currentStep, setCurrentStep] = useState(1);
   const [editingName, setEditingName] = useState(false);
   const [editingEmail, setEditingEmail] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [stripeReady, setStripeReady] = useState(false);
+  const [stripePromiseState, setStripePromiseState] = useState(null);
+  const [clientSecret, setClientSecret] = useState(null);
+  const [cardComplete, setCardComplete] = useState(false);
+  const [cardError, setCardError] = useState(null);
+  const [processingCard, setProcessingCard] = useState(false);
+  const [paymentMethodId, setPaymentMethodId] = useState(null);
+  const [customerId, setCustomerId] = useState(null);
+
+  // Calendar restriction: only allow 3 months (current + 2 ahead)
+  const today = new Date();
+  const minMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const maxMonth = new Date(today.getFullYear(), today.getMonth() + 2, 1);
+  const isAtMinMonth = currentMonth.getFullYear() === minMonth.getFullYear() && currentMonth.getMonth() === minMonth.getMonth();
+  const isAtMaxMonth = currentMonth.getFullYear() === maxMonth.getFullYear() && currentMonth.getMonth() === maxMonth.getMonth();
 
   const timeSlots = [
     '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
-    '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
-    '16:00', '16:30', '17:00'
+    '13:30', '14:00', '14:30', '15:00', '15:30',
+    '16:00', '16:30'
   ];
 
   const fetchData = useCallback(async () => {
@@ -58,6 +206,39 @@ const PublicBooking = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Load Stripe on mount
+  useEffect(() => {
+    const loadStripePromise = async () => {
+      const promise = await getStripePromise();
+      setStripePromiseState(promise);
+      setStripeReady(true);
+    };
+    loadStripePromise();
+  }, []);
+
+  // Create SetupIntent when entering step 4 (Secure Booking)
+  useEffect(() => {
+    const createSetupIntent = async () => {
+      if (currentStep === 4 && !clientSecret && lead) {
+        try {
+          const response = await axios.post('/api/stripe/create-setup-intent', {
+            leadId: lead.id,
+            email: email,
+            name: name
+          });
+          if (response.data.success) {
+            setClientSecret(response.data.clientSecret);
+            setCustomerId(response.data.customerId);
+          }
+        } catch (error) {
+          console.error('Error creating SetupIntent:', error);
+          setCardError('Failed to initialize payment. Please try again.');
+        }
+      }
+    };
+    createSetupIntent();
+  }, [currentStep, clientSecret, lead, email, name]);
 
   const getDaysInMonth = () => {
     const year = currentMonth.getFullYear();
@@ -125,7 +306,9 @@ const PublicBooking = () => {
         date: selectedDate.toISOString().split('T')[0],
         time: selectedTime,
         name: name,
-        email: email
+        email: email,
+        paymentMethodId: paymentMethodId,
+        stripeCustomerId: customerId
       });
       if (response.data.success) setSuccess(true);
       else setError(response.data.message || 'Failed to book appointment');
@@ -266,12 +449,13 @@ const PublicBooking = () => {
           transition={{ delay: 0.2 }}
           className="flex justify-center mb-8 sm:mb-16 px-2"
         >
-          <div className="flex items-center gap-1 sm:gap-3">
+          <div className="flex items-center gap-1 sm:gap-2">
             {[
               { num: 1, label: 'Details', color: 'from-[#1e3a5f] to-[#152a45]', shadow: 'shadow-blue-900/40' },
               { num: 2, label: 'Date', color: 'from-[#D4145A] to-[#B8124E]', shadow: 'shadow-pink-500/40' },
               { num: 3, label: 'Time', color: 'from-[#9B2335] to-[#7A1C2A]', shadow: 'shadow-rose-600/40' },
-              { num: 4, label: 'Confirm', color: 'from-[#C9A227] to-[#A88B1F]', shadow: 'shadow-amber-500/40' }
+              { num: 4, label: 'Secure', color: 'from-[#2E7D32] to-[#1B5E20]', shadow: 'shadow-green-600/40' },
+              { num: 5, label: 'Confirm', color: 'from-[#C9A227] to-[#A88B1F]', shadow: 'shadow-amber-500/40' }
             ].map((step, idx) => (
               <React.Fragment key={step.num}>
                 <motion.button
@@ -282,39 +466,39 @@ const PublicBooking = () => {
                     step.num < currentStep ? 'cursor-pointer' : 'cursor-default'
                   }`}
                 >
-                  <motion.div 
+                  <motion.div
                     animate={currentStep === step.num ? { scale: [1, 1.1, 1] } : {}}
                     transition={{ duration: 0.5, repeat: currentStep === step.num ? Infinity : 0, repeatDelay: 2 }}
-                    className={`w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold transition-all duration-500 ${
-                      currentStep > step.num 
-                        ? `bg-gradient-to-br ${step.color} text-white shadow-lg ${step.shadow}` 
-                        : currentStep === step.num 
-                          ? `bg-gradient-to-br ${step.color} text-white shadow-xl ${step.shadow} scale-105 sm:scale-110 ring-2 sm:ring-4 ring-white ring-offset-1 sm:ring-offset-2` 
+                    className={`w-8 h-8 sm:w-11 sm:h-11 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold transition-all duration-500 ${
+                      currentStep > step.num
+                        ? `bg-gradient-to-br ${step.color} text-white shadow-lg ${step.shadow}`
+                        : currentStep === step.num
+                          ? `bg-gradient-to-br ${step.color} text-white shadow-xl ${step.shadow} scale-105 sm:scale-110 ring-2 sm:ring-4 ring-white ring-offset-1 sm:ring-offset-2`
                           : 'bg-white text-[#1a1a1a]/30 border-2 border-[#1a1a1a]/10'
                     }`}
                   >
-                    {currentStep > step.num ? <FiCheck className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={3} /> : step.num}
+                    {currentStep > step.num ? <FiCheck className="w-3 h-3 sm:w-4 sm:h-4" strokeWidth={3} /> : step.num}
                   </motion.div>
-                  <span className={`text-[10px] sm:text-xs mt-1 sm:mt-2 font-semibold tracking-wide transition-all duration-300 hidden sm:block ${
-                    currentStep > step.num 
-                      ? step.num === 1 ? 'text-[#1e3a5f]' : 'text-[#C41230]'
-                      : currentStep === step.num 
-                        ? 'text-[#1a1a1a]' 
+                  <span className={`text-[9px] sm:text-xs mt-1 sm:mt-2 font-semibold tracking-wide transition-all duration-300 hidden sm:block ${
+                    currentStep > step.num
+                      ? step.num === 1 ? 'text-[#1e3a5f]' : step.num === 4 ? 'text-[#2E7D32]' : 'text-[#C41230]'
+                      : currentStep === step.num
+                        ? 'text-[#1a1a1a]'
                         : 'text-[#1a1a1a]/30'
                   }`}>
                     {step.label}
                   </span>
                 </motion.button>
-                {idx < 3 && (
-                  <motion.div 
+                {idx < 4 && (
+                  <motion.div
                     initial={{ scaleX: 0 }}
                     animate={{ scaleX: currentStep > step.num ? 1 : 0 }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
-                    className={`w-6 sm:w-16 h-0.5 sm:h-1 rounded-full origin-left transition-all duration-500 ${
-                      currentStep > step.num 
-                        ? `bg-gradient-to-r ${step.color}` 
+                    className={`w-4 sm:w-12 h-0.5 sm:h-1 rounded-full origin-left transition-all duration-500 ${
+                      currentStep > step.num
+                        ? `bg-gradient-to-r ${step.color}`
                         : 'bg-[#1a1a1a]/10'
-                    }`} 
+                    }`}
                   />
                 )}
               </React.Fragment>
@@ -430,15 +614,18 @@ const PublicBooking = () => {
               <motion.div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 lg:p-12 shadow-2xl shadow-black/5 border border-black/5">
                 {/* Month Navigation */}
                 <div className="flex items-center justify-between mb-6 sm:mb-10">
-                  <motion.button 
-                    onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
-                    whileHover={{ scale: 1.1, x: -3 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-[#fafafa] hover:bg-[#f0f0f0] flex items-center justify-center transition-colors"
+                  <motion.button
+                    onClick={() => !isAtMinMonth && setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1))}
+                    whileHover={!isAtMinMonth ? { scale: 1.1, x: -3 } : {}}
+                    whileTap={!isAtMinMonth ? { scale: 0.9 } : {}}
+                    disabled={isAtMinMonth}
+                    className={`w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-colors ${
+                      isAtMinMonth ? 'bg-[#fafafa]/50 cursor-not-allowed' : 'bg-[#fafafa] hover:bg-[#f0f0f0]'
+                    }`}
                   >
-                    <FiChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-[#1a1a1a]" />
+                    <FiChevronLeft className={`w-5 h-5 sm:w-6 sm:h-6 ${isAtMinMonth ? 'text-[#1a1a1a]/20' : 'text-[#1a1a1a]'}`} />
                   </motion.button>
-                  <motion.h2 
+                  <motion.h2
                     key={currentMonth.toString()}
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -446,13 +633,16 @@ const PublicBooking = () => {
                   >
                     {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
                   </motion.h2>
-                  <motion.button 
-                    onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
-                    whileHover={{ scale: 1.1, x: 3 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-[#fafafa] hover:bg-[#f0f0f0] flex items-center justify-center transition-colors"
+                  <motion.button
+                    onClick={() => !isAtMaxMonth && setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1))}
+                    whileHover={!isAtMaxMonth ? { scale: 1.1, x: 3 } : {}}
+                    whileTap={!isAtMaxMonth ? { scale: 0.9 } : {}}
+                    disabled={isAtMaxMonth}
+                    className={`w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-colors ${
+                      isAtMaxMonth ? 'bg-[#fafafa]/50 cursor-not-allowed' : 'bg-[#fafafa] hover:bg-[#f0f0f0]'
+                    }`}
                   >
-                    <FiChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-[#1a1a1a]" />
+                    <FiChevronRight className={`w-5 h-5 sm:w-6 sm:h-6 ${isAtMaxMonth ? 'text-[#1a1a1a]/20' : 'text-[#1a1a1a]'}`} />
                   </motion.button>
                 </div>
 
@@ -579,10 +769,207 @@ const PublicBooking = () => {
             </motion.div>
           )}
 
-          {/* Step 4: Confirmation */}
+          {/* Step 4: Secure Booking */}
           {currentStep === 4 && selectedDate && selectedTime && (
             <motion.div
               key="step4"
+              variants={stepVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              className="max-w-xl mx-auto px-2 sm:px-0"
+            >
+              <motion.div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 shadow-2xl shadow-black/5 border border-black/5">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 200 }}
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-[#2E7D32] to-[#1B5E20] flex items-center justify-center mx-auto mb-6 sm:mb-8 shadow-lg shadow-green-600/30"
+                >
+                  <FiShield className="w-7 h-7 sm:w-9 sm:h-9 text-white" />
+                </motion.div>
+
+                <h2 className="text-2xl sm:text-3xl font-light text-[#1a1a1a] text-center mb-2">
+                  Secure Your Booking
+                </h2>
+                <p className="text-[#1a1a1a]/50 text-center text-sm sm:text-base mb-6 sm:mb-8">
+                  Credit Card Hold
+                </p>
+
+                {/* Payment Method Info */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.2 }}
+                  className="bg-gradient-to-br from-[#fafafa] to-[#f5f5f5] rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 border border-[#1a1a1a]/5"
+                >
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white flex items-center justify-center shadow-sm flex-shrink-0">
+                      <FiCreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-[#1a1a1a]" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-[#1a1a1a] text-sm sm:text-base mb-1">Payment Method</h3>
+                      <p className="text-[#1a1a1a]/60 text-xs sm:text-sm leading-relaxed">
+                        Edge Talent requires a credit / debit card to approve this Model Consultation & Test Shoot securely via Stripe.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Security Notice */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 }}
+                  className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 border border-amber-200/50"
+                >
+                  <p className="text-[#1a1a1a]/70 text-xs sm:text-sm leading-relaxed">
+                    All credit / debit card information is processed securely. <span className="font-semibold text-[#9B2335]">No-shows or cancellations without 72hrs notice will be subject to a £50 no show fee per person.</span>
+                  </p>
+                </motion.div>
+
+                {/* What to Know Section */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="bg-[#1a1a1a]/[0.02] rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-6 sm:mb-8 border border-[#1a1a1a]/5"
+                >
+                  <h4 className="font-semibold text-[#1a1a1a] text-sm sm:text-base mb-3 flex items-center gap-2">
+                    <span className="text-amber-500">*</span>
+                    What to know before you go
+                  </h4>
+                  <p className="text-[#1a1a1a]/60 text-xs sm:text-sm leading-relaxed">
+                    We require card details to secure booking. Your Model consultation and Test shoot is valued at <span className="font-semibold text-[#1a1a1a]">£700</span> so we require a card on account to secure your appointment. <span className="font-medium text-[#2E7D32]">No funds will be taken from your card</span> as long as you attend your chosen appointment or cancel within 72hrs of your appointment. Cancelling within 72hrs or a 'no show' will incur a late fee of £50.
+                  </p>
+                </motion.div>
+
+                {/* Terms Checkbox */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                  className="mb-6 sm:mb-8"
+                >
+                  <label className="flex items-start gap-3 sm:gap-4 cursor-pointer group">
+                    <div className="relative flex-shrink-0 mt-0.5">
+                      <input
+                        type="checkbox"
+                        checked={termsAccepted}
+                        onChange={(e) => setTermsAccepted(e.target.checked)}
+                        className="sr-only"
+                      />
+                      <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md border-2 transition-all duration-300 flex items-center justify-center ${
+                        termsAccepted
+                          ? 'bg-[#2E7D32] border-[#2E7D32]'
+                          : 'border-[#1a1a1a]/20 group-hover:border-[#1a1a1a]/40'
+                      }`}>
+                        {termsAccepted && <FiCheck className="w-3 h-3 sm:w-4 sm:h-4 text-white" strokeWidth={3} />}
+                      </div>
+                    </div>
+                    <span className="text-[#1a1a1a]/70 text-xs sm:text-sm leading-relaxed">
+                      I agree to the <span className="font-semibold text-[#1a1a1a] underline">Edge Talent terms and conditions</span>
+                    </span>
+                  </label>
+                </motion.div>
+
+                {/* Stripe Card Element */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6 }}
+                  className="mb-6 sm:mb-8"
+                >
+                  <label className="text-[10px] sm:text-xs font-medium text-[#1a1a1a]/40 uppercase tracking-wider mb-3 block">
+                    Card Details
+                  </label>
+                  {stripeReady && stripePromiseState && clientSecret ? (
+                    <Elements stripe={stripePromiseState} options={{ clientSecret }}>
+                      <CardForm
+                        onCardComplete={setCardComplete}
+                        onCardError={setCardError}
+                        onProcessing={setProcessingCard}
+                        clientSecret={clientSecret}
+                        onSuccess={(pmId) => {
+                          setPaymentMethodId(pmId);
+                        }}
+                      />
+                    </Elements>
+                  ) : (
+                    <div className="bg-[#fafafa] rounded-xl p-4 border-2 border-dashed border-[#1a1a1a]/10">
+                      <div className="flex items-center justify-center gap-2 text-[#1a1a1a]/40">
+                        <motion.div
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-5 h-5 border-2 border-[#1a1a1a]/20 border-t-[#2E7D32] rounded-full"
+                        />
+                        <span className="text-sm">Loading secure payment...</span>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+
+                {cardError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs sm:text-sm"
+                  >
+                    {cardError}
+                  </motion.div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                  <motion.button
+                    onClick={() => setCurrentStep(3)}
+                    disabled={processingCard}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full sm:flex-1 py-4 sm:py-5 border-2 border-[#1a1a1a]/20 text-[#1a1a1a] rounded-xl font-medium hover:border-[#1a1a1a]/40 transition-colors order-2 sm:order-1 disabled:opacity-50"
+                  >
+                    Back
+                  </motion.button>
+                  <motion.button
+                    onClick={async () => {
+                      if (window.handleStripeSubmit) {
+                        const result = await window.handleStripeSubmit();
+                        if (result.success) {
+                          setPaymentMethodId(result.paymentMethodId);
+                          setCurrentStep(5);
+                        }
+                      }
+                    }}
+                    disabled={!termsAccepted || !cardComplete || processingCard}
+                    whileHover={termsAccepted && cardComplete && !processingCard ? { scale: 1.02, y: -2 } : {}}
+                    whileTap={termsAccepted && cardComplete && !processingCard ? { scale: 0.98 } : {}}
+                    className={`w-full sm:flex-1 py-4 sm:py-5 rounded-xl font-medium shadow-xl transition-all order-1 sm:order-2 ${
+                      termsAccepted && cardComplete && !processingCard
+                        ? 'bg-gradient-to-r from-[#2E7D32] to-[#1B5E20] text-white shadow-green-600/20 hover:shadow-2xl hover:shadow-green-600/30'
+                        : 'bg-[#1a1a1a]/10 text-[#1a1a1a]/30 cursor-not-allowed shadow-none'
+                    }`}
+                  >
+                    {processingCard ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <motion.span
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                        />
+                        Verifying Card...
+                      </span>
+                    ) : (
+                      'Continue to Confirm'
+                    )}
+                  </motion.button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {/* Step 5: Confirmation */}
+          {currentStep === 5 && selectedDate && selectedTime && (
+            <motion.div
+              key="step5"
               variants={stepVariants}
               initial="hidden"
               animate="visible"
@@ -656,7 +1043,7 @@ const PublicBooking = () => {
 
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                   <motion.button
-                    onClick={() => setCurrentStep(3)}
+                    onClick={() => setCurrentStep(4)}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className="w-full sm:flex-1 py-4 sm:py-5 border-2 border-[#1a1a1a]/20 text-[#1a1a1a] rounded-xl font-medium hover:border-[#1a1a1a]/40 transition-colors order-2 sm:order-1"
