@@ -1,11 +1,11 @@
 # Use Node.js 20 as the base image (recommended for Supabase)
 FROM node:20-alpine
 
-# Force cache bust - Updated: 2025-12-03-17:20
-RUN echo "Cache bust: 2025-12-03-17:20:00"
+# Force cache bust - Updated: 2026-01-08
+RUN echo "Cache bust: 2026-01-08-03:40:00"
 
 # Install build dependencies for native modules (sharp, etc.)
-# These are needed for sharp image processing and other native dependencies
+# AND Chromium for Puppeteer PDF generation
 RUN apk add --no-cache \
     python3 \
     make \
@@ -17,7 +17,17 @@ RUN apk add --no-cache \
     pixman-dev \
     pangomm-dev \
     libjpeg-turbo-dev \
-    freetype-dev
+    freetype-dev \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont
+
+# Tell Puppeteer to skip downloading Chrome and use system Chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 
 # Set working directory
 WORKDIR /app

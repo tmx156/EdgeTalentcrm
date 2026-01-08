@@ -338,10 +338,16 @@ async function generateContractPDF(contractData) {
     // Generate HTML
     const html = generateContractHTML(contractData);
 
-    // Launch Puppeteer
+    // Launch Puppeteer - use system Chromium on Railway/Alpine
     browser = await puppeteer.launch({
       headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
+      ]
     });
 
     const page = await browser.newPage();
