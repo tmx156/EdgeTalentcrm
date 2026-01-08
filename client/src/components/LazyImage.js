@@ -107,28 +107,19 @@ const LazyImage = memo(({
   videoLoop = true,
   ...rest
 }) => {
-  // Handle null/undefined/empty src - show fallback immediately
-  if (!src || src === 'null' || src === '') {
-    return (
-      <img
-        src="/images/fallback.jpeg"
-        alt={alt || 'Image'}
-        className={className}
-        style={style}
-        onClick={onClick}
-        title={title}
-      />
-    );
-  }
+  // Determine if src is valid BEFORE hooks (for conditional logic later, not early return)
+  const isValidSrc = src && src !== 'null' && src !== '';
+  const safeSrc = isValidSrc ? src : '/images/fallback.jpeg';
 
-  const mediaType = getMediaType(src);
+  const mediaType = getMediaType(safeSrc);
 
   // Check if this image was previously loaded (survives remounts)
-  const previouslyLoaded = wasImageLoaded(src);
+  const previouslyLoaded = isValidSrc ? wasImageLoaded(safeSrc) : true;
 
-  const [currentSrc, setCurrentSrc] = useState(src);
-  const [isLoaded, setIsLoaded] = useState(previouslyLoaded);
-  const [hasError, setHasError] = useState(false);
+  // ALL HOOKS MUST BE CALLED UNCONDITIONALLY AT THE TOP
+  const [currentSrc, setCurrentSrc] = useState(safeSrc);
+  const [isLoaded, setIsLoaded] = useState(previouslyLoaded || !isValidSrc);
+  const [hasError, setHasError] = useState(!isValidSrc);
   const [retryCount, setRetryCount] = useState(0);
 
   // Use a load counter to prevent race conditions
@@ -140,6 +131,12 @@ const LazyImage = memo(({
 
   // Reset state when src changes - increment load ID to invalidate pending loads
   useEffect(() => {
+    if (!isValidSrc) {
+      setCurrentSrc(fallbackSrc);
+      setIsLoaded(true);
+      setHasError(true);
+      return;
+    }
     loadIdRef.current += 1;
     setCurrentSrc(src);
     // Check if new src was previously loaded
@@ -147,7 +144,7 @@ const LazyImage = memo(({
     setIsLoaded(wasLoaded);
     setHasError(false);
     setRetryCount(0);
-  }, [src]);
+  }, [src, isValidSrc]);
 
   // Handle successful load
   const handleLoad = useCallback((e) => {
@@ -160,11 +157,11 @@ const LazyImage = memo(({
         setIsLoaded(true);
         setHasError(false);
         // Mark in global registry so it persists across remounts
-        markImageLoaded(src);
+        if (isValidSrc) markImageLoaded(src);
         if (onLoad) onLoad(e);
       }
     });
-  }, [onLoad, src]);
+  }, [onLoad, src, isValidSrc]);
 
   // Handle load error with retry
   const handleError = useCallback((e) => {
