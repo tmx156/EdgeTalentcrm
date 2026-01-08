@@ -314,12 +314,13 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      connectSrc: ["'self'", "https://*.railway.app", "https://*.supabase.co", "wss://*.railway.app"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'", "https://*.railway.app", "https://*.supabase.co", "wss://*.railway.app", "https://api.stripe.com"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.stripe.com"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
       mediaSrc: ["'self'", "data:", "https:"],
       fontSrc: ["'self'", "data:"],
+      frameSrc: ["'self'", "https://js.stripe.com", "https://hooks.stripe.com"],
     },
   },
 }));
