@@ -122,6 +122,7 @@ const Calendar = () => {
 
   // Photos state for calendar modal
   const [leadPhotos, setLeadPhotos] = useState([]);
+  const [totalPhotoCount, setTotalPhotoCount] = useState(0); // Total count for "View Gallery" button
   const [loadingPhotos, setLoadingPhotos] = useState(false);
   const [hasMorePhotos, setHasMorePhotos] = useState(false);
   const [nextCursor, setNextCursor] = useState(null);
@@ -954,6 +955,7 @@ const Calendar = () => {
   const fetchLeadPhotos = useCallback(async (leadId, reset = true, cursor = null) => {
     if (!leadId) {
       setLeadPhotos([]);
+      setTotalPhotoCount(0);
       return;
     }
 
@@ -969,32 +971,43 @@ const Calendar = () => {
     }
 
     try {
-      // Limit to 20 photos initially for modal (faster load, can load more)
-      const response = await axios.get('/api/photos', {
-        params: { 
-          leadId,
-          limit: 20, // Smaller initial load for faster modal opening
-          cursor: cursor || undefined,
-          fields: 'minimal' // Only fetch needed fields
-        }
-      });
-      if (response.data.success) {
-        const newPhotos = response.data.photos || [];
-        
+      // Fetch photos and total count in parallel
+      const [photosResponse, countResponse] = await Promise.all([
+        // Limit to 20 photos initially for modal (faster load, can load more)
+        axios.get('/api/photos', {
+          params: {
+            leadId,
+            limit: 20, // Smaller initial load for faster modal opening
+            cursor: cursor || undefined,
+            fields: 'minimal' // Only fetch needed fields
+          }
+        }),
+        // Only fetch count on initial load (reset=true)
+        reset ? axios.get('/api/photos/count', { params: { leadId } }) : Promise.resolve(null)
+      ]);
+
+      if (photosResponse.data.success) {
+        const newPhotos = photosResponse.data.photos || [];
+
         if (reset) {
           setLeadPhotos(newPhotos);
+          // Update total count from count endpoint
+          if (countResponse?.data?.count !== undefined) {
+            setTotalPhotoCount(countResponse.data.count);
+          }
         } else {
           setLeadPhotos(prev => [...prev, ...newPhotos]);
         }
-        
+
         // Update pagination state
-        setHasMorePhotos(response.data.hasMore || false);
-        setNextCursor(response.data.nextCursor || null);
+        setHasMorePhotos(photosResponse.data.hasMore || false);
+        setNextCursor(photosResponse.data.nextCursor || null);
       }
     } catch (error) {
       console.error('Error fetching photos:', error);
       if (reset) {
         setLeadPhotos([]);
+        setTotalPhotoCount(0);
       }
     } finally {
       setLoadingPhotos(false);
@@ -1101,6 +1114,7 @@ const Calendar = () => {
       fetchLeadPhotos(selectedEvent.extendedProps.lead.id, true);
     } else {
       setLeadPhotos([]);
+      setTotalPhotoCount(0);
       setHasMorePhotos(false);
       setNextCursor(null);
     }
@@ -4338,7 +4352,7 @@ const Calendar = () => {
                       className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg hover:from-purple-600 hover:to-indigo-600 transition-all duration-300 shadow text-xs font-medium"
                     >
                       <FiImage className="h-4 w-4" />
-                      <span>View Gallery ({leadPhotos.length})</span>
+                      <span>View Gallery ({totalPhotoCount || leadPhotos.length})</span>
                     </button>
                     <button
                       onClick={() => {
@@ -4527,7 +4541,7 @@ const Calendar = () => {
         />
       )}
 
-      {/* Send Contract Modal */}
+      {/* Send Invoice Modal */}
       {showContractModal && selectedEvent?.extendedProps?.lead && selectedPackage && (
         <SendContractModal
           isOpen={showContractModal}
@@ -4547,6 +4561,19 @@ const Calendar = () => {
               localStorage.removeItem(`selectedPhotos_${leadId}`);
             }
             // Optionally close other modals and show success
+          }}
+          onBackToPackages={() => {
+            // Close contract modal and go back to package selection
+            setShowContractModal(false);
+            setContractInvoiceData(null);
+            setShowPackageModal(true);
+          }}
+          onBackToPhotos={() => {
+            // Close contract modal and go back to photo selection
+            setShowContractModal(false);
+            setContractInvoiceData(null);
+            setImageSelectionMode(true);
+            setShowPresentationGallery(true);
           }}
         />
       )}

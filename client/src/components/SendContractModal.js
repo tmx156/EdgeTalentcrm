@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Send, FileText, Mail, Copy, Check, Loader, AlertTriangle, ExternalLink, Clock, CheckCircle, Edit2, Eye, ChevronRight, ChevronLeft, User, MapPin, Phone, CreditCard, Package, PoundSterling } from 'lucide-react';
+import { X, Send, FileText, Mail, Copy, Check, Loader, AlertTriangle, ExternalLink, Clock, CheckCircle, Edit2, Eye, ChevronRight, ChevronLeft, User, MapPin, Phone, CreditCard, Package, PoundSterling, Image, ArrowLeft, RefreshCw, Download, Save, Link } from 'lucide-react';
 
 /**
  * SendContractModal - Modal for creating and sending contracts to customers
@@ -12,16 +12,32 @@ const SendContractModal = ({
   packageData,
   invoiceData,
   selectedPhotoIds = [],
-  onContractSent
+  onContractSent,
+  // Back navigation callbacks
+  onBackToPackages,
+  onBackToPhotos
 }) => {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
   const [contract, setContract] = useState(null);
   const [emailSent, setEmailSent] = useState(false);
+  const [emailSentTime, setEmailSentTime] = useState(null);
   const [copied, setCopied] = useState(false);
   const [contractStatus, setContractStatus] = useState('draft'); // 'draft' | 'sent' | 'signed'
   const [checkingStatus, setCheckingStatus] = useState(false);
+
+  // New state for Step 3 redesign
+  const [deliveryEmailSent, setDeliveryEmailSent] = useState(false);
+  const [deliveryEmailTime, setDeliveryEmailTime] = useState(null);
+  const [deliveryEmailTo, setDeliveryEmailTo] = useState('');
+  const [deliveryEmailError, setDeliveryEmailError] = useState(null);
+  const [deliveryAttachmentCount, setDeliveryAttachmentCount] = useState(0);
+  const [selectedPhotoCount, setSelectedPhotoCount] = useState(0);
+  const [resendingDelivery, setResendingDelivery] = useState(false);
+  const [savingAuthCode, setSavingAuthCode] = useState(false);
+  const [authCodeSaved, setAuthCodeSaved] = useState(false);
+  const [localAuthCode, setLocalAuthCode] = useState('');
 
   // Current step: 'edit' | 'review' | 'send'
   const [step, setStep] = useState('edit');
@@ -226,6 +242,7 @@ const SendContractModal = ({
       }
 
       setEmailSent(true);
+      setEmailSentTime(new Date().toISOString());
       setContractStatus('sent');
       onContractSent?.(contract);
     } catch (err) {
@@ -253,17 +270,127 @@ const SendContractModal = ({
         setContractStatus(status);
 
         // Update contract data if signed
-        if (status === 'signed' && data.contract) {
+        if (data.contract) {
           setContract(prev => ({
             ...prev,
             ...data.contract
           }));
+
+          // Update delivery email info from response (backend extracts from contract_data)
+          // Use top-level fields first (set by backend), fall back to contract_data
+          const contractData = data.contract.data || {};
+
+          // Check for delivery email status - use top-level fields from backend
+          if (data.contract.deliveryEmailSent !== undefined) {
+            setDeliveryEmailSent(data.contract.deliveryEmailSent);
+            setDeliveryEmailTime(data.contract.deliveryEmailTime);
+            setDeliveryEmailTo(data.contract.deliveryEmailTo || contractData.email);
+            setDeliveryEmailError(data.contract.deliveryEmailError || null);
+            setDeliveryAttachmentCount(data.contract.deliveryAttachmentCount || 0);
+          } else if (contractData.delivery_email_sent !== undefined) {
+            // Fallback to contract_data fields
+            setDeliveryEmailSent(contractData.delivery_email_sent);
+            setDeliveryEmailTime(contractData.delivery_email_time);
+            setDeliveryEmailTo(contractData.delivery_email_to || contractData.email);
+            setDeliveryEmailError(contractData.delivery_email_error || null);
+            setDeliveryAttachmentCount(contractData.delivery_attachment_count || 0);
+          }
+
+          if (data.contract.selectedPhotoCount) {
+            setSelectedPhotoCount(data.contract.selectedPhotoCount);
+          }
+          if (data.contract.authCode || contractData.authCode) {
+            setLocalAuthCode(data.contract.authCode || contractData.authCode);
+            setAuthCodeSaved(true);
+          }
         }
       }
     } catch (err) {
       console.error('Error checking contract status:', err);
     } finally {
       setCheckingStatus(false);
+    }
+  };
+
+  // Auto-refresh contract status every second when waiting for signature
+  useEffect(() => {
+    if (!contract?.id || contractStatus === 'signed' || step !== 'send') return;
+
+    const interval = setInterval(() => {
+      checkContractStatus();
+    }, 1000); // Every 1 second
+
+    return () => clearInterval(interval);
+  }, [contract?.id, contractStatus, step]);
+
+  // Resend delivery email
+  const resendDeliveryEmail = async () => {
+    if (!contract?.id) return;
+
+    setResendingDelivery(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/contracts/${contract.id}/resend-delivery`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          email: contractDetails.email
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to resend delivery email');
+      }
+
+      setDeliveryEmailSent(true);
+      setDeliveryEmailTime(new Date().toISOString());
+      setDeliveryEmailTo(data.sentTo);
+      setDeliveryEmailError(null); // Clear any previous error
+      setDeliveryAttachmentCount(data.attachments || 0);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setResendingDelivery(false);
+    }
+  };
+
+  // Save auth code
+  const saveAuthCode = async () => {
+    if (!contract?.id || !localAuthCode.trim()) return;
+
+    setSavingAuthCode(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/contracts/${contract.id}/auth-code`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          authCode: localAuthCode.trim()
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to save auth code');
+      }
+
+      setAuthCodeSaved(true);
+      setTimeout(() => setAuthCodeSaved(false), 3000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSavingAuthCode(false);
     }
   };
 
@@ -305,9 +432,9 @@ const SendContractModal = ({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-white">
-                {step === 'edit' && 'Edit Contract Details'}
-                {step === 'review' && 'Review Contract'}
-                {step === 'send' && 'Send Contract'}
+                {step === 'edit' && 'Edit Invoice Details'}
+                {step === 'review' && 'Review Invoice'}
+                {step === 'send' && 'Send Invoice'}
               </h2>
               <p className="text-blue-100 text-sm">
                 {lead?.name || 'Customer'} • {packageData?.name || 'Package'}
@@ -356,6 +483,32 @@ const SendContractModal = ({
           {/* Step 1: Edit Form */}
           {step === 'edit' && (
             <div className="space-y-6">
+              {/* Back Navigation */}
+              {(onBackToPackages || onBackToPhotos) && (
+                <div className="flex items-center space-x-2 pb-4 border-b border-gray-200">
+                  <ArrowLeft className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-500">Go back to:</span>
+                  {onBackToPhotos && (
+                    <button
+                      onClick={onBackToPhotos}
+                      className="px-3 py-1.5 text-sm bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors flex items-center space-x-1"
+                    >
+                      <Image className="w-4 h-4" />
+                      <span>Photo Selection</span>
+                    </button>
+                  )}
+                  {onBackToPackages && (
+                    <button
+                      onClick={onBackToPackages}
+                      className="px-3 py-1.5 text-sm bg-green-50 text-green-700 border border-green-200 rounded-lg hover:bg-green-100 transition-colors flex items-center space-x-1"
+                    >
+                      <Package className="w-4 h-4" />
+                      <span>Package Selection</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Customer Details Section */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
@@ -762,11 +915,11 @@ const SendContractModal = ({
             </div>
           )}
 
-          {/* Step 3: Send */}
+          {/* Step 3: Send & Track - Two Column Layout */}
           {step === 'send' && (
             <div>
               {!contract ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <div className="flex items-center space-x-2 text-yellow-700 mb-2">
                     <AlertTriangle className="w-5 h-5" />
                     <span className="font-medium">Contract Data Missing</span>
@@ -776,177 +929,335 @@ const SendContractModal = ({
                   </p>
                 </div>
               ) : (
-                <>
-              {/* Contract created success */}
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                <div className="flex items-center space-x-2 text-green-700 mb-2">
-                  <CheckCircle className="w-5 h-5" />
-                  <span className="font-medium">Contract Created Successfully</span>
-                </div>
-                <p className="text-sm text-green-600">
-                  The contract is ready to be sent to the customer.
-                </p>
-              </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* LEFT COLUMN */}
+                  <div className="space-y-4">
+                    {/* Send Contract Card */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="flex items-center space-x-2 mb-3">
+                        <Mail className="w-5 h-5 text-blue-600" />
+                        <h3 className="font-semibold text-gray-800">Send Contract</h3>
+                      </div>
 
-              {/* Email input */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Customer Email
-                </label>
-                <input
-                  type="email"
-                  value={contractDetails.email}
-                  onChange={(e) => updateField('email', e.target.value)}
-                  placeholder="customer@email.com"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
+                      {/* Email input */}
+                      <div className="mb-3">
+                        <input
+                          type="email"
+                          value={contractDetails.email}
+                          onChange={(e) => updateField('email', e.target.value)}
+                          placeholder="customer@email.com"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
 
-              {/* Send email button */}
-              {!emailSent ? (
-                <button
-                  onClick={sendContractEmail}
-                  disabled={sending || !contractDetails.email}
-                  className="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2"
-                >
-                  {sending ? (
-                    <>
-                      <Loader className="w-5 h-5 animate-spin" />
-                      <span>Sending...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Mail className="w-5 h-5" />
-                      <span>Send Contract via Email</span>
-                    </>
-                  )}
-                </button>
-              ) : (
-                <div className="bg-green-100 border border-green-300 rounded-lg p-4 text-center">
-                  <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
-                  <p className="font-medium text-green-800">Email Sent!</p>
-                  <p className="text-sm text-green-600">
-                    Contract sent to {contractDetails.email}
-                  </p>
-                </div>
-              )}
+                      {/* Send button */}
+                      {!emailSent ? (
+                        <button
+                          onClick={sendContractEmail}
+                          disabled={sending || !contractDetails.email}
+                          className="w-full py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-2 text-sm font-medium"
+                        >
+                          {sending ? (
+                            <>
+                              <Loader className="w-4 h-4 animate-spin" />
+                              <span>Sending...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Send className="w-4 h-4" />
+                              <span>Send Email</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <div className="flex items-center space-x-2 text-green-600 bg-green-50 rounded-lg px-3 py-2">
+                          <CheckCircle className="w-4 h-4" />
+                          <span className="text-sm">
+                            Sent {emailSentTime && new Date(emailSentTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      )}
 
-              {/* Divider */}
-              <div className="relative my-4">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">or</span>
-                </div>
-              </div>
+                      {/* Copy link & Preview */}
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={copySigningLink}
+                            className="flex-1 py-2 px-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center space-x-1 text-sm"
+                          >
+                            {copied ? (
+                              <>
+                                <Check className="w-4 h-4 text-green-600" />
+                                <span className="text-green-600">Copied!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Link className="w-4 h-4" />
+                                <span>Copy Link</span>
+                              </>
+                            )}
+                          </button>
+                          <a
+                            href={contract?.signingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 py-2 px-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center space-x-1 text-sm"
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span>Preview</span>
+                          </a>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2 flex items-center space-x-1">
+                          <Clock className="w-3 h-3" />
+                          <span>Link expires in 7 days</span>
+                        </p>
+                      </div>
+                    </div>
 
-              {/* Copy link section */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Share Signing Link Manually
-                </label>
-                <div className="flex space-x-2">
-                  <input
-                    type="text"
-                    value={contract?.signingUrl || ''}
-                    readOnly
-                    className="flex-1 px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg text-sm text-gray-600"
-                  />
-                  <button
-                    onClick={copySigningLink}
-                    className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200 transition-colors flex items-center space-x-1"
-                  >
-                    {copied ? (
-                      <>
-                        <Check className="w-4 h-4 text-green-600" />
-                        <span className="text-green-600">Copied!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-4 h-4 text-gray-600" />
-                        <span>Copy</span>
-                      </>
+                    {/* Auth Code Card - Only show after contract is signed */}
+                    {contractStatus === 'signed' && (
+                      <div className="bg-white border border-gray-200 rounded-xl p-4">
+                        <div className="flex items-center space-x-2 mb-3">
+                          <CreditCard className="w-5 h-5 text-purple-600" />
+                          <h3 className="font-semibold text-gray-800">Auth Code</h3>
+                          <span className="text-xs text-gray-400">(internal)</span>
+                        </div>
+
+                        <div className="flex space-x-2">
+                          <input
+                            type="text"
+                            value={localAuthCode}
+                            onChange={(e) => {
+                              setLocalAuthCode(e.target.value);
+                              setAuthCodeSaved(false);
+                            }}
+                            placeholder="Enter auth code"
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          />
+                          <button
+                            onClick={saveAuthCode}
+                            disabled={savingAuthCode || !localAuthCode.trim()}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center space-x-1 transition-colors ${
+                              authCodeSaved
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50'
+                            }`}
+                          >
+                            {savingAuthCode ? (
+                              <Loader className="w-4 h-4 animate-spin" />
+                            ) : authCodeSaved ? (
+                              <>
+                                <Check className="w-4 h-4" />
+                                <span>Saved</span>
+                              </>
+                            ) : (
+                              <>
+                                <Save className="w-4 h-4" />
+                                <span>Save</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
                     )}
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 flex items-center space-x-1">
-                  <Clock className="w-3 h-3" />
-                  <span>Link expires in 7 days</span>
-                </p>
-              </div>
-
-              {/* Open signing page link */}
-              {contract?.signingUrl && (
-                <a
-                  href={contract.signingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-4 w-full py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  <span>Preview Signing Page</span>
-                </a>
-              )}
-
-              {/* Signature Status Indicator */}
-              {(emailSent || contractStatus === 'sent' || contractStatus === 'signed') && (
-                <div className="mt-6 pt-4 border-t border-gray-200">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium text-gray-700">Signature Status</span>
-                    <button
-                      onClick={checkContractStatus}
-                      disabled={checkingStatus}
-                      className="text-xs text-blue-600 hover:text-blue-800 flex items-center space-x-1"
-                    >
-                      <Loader className={`w-3 h-3 ${checkingStatus ? 'animate-spin' : ''}`} />
-                      <span>{checkingStatus ? 'Checking...' : 'Refresh Status'}</span>
-                    </button>
                   </div>
 
-                  {contractStatus === 'signed' ? (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                          <CheckCircle className="w-6 h-6 text-green-600" />
+                  {/* RIGHT COLUMN */}
+                  <div className="space-y-4">
+                    {/* Status Card */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-2 h-2 rounded-full ${contractStatus === 'signed' ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`}></div>
+                          <h3 className="font-semibold text-gray-800">Status</h3>
                         </div>
-                        <div>
-                          <p className="font-semibold text-green-800">Contract Signed</p>
-                          <p className="text-sm text-green-600">
-                            The customer has signed the contract successfully.
-                          </p>
-                        </div>
+                        {contractStatus !== 'signed' && (
+                          <span className="text-xs text-gray-400 flex items-center space-x-1">
+                            <RefreshCw className={`w-3 h-3 ${checkingStatus ? 'animate-spin' : ''}`} />
+                            <span>Live</span>
+                          </span>
+                        )}
                       </div>
-                      {contract?.signed_pdf_url && (
-                        <a
-                          href={contract.signed_pdf_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-3 inline-flex items-center space-x-1 text-sm text-green-700 hover:text-green-900"
-                        >
-                          <FileText className="w-4 h-4" />
-                          <span>Download Signed Contract</span>
-                        </a>
+
+                      {contractStatus === 'signed' ? (
+                        <div className="bg-green-50 rounded-lg p-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+                              <CheckCircle className="w-7 h-7 text-green-600" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-green-800">Signed</p>
+                              <p className="text-sm text-green-600">
+                                {contract?.signedAt && new Date(contract.signedAt).toLocaleString('en-GB', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                            </div>
+                          </div>
+                          {(contract?.signed_pdf_url || contract?.pdfUrl) && (
+                            <a
+                              href={contract.signed_pdf_url || contract.pdfUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-3 w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 text-sm font-medium"
+                            >
+                              <Download className="w-4 h-4" />
+                              <span>Download PDF</span>
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 rounded-lg p-4">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                              <Clock className="w-7 h-7 text-amber-600" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-amber-800">Awaiting Signature</p>
+                              <p className="text-sm text-amber-600">
+                                {emailSentTime
+                                  ? `Sent ${Math.floor((Date.now() - new Date(emailSentTime).getTime()) / 60000)} mins ago`
+                                  : 'Waiting for customer'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
-                  ) : (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
-                          <Clock className="w-6 h-6 text-amber-600" />
+
+                    {/* Delivery Email Card - Only show after signing */}
+                    {contractStatus === 'signed' && (
+                      <div className="bg-white border border-gray-200 rounded-xl p-4">
+                        <div className="flex items-center space-x-2 mb-3">
+                          <Mail className={`w-5 h-5 ${deliveryEmailError ? 'text-red-600' : deliveryEmailSent ? 'text-green-600' : 'text-gray-400'}`} />
+                          <h3 className="font-semibold text-gray-800">Delivery Email</h3>
                         </div>
-                        <div>
-                          <p className="font-semibold text-amber-800">Signature Pending</p>
-                          <p className="text-sm text-amber-600">
-                            Waiting for the customer to sign the contract.
-                          </p>
-                        </div>
+
+                        {/* Successfully sent */}
+                        {deliveryEmailSent === true && !deliveryEmailError ? (
+                          <div className="space-y-3">
+                            <div className="bg-green-50 rounded-lg p-3">
+                              <div className="flex items-center space-x-2 text-green-700">
+                                <CheckCircle className="w-4 h-4" />
+                                <span className="text-sm font-medium">Sent Successfully</span>
+                              </div>
+                              <p className="text-sm text-green-600 mt-1">
+                                To: {deliveryEmailTo}
+                              </p>
+                              <p className="text-xs text-green-500 mt-1">
+                                {deliveryEmailTime && new Date(deliveryEmailTime).toLocaleString('en-GB', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </p>
+                              <p className="text-xs text-green-500 mt-1">
+                                PDF + {deliveryAttachmentCount || selectedPhotoCount || selectedPhotoIds?.length || 0} images attached
+                              </p>
+                            </div>
+
+                            <button
+                              onClick={resendDeliveryEmail}
+                              disabled={resendingDelivery}
+                              className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center space-x-2 text-sm"
+                            >
+                              {resendingDelivery ? (
+                                <>
+                                  <Loader className="w-4 h-4 animate-spin" />
+                                  <span>Resending...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCw className="w-4 h-4" />
+                                  <span>Resend Delivery</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ) : deliveryEmailError || deliveryEmailSent === false ? (
+                          /* Error sending OR explicitly failed - show error and resend button */
+                          <div className="space-y-3">
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                              <div className="flex items-center space-x-2 text-red-700">
+                                <AlertTriangle className="w-4 h-4" />
+                                <span className="text-sm font-medium">Failed to Send</span>
+                              </div>
+                              <p className="text-sm text-red-600 mt-1">
+                                {deliveryEmailError || 'Auto-delivery email failed. Click below to retry.'}
+                              </p>
+                              {deliveryEmailTime && (
+                                <p className="text-xs text-red-400 mt-1">
+                                  Attempted: {new Date(deliveryEmailTime).toLocaleString('en-GB', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </p>
+                              )}
+                            </div>
+
+                            <button
+                              onClick={resendDeliveryEmail}
+                              disabled={resendingDelivery}
+                              className="w-full py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center space-x-2 text-sm font-medium"
+                            >
+                              {resendingDelivery ? (
+                                <>
+                                  <Loader className="w-4 h-4 animate-spin" />
+                                  <span>Retrying...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCw className="w-4 h-4" />
+                                  <span>Retry Sending</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ) : (
+                          /* No status recorded - needs manual send */
+                          <div className="space-y-3">
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                              <div className="flex items-center space-x-2 text-gray-700">
+                                <AlertTriangle className="w-4 h-4" />
+                                <span className="text-sm font-medium">Not Sent</span>
+                              </div>
+                              <p className="text-sm text-gray-600 mt-1">
+                                Delivery email status unknown. Send manually below.
+                              </p>
+                            </div>
+
+                            <button
+                              onClick={resendDeliveryEmail}
+                              disabled={resendingDelivery}
+                              className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center space-x-2 text-sm font-medium"
+                            >
+                              {resendingDelivery ? (
+                                <>
+                                  <Loader className="w-4 h-4 animate-spin" />
+                                  <span>Sending...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-4 h-4" />
+                                  <span>Send Delivery Email</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              )}
-                </>
               )}
             </div>
           )}

@@ -796,7 +796,7 @@ const Sales = () => {
                               <span className="text-gray-900">{formatDate(fullSaleDetails.contract.signed_at)}</span>
                             </div>
                           )}
-                          {fullSaleDetails.contract.signed_pdf_url && (
+                          {fullSaleDetails.contract.signed_pdf_url ? (
                             <div className="flex justify-between items-center">
                               <span className="font-semibold text-gray-600">Signed Contract:</span>
                               <a
@@ -809,7 +809,25 @@ const Sales = () => {
                                 Download PDF
                               </a>
                             </div>
-                          )}
+                          ) : fullSaleDetails.contract.status === 'signed' && fullSaleDetails.contract.contract_token ? (
+                            <div className="flex justify-between items-center">
+                              <span className="font-semibold text-gray-600">Signed Contract:</span>
+                              <a
+                                href={`/api/contracts/preview/${fullSaleDetails.contract.contract_token}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-lg hover:from-blue-600 hover:to-purple-600 transition-all duration-200 shadow-md hover:shadow-lg"
+                              >
+                                <FiEye className="h-4 w-4 mr-2" />
+                                View PDF
+                              </a>
+                            </div>
+                          ) : fullSaleDetails.contract.status === 'signed' ? (
+                            <div className="flex justify-between items-center">
+                              <span className="font-semibold text-gray-600">Signed Contract:</span>
+                              <span className="text-orange-600 text-sm">PDF not available - contact admin</span>
+                            </div>
+                          ) : null}
                           {fullSaleDetails.contract.signing_url && fullSaleDetails.contract.status !== 'signed' && (
                             <div className="flex justify-between items-center">
                               <span className="font-semibold text-gray-600">Signing Link:</span>

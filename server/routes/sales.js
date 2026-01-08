@@ -1602,6 +1602,7 @@ router.post('/bulk-communication', auth, async (req, res) => {
 router.get('/:saleId/details', auth, async (req, res) => {
   try {
     const { saleId } = req.params;
+    console.log(`📋 Fetching sale details for: ${saleId}`);
 
     // Get sale with lead and user info
     const { data: sale, error: saleError } = await supabase
@@ -1611,8 +1612,11 @@ router.get('/:saleId/details', auth, async (req, res) => {
       .single();
 
     if (saleError || !sale) {
+      console.log(`❌ Sale not found: ${saleId}`);
       return res.status(404).json({ message: 'Sale not found' });
     }
+
+    console.log(`✅ Found sale: ${sale.id}, lead_id: ${sale.lead_id}`);
 
     // Get lead info
     const { data: lead } = await supabase
@@ -1640,30 +1644,34 @@ router.get('/:saleId/details', auth, async (req, res) => {
         contractId = saleNotes.contract_id;
         selectedPhotoIds = saleNotes.selected_photo_ids || [];
         signedPdfUrl = saleNotes.signed_pdf_url;
+        console.log(`📝 Parsed sale notes - contract_id: ${contractId}, signed_pdf_url: ${signedPdfUrl ? 'present' : 'missing'}`);
       } catch (e) {
         // Notes is not JSON, keep as string
         saleNotes = { message: sale.notes };
+        console.log(`📝 Sale notes is plain text, not JSON`);
       }
     }
 
     // Get contract if we have contract_id
     let contract = null;
     if (contractId) {
-      console.log(`Looking for contract by ID: ${contractId}`);
+      console.log(`🔍 Looking for contract by ID: ${contractId}`);
       const { data: contractData, error: contractError } = await supabase
         .from('contracts')
         .select('*')
         .eq('id', contractId)
         .single();
       if (contractError) {
-        console.log(`Contract by ID error:`, contractError.message);
+        console.log(`❌ Contract by ID error:`, contractError.message);
+      } else if (contractData) {
+        contract = contractData;
+        console.log(`✅ Found contract by ID: ${contract.id}, status: ${contract.status}, signed_pdf_url: ${contract.signed_pdf_url ? 'present' : 'missing'}`);
       }
-      contract = contractData;
     }
 
     // If no contract found by ID, try to find by lead_id
     if (!contract && sale.lead_id) {
-      console.log(`Looking for contract by lead_id: ${sale.lead_id}`);
+      console.log(`🔍 Looking for contract by lead_id: ${sale.lead_id}`);
       const { data: contracts, error: contractsError } = await supabase
         .from('contracts')
         .select('*')
@@ -1671,23 +1679,27 @@ router.get('/:saleId/details', auth, async (req, res) => {
         .order('created_at', { ascending: false });
 
       if (contractsError) {
-        console.log(`Contract by lead_id error:`, contractsError.message);
+        console.log(`❌ Contract by lead_id error:`, contractsError.message);
       } else if (contracts && contracts.length > 0) {
-        contract = contracts[0];
-        console.log(`Found contract by lead_id: ${contract.id}, status: ${contract.status}`);
+        // Prefer signed contracts
+        const signedContract = contracts.find(c => c.status === 'signed');
+        contract = signedContract || contracts[0];
+        console.log(`✅ Found ${contracts.length} contract(s) by lead_id, using: ${contract.id}, status: ${contract.status}, signed_pdf_url: ${contract.signed_pdf_url ? 'present' : 'missing'}`);
       } else {
-        console.log(`No contracts found for lead_id: ${sale.lead_id}`);
+        console.log(`⚠️ No contracts found for lead_id: ${sale.lead_id}`);
       }
     }
 
     // Extract photo IDs from contract if not already in sale notes
-    if (contract && selectedPhotoIds.length === 0) {
-      if (contract.contract_data?.selectedPhotoIds) {
+    if (contract) {
+      if (selectedPhotoIds.length === 0 && contract.contract_data?.selectedPhotoIds) {
         selectedPhotoIds = contract.contract_data.selectedPhotoIds;
-        console.log(`Found ${selectedPhotoIds.length} photos in contract_data`);
+        console.log(`📸 Found ${selectedPhotoIds.length} photos in contract_data`);
       }
-      if (!signedPdfUrl && contract.signed_pdf_url) {
+      // Always prefer contract's signed_pdf_url if available
+      if (contract.signed_pdf_url) {
         signedPdfUrl = contract.signed_pdf_url;
+        console.log(`📄 Using signed_pdf_url from contract: ${signedPdfUrl}`);
       }
     }
 
@@ -1699,7 +1711,16 @@ router.get('/:saleId/details', auth, async (req, res) => {
         .select('id, filename, cloudinary_url, cloudinary_secure_url, description')
         .in('id', selectedPhotoIds);
       selectedPhotos = photos || [];
+      console.log(`📸 Retrieved ${selectedPhotos.length} photos`);
     }
+
+    // Build the final signed_pdf_url - try multiple sources
+    let finalSignedPdfUrl = null;
+    if (contract) {
+      finalSignedPdfUrl = contract.signed_pdf_url || signedPdfUrl || null;
+    }
+
+    console.log(`📋 Sale details response - contract: ${contract ? contract.id : 'none'}, signed_pdf_url: ${finalSignedPdfUrl ? 'present' : 'missing'}, photos: ${selectedPhotos.length}`);
 
     res.json({
       success: true,
@@ -1712,16 +1733,17 @@ router.get('/:saleId/details', auth, async (req, res) => {
           id: contract.id,
           status: contract.status,
           signed_at: contract.signed_at,
-          signed_pdf_url: contract.signed_pdf_url || signedPdfUrl,
+          signed_pdf_url: finalSignedPdfUrl,
           signing_url: contract.signing_url,
           expires_at: contract.expires_at,
-          contract_data: contract.contract_data
+          contract_data: contract.contract_data,
+          contract_token: contract.contract_token // Include token for PDF regeneration
         } : null,
         selected_photos: selectedPhotos
       }
     });
   } catch (error) {
-    console.error('Error fetching sale details:', error);
+    console.error('❌ Error fetching sale details:', error);
     res.status(500).json({ message: 'Error fetching sale details', error: error.message });
   }
 });

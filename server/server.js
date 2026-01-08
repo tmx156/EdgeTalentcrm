@@ -62,6 +62,7 @@ const invoicesRoutes = require('./routes/invoices');
 const signatureRoutes = require('./routes/signature');
 const contractsRoutes = require('./routes/contracts');
 const stripeRoutes = require('./routes/stripe');
+const imageProxyRoutes = require('./routes/image-proxy');
 // TEMPORARILY DISABLED: const scheduler = require('./utils/scheduler');
 // OLD IMAP-based email poller (replaced with Gmail API)
 // const { startEmailPoller } = require('./utils/emailPoller');
@@ -801,7 +802,99 @@ testDatabaseConnection().then(() => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`🔌 WebSocket server ready for real-time sync`);
     console.log(`🗄️  Connected to Supabase database`);
-    
+
+    // Auto-create default contract_delivery template if it doesn't exist
+    try {
+      const { data: existingTemplate } = await supabase
+        .from('templates')
+        .select('id')
+        .eq('type', 'contract_delivery')
+        .limit(1)
+        .single();
+
+      if (!existingTemplate) {
+        console.log('📧 Creating default contract_delivery template...');
+        const defaultContractDeliveryTemplate = {
+          id: `template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          name: 'Contract Delivery Email',
+          type: 'contract_delivery',
+          subject: 'Your Signed Contract and Selected Images - Edge Talent',
+          email_body: `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; color: white; border-radius: 8px 8px 0 0; }
+    .header h1 { margin: 0; font-size: 28px; }
+    .content { padding: 30px; background: #f9f9f9; }
+    .content p { margin: 0 0 15px 0; }
+    .highlight { background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .order-details { background: #fff; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e0e0e0; }
+    .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; background: #f0f0f0; border-radius: 0 0 8px 8px; }
+    .footer p { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>EDGE TALENT</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank You for Your Purchase!</p>
+    </div>
+    <div class="content">
+      <p>Dear {customerName},</p>
+      <p>Thank you for signing your contract with Edge Talent!</p>
+
+      <div class="order-details">
+        <h3 style="margin-top: 0; color: #1a1a2e;">Order Details</h3>
+        <p><strong>Invoice Number:</strong> {invoiceNumber}</p>
+        <p><strong>Total Amount:</strong> {contractTotal}</p>
+        <p><strong>Signed On:</strong> {signedDate} at {signedTime}</p>
+      </div>
+
+      <div class="highlight">
+        <p style="margin: 0;"><strong>Please find attached:</strong></p>
+        {attachmentList}
+      </div>
+
+      <p>Your images are ready to download and use. If you have any questions about your order, please don't hesitate to contact us.</p>
+      <p>Best regards,<br><strong>The Edge Talent Team</strong></p>
+    </div>
+    <div class="footer">
+      <p><strong>Edge Talent</strong> | A trading name of S&A Advertising Ltd</p>
+      <p>Company No 8708429 | VAT Reg No 171339904</p>
+      <p>129A Weedington Rd, London NW5 4NX</p>
+      <p>Email: <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
+    </div>
+  </div>
+</body>
+</html>`,
+          sms_body: '',
+          is_active: true,
+          is_default: true,
+          send_email: true,
+          send_sms: false,
+          email_account: 'primary',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase
+          .from('templates')
+          .insert([defaultContractDeliveryTemplate]);
+
+        if (error) {
+          console.error('❌ Failed to create default contract_delivery template:', error.message);
+        } else {
+          console.log('✅ Default contract_delivery template created successfully');
+        }
+      } else {
+        console.log('📧 Contract delivery template already exists');
+      }
+    } catch (templateError) {
+      console.error('❌ Error checking/creating contract_delivery template:', templateError.message);
+    }
+
     // DISABLED: Start the message scheduler
     // scheduler.start();
 

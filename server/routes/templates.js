@@ -701,7 +701,7 @@ router.get('/variables/list', auth, async (req, res) => {
       { name: '{userEmail}', description: 'User\'s email address', example: 'admin@example.com' },
       { name: '{bookingDate}', description: 'Appointment date', example: '01/15/2024' },
       { name: '{bookingTime}', description: 'Appointment time', example: '2:30 PM' },
-      { name: '{companyName}', description: 'Company name', example: 'Modelling Studio CRM' },
+      { name: '{companyName}', description: 'Company name', example: 'Edge Talent' },
       { name: '{currentDate}', description: 'Current date', example: '01/10/2024' },
       { name: '{currentTime}', description: 'Current time', example: '10:30 AM' }
     ];
@@ -717,6 +717,21 @@ router.get('/variables/list', auth, async (req, res) => {
         { name: '{receiptId}', description: 'Receipt ID', example: 'RCPT123456' },
         { name: '{saleNotes}', description: 'Notes about the sale', example: 'Package A with extras' }
       ]);
+    }
+
+    // Add contract delivery variables if type is contract_delivery
+    if (type === 'contract_delivery') {
+      variables = [
+        { name: '{customerName}', description: 'Customer\'s full name', example: 'John Doe' },
+        { name: '{customerEmail}', description: 'Customer\'s email address', example: 'john@example.com' },
+        { name: '{contractTotal}', description: 'Contract total amount', example: '£599.00' },
+        { name: '{invoiceNumber}', description: 'Invoice number', example: 'INV-12345678' },
+        { name: '{signedDate}', description: 'Date contract was signed', example: '08/01/2026' },
+        { name: '{signedTime}', description: 'Time contract was signed', example: '14:30' },
+        { name: '{photoCount}', description: 'Number of photos attached', example: '5' },
+        { name: '{attachmentList}', description: 'HTML list of attachments (PDF + images)', example: '<ul><li>PDF</li><li>5 images</li></ul>' },
+        { name: '{companyName}', description: 'Company name', example: 'Edge Talent' }
+      ];
     }
 
     res.json(variables);
@@ -885,6 +900,123 @@ Payment: {paymentMethod}`,
     });
   } catch (error) {
     console.error('Error creating default sales template:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Create default contract delivery template
+router.post('/create-contract-delivery-default', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admin only.' });
+    }
+
+    // Check if contract_delivery template already exists
+    const { data: existingTemplate } = await supabase
+      .from('templates')
+      .select('id')
+      .eq('type', 'contract_delivery')
+      .single();
+
+    if (existingTemplate) {
+      return res.status(400).json({ message: 'Contract delivery template already exists' });
+    }
+
+    const defaultContractDeliveryTemplate = {
+      id: `template-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: 'Contract Delivery Email',
+      type: 'contract_delivery',
+      subject: 'Your Signed Contract and Selected Images - {companyName}',
+      email_body: `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; color: white; border-radius: 8px 8px 0 0; }
+    .header h1 { margin: 0; font-size: 28px; }
+    .content { padding: 30px; background: #f9f9f9; }
+    .content p { margin: 0 0 15px 0; }
+    .highlight { background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .order-details { background: #fff; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e0e0e0; }
+    .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; background: #f0f0f0; border-radius: 0 0 8px 8px; }
+    .footer p { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>EDGE TALENT</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank You for Your Purchase!</p>
+    </div>
+    <div class="content">
+      <p>Dear {customerName},</p>
+      <p>Thank you for signing your contract with Edge Talent!</p>
+
+      <div class="order-details">
+        <h3 style="margin-top: 0; color: #1a1a2e;">Order Details</h3>
+        <p><strong>Invoice Number:</strong> {invoiceNumber}</p>
+        <p><strong>Total Amount:</strong> {contractTotal}</p>
+        <p><strong>Signed On:</strong> {signedDate} at {signedTime}</p>
+      </div>
+
+      <div class="highlight">
+        <p style="margin: 0;"><strong>Please find attached:</strong></p>
+        {attachmentList}
+      </div>
+
+      <p>Your images are ready to download and use. If you have any questions about your order, please don't hesitate to contact us.</p>
+      <p>Best regards,<br><strong>The Edge Talent Team</strong></p>
+    </div>
+    <div class="footer">
+      <p><strong>Edge Talent</strong> | A trading name of S&A Advertising Ltd</p>
+      <p>Company No 8708429 | VAT Reg No 171339904</p>
+      <p>129A Weedington Rd, London NW5 4NX</p>
+      <p>Email: <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
+    </div>
+  </div>
+</body>
+</html>`,
+      sms_body: '',
+      is_active: true,
+      is_default: true,
+      send_email: true,
+      send_sms: false,
+      user_id: req.user.id,
+      created_by: req.user.id,
+      email_account: 'primary',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    const { data: template, error } = await supabase
+      .from('templates')
+      .insert([defaultContractDeliveryTemplate])
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('Error creating default contract delivery template:', error);
+      return res.status(500).json({ message: 'Error creating default contract delivery template', error: error.message });
+    }
+
+    console.log('✅ Default contract delivery template created:', template.id);
+
+    res.status(201).json({
+      message: 'Default contract delivery template created successfully',
+      template: {
+        ...template,
+        _id: template.id,
+        emailBody: template.email_body,
+        smsBody: template.sms_body,
+        sendEmail: template.send_email,
+        sendSMS: template.send_sms,
+        isActive: template.is_active,
+        emailAccount: template.email_account
+      }
+    });
+  } catch (error) {
+    console.error('Error creating default contract delivery template:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -573,9 +573,12 @@ router.post('/sign/:token', async (req, res) => {
     // Generate signed PDF
     let pdfUrl = null;
     try {
+      console.log(`📄 Generating signed PDF for contract ${contract.id}...`);
       const pdfBuffer = await generateContractPDF(signedContractData);
+      console.log(`✅ PDF generated successfully, size: ${pdfBuffer.length} bytes`);
 
       // Upload to S3
+      console.log(`☁️ Uploading PDF to S3...`);
       const uploadResult = await uploadToS3(
         pdfBuffer,
         `contract_${contract.id}_${Date.now()}.pdf`,
@@ -585,9 +588,13 @@ router.post('/sign/:token', async (req, res) => {
 
       if (uploadResult.url) {
         pdfUrl = uploadResult.url;
+        console.log(`✅ PDF uploaded to S3: ${pdfUrl}`);
+      } else {
+        console.error('❌ S3 upload returned no URL:', uploadResult);
       }
     } catch (pdfError) {
-      console.error('Error generating PDF:', pdfError);
+      console.error('❌ Error generating/uploading PDF:', pdfError);
+      console.error('Stack:', pdfError.stack);
       // Continue even if PDF fails - signature is still valid
     }
 
@@ -660,10 +667,12 @@ router.post('/sign/:token', async (req, res) => {
       const saleNotes = JSON.stringify({
         auto_created: true,
         contract_id: contract.id,
+        contract_token: contract.contract_token, // Include token for PDF regeneration
         selected_photo_ids: selectedPhotoIds,
         signed_pdf_url: pdfUrl,
         message: `Auto-created from signed contract`
       });
+      console.log(`💰 Creating sale record for contract ${contract.id} with signed_pdf_url: ${pdfUrl ? 'present' : 'missing'}`);
       const saleData = {
         id: saleId,
         lead_id: contract.lead_id,
@@ -709,29 +718,97 @@ router.post('/sign/:token', async (req, res) => {
       const customerEmail = signedContractData.email;
       const customerName = signedContractData.customerName || 'Customer';
 
+      console.log(`📧 Preparing delivery email for ${customerEmail}...`);
+      console.log(`📧 PDF URL available: ${pdfUrl ? 'yes' : 'no'}`);
+      console.log(`📧 Photo attachments: ${photoAttachments.length}`);
+
       if (customerEmail) {
         const attachments = [];
 
         // Add signed PDF if available
         if (pdfUrl) {
           try {
+            console.log(`📄 Downloading signed PDF from S3: ${pdfUrl}`);
             const pdfResponse = await axios.get(pdfUrl, { responseType: 'arraybuffer', timeout: 30000 });
             attachments.push({
               buffer: Buffer.from(pdfResponse.data),
               filename: `signed_contract_${contract.id}.pdf`,
               contentType: 'application/pdf'
             });
-            console.log('Downloaded signed PDF for attachment');
+            console.log(`✅ Downloaded signed PDF for attachment (${pdfResponse.data.length} bytes)`);
           } catch (pdfDownloadError) {
-            console.error('Failed to download signed PDF:', pdfDownloadError.message);
+            console.error('❌ Failed to download signed PDF:', pdfDownloadError.message);
           }
+        } else {
+          console.log('⚠️ No PDF URL available - PDF will not be attached to email');
         }
 
         // Add selected images
         attachments.push(...photoAttachments);
 
-        const emailSubject = 'Your Signed Contract and Selected Images - Edge Talent';
-        const emailHtml = `
+        // Try to fetch contract_delivery template from database
+        let emailSubject = 'Your Signed Contract and Selected Images - Edge Talent';
+        let emailHtml = '';
+
+        try {
+          const { data: deliveryTemplate, error: templateError } = await supabase
+            .from('templates')
+            .select('*')
+            .eq('type', 'contract_delivery')
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (!templateError && deliveryTemplate) {
+            console.log(`✅ 📧 USING DATABASE TEMPLATE: "${deliveryTemplate.name}" (ID: ${deliveryTemplate.id})`);
+            console.log(`📧 Template subject: ${deliveryTemplate.subject}`);
+
+            // Process template variables
+            const totalFormatted = `£${parseFloat(signedContractData.total || 0).toFixed(2)}`;
+            const variables = {
+              '{customerName}': customerName,
+              '{leadName}': customerName,
+              '{customerEmail}': customerEmail,
+              '{leadEmail}': customerEmail,
+              '{contractTotal}': totalFormatted,
+              '{saleAmountFormatted}': totalFormatted,
+              '{invoiceNumber}': signedContractData.invoiceNumber || '',
+              '{signedDate}': new Date().toLocaleDateString('en-GB'),
+              '{signedTime}': new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+              '{photoCount}': photoAttachments.length.toString(),
+              '{hasPdf}': pdfUrl ? 'yes' : 'no',
+              '{companyName}': 'Edge Talent',
+              '{attachmentList}': `
+                <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+                  ${pdfUrl ? '<li>Your signed contract (PDF)</li>' : ''}
+                  ${photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected image${photoAttachments.length > 1 ? 's' : ''}</li>` : ''}
+                </ul>
+              `
+            };
+
+            // Replace variables in subject and body
+            emailSubject = deliveryTemplate.subject || emailSubject;
+            emailHtml = deliveryTemplate.email_body || '';
+
+            Object.entries(variables).forEach(([key, value]) => {
+              emailSubject = emailSubject.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
+              emailHtml = emailHtml.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
+            });
+          } else {
+            console.log('⚠️ 📧 No active contract_delivery template found in database');
+            if (templateError) {
+              console.log(`📧 Template lookup error: ${templateError.message}`);
+            }
+          }
+        } catch (templateFetchError) {
+          console.error('❌ Error fetching contract_delivery template:', templateFetchError.message);
+        }
+
+        // Use default template if none found in database
+        if (!emailHtml) {
+          console.log('📧 Using HARDCODED DEFAULT template (no database template found)');
+          emailHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -777,6 +854,15 @@ router.post('/sign/:token', async (req, res) => {
   </div>
 </body>
 </html>`;
+        }
+
+        let deliveryEmailStatus = {
+          sent: false,
+          error: null,
+          time: new Date().toISOString(),
+          to: customerEmail,
+          attachmentCount: attachments.length
+        };
 
         if (attachments.length > 0) {
           const emailResult = await sendEmail(
@@ -789,8 +875,10 @@ router.post('/sign/:token', async (req, res) => {
 
           if (emailResult.success) {
             console.log(`✅ Contract + images email sent to ${customerEmail} with ${attachments.length} attachments`);
+            deliveryEmailStatus.sent = true;
           } else {
             console.error('❌ Failed to send email with attachments:', emailResult.error);
+            deliveryEmailStatus.error = emailResult.error || 'Failed to send email';
           }
         } else {
           // No attachments, send simple confirmation
@@ -801,11 +889,72 @@ router.post('/sign/:token', async (req, res) => {
             [],
             'primary'
           );
-          console.log(`Confirmation email sent to ${customerEmail}`);
+
+          if (emailResult.success) {
+            console.log(`✅ Confirmation email sent to ${customerEmail}`);
+            deliveryEmailStatus.sent = true;
+          } else {
+            console.error('❌ Failed to send confirmation email:', emailResult.error);
+            deliveryEmailStatus.error = emailResult.error || 'Failed to send email';
+          }
+        }
+
+        // Save delivery email status to contract_data
+        try {
+          const { data: currentContract } = await supabase
+            .from('contracts')
+            .select('contract_data')
+            .eq('id', contract.id)
+            .single();
+
+          if (currentContract) {
+            const updatedData = {
+              ...currentContract.contract_data,
+              delivery_email_sent: deliveryEmailStatus.sent,
+              delivery_email_time: deliveryEmailStatus.time,
+              delivery_email_to: deliveryEmailStatus.to,
+              delivery_email_error: deliveryEmailStatus.error,
+              delivery_attachment_count: deliveryEmailStatus.attachmentCount
+            };
+
+            await supabase
+              .from('contracts')
+              .update({ contract_data: updatedData })
+              .eq('id', contract.id);
+
+            console.log(`📝 Delivery email status saved to contract ${contract.id}: ${deliveryEmailStatus.sent ? 'SUCCESS' : 'FAILED'}`);
+          }
+        } catch (statusUpdateError) {
+          console.error('Failed to save delivery email status:', statusUpdateError.message);
         }
       }
     } catch (emailError) {
       console.error('Error sending delivery email:', emailError);
+
+      // Save the error status even if email completely failed
+      try {
+        const { data: currentContract } = await supabase
+          .from('contracts')
+          .select('contract_data')
+          .eq('id', contract.id)
+          .single();
+
+        if (currentContract) {
+          const updatedData = {
+            ...currentContract.contract_data,
+            delivery_email_sent: false,
+            delivery_email_time: new Date().toISOString(),
+            delivery_email_error: emailError.message || 'Unknown error'
+          };
+
+          await supabase
+            .from('contracts')
+            .update({ contract_data: updatedData })
+            .eq('id', contract.id);
+        }
+      } catch (statusErr) {
+        console.error('Failed to save error status:', statusErr.message);
+      }
     }
 
     res.json({
@@ -861,6 +1010,58 @@ router.get('/lead/:leadId', auth, async (req, res) => {
 });
 
 /**
+ * @route   PATCH /api/contracts/:contractId/auth-code
+ * @desc    Save auth code for a contract (internal use)
+ * @access  Private
+ * NOTE: This route must come BEFORE /:contractId to avoid route conflicts
+ */
+router.patch('/:contractId/auth-code', auth, async (req, res) => {
+  try {
+    const { contractId } = req.params;
+    const { authCode } = req.body;
+
+    // Get existing contract
+    const { data: contract, error: fetchError } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('id', contractId)
+      .single();
+
+    if (fetchError || !contract) {
+      return res.status(404).json({ message: 'Contract not found' });
+    }
+
+    // Update contract_data with auth code
+    const updatedContractData = {
+      ...contract.contract_data,
+      authCode: authCode
+    };
+
+    const { error: updateError } = await supabase
+      .from('contracts')
+      .update({
+        contract_data: updatedContractData,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', contractId);
+
+    if (updateError) {
+      return res.status(500).json({ message: 'Failed to save auth code', error: updateError.message });
+    }
+
+    console.log(`✅ Auth code saved for contract ${contractId}`);
+
+    res.json({
+      success: true,
+      message: 'Auth code saved successfully'
+    });
+  } catch (error) {
+    console.error('Error saving auth code:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+/**
  * @route   GET /api/contracts/:contractId
  * @desc    Get contract details
  * @access  Private
@@ -882,6 +1083,15 @@ router.get('/:contractId', auth, async (req, res) => {
       return res.status(404).json({ message: 'Contract not found' });
     }
 
+    // Extract delivery email info from contract_data
+    const contractData = contract.contract_data || {};
+    const deliveryEmailSent = contractData.delivery_email_sent || false;
+    const deliveryEmailTime = contractData.delivery_email_time || null;
+    const deliveryEmailTo = contractData.delivery_email_to || contractData.email || null;
+    const deliveryEmailError = contractData.delivery_email_error || null;
+    const deliveryAttachmentCount = contractData.delivery_attachment_count || 0;
+    const selectedPhotoCount = contractData.selectedPhotoIds?.length || 0;
+
     res.json({
       success: true,
       contract: {
@@ -895,7 +1105,16 @@ router.get('/:contractId', auth, async (req, res) => {
         expiresAt: contract.expires_at,
         signingUrl: contract.signing_url,
         pdfUrl: contract.signed_pdf_url,
-        data: contract.contract_data
+        signed_pdf_url: contract.signed_pdf_url,
+        data: contract.contract_data,
+        // Delivery email info
+        deliveryEmailSent: deliveryEmailSent,
+        deliveryEmailTime: deliveryEmailTime,
+        deliveryEmailTo: deliveryEmailTo,
+        deliveryEmailError: deliveryEmailError,
+        deliveryAttachmentCount: deliveryAttachmentCount,
+        selectedPhotoCount: selectedPhotoCount,
+        authCode: contractData.authCode || ''
       }
     });
   } catch (error) {
@@ -962,6 +1181,231 @@ router.get('/:contractId/pdf', auth, async (req, res) => {
   } catch (error) {
     console.error('Error generating PDF:', error);
     res.status(500).json({ message: 'Failed to generate PDF', error: error.message });
+  }
+});
+
+/**
+ * @route   POST /api/contracts/:contractId/resend-delivery
+ * @desc    Resend the delivery email (signed PDF + images) to customer
+ * @access  Private
+ */
+router.post('/:contractId/resend-delivery', auth, async (req, res) => {
+  try {
+    const { contractId } = req.params;
+    const { email } = req.body; // Optional override email
+
+    // Get contract with all data
+    const { data: contract, error: fetchError } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('id', contractId)
+      .single();
+
+    if (fetchError || !contract) {
+      return res.status(404).json({ message: 'Contract not found' });
+    }
+
+    if (contract.status !== 'signed') {
+      return res.status(400).json({ message: 'Contract must be signed before resending delivery email' });
+    }
+
+    const contractData = contract.contract_data || {};
+    const customerEmail = email || contractData.email;
+    const customerName = contractData.customerName || 'Customer';
+
+    if (!customerEmail) {
+      return res.status(400).json({ message: 'No email address available' });
+    }
+
+    console.log(`📧 Resending delivery email for contract ${contractId} to ${customerEmail}...`);
+
+    const attachments = [];
+
+    // Add signed PDF if available
+    if (contract.signed_pdf_url) {
+      try {
+        console.log(`📄 Downloading signed PDF from: ${contract.signed_pdf_url}`);
+        const pdfResponse = await axios.get(contract.signed_pdf_url, { responseType: 'arraybuffer', timeout: 30000 });
+        attachments.push({
+          buffer: Buffer.from(pdfResponse.data),
+          filename: `signed_contract_${contractId}.pdf`,
+          contentType: 'application/pdf'
+        });
+        console.log(`✅ PDF downloaded (${pdfResponse.data.length} bytes)`);
+      } catch (pdfError) {
+        console.error('❌ Failed to download signed PDF:', pdfError.message);
+      }
+    }
+
+    // Get selected photos from contract data
+    const selectedPhotoIds = contractData.selectedPhotoIds || [];
+    let photoCount = 0;
+
+    if (selectedPhotoIds.length > 0) {
+      // Fetch photos from database
+      const { data: photos } = await supabase
+        .from('photos')
+        .select('id, filename, cloudinary_url, cloudinary_secure_url')
+        .in('id', selectedPhotoIds);
+
+      if (photos && photos.length > 0) {
+        for (const photo of photos) {
+          try {
+            const imageUrl = photo.cloudinary_secure_url || photo.cloudinary_url;
+            if (imageUrl) {
+              const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 30000 });
+              const extension = imageUrl.split('.').pop()?.split('?')[0] || 'jpg';
+              attachments.push({
+                buffer: Buffer.from(imageResponse.data),
+                filename: photo.filename || `image_${photo.id}.${extension}`,
+                contentType: `image/${extension === 'png' ? 'png' : 'jpeg'}`
+              });
+              photoCount++;
+            }
+          } catch (imgError) {
+            console.error(`Failed to download image ${photo.id}:`, imgError.message);
+          }
+        }
+        console.log(`📸 Downloaded ${photoCount} photos for attachment`);
+      }
+    }
+
+    if (attachments.length === 0) {
+      return res.status(400).json({ message: 'No attachments available to send' });
+    }
+
+    // Fetch delivery template
+    let emailSubject = 'Your Signed Contract and Selected Images - Edge Talent';
+    let emailHtml = '';
+
+    try {
+      const { data: deliveryTemplate } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('type', 'contract_delivery')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (deliveryTemplate) {
+        const totalFormatted = `£${parseFloat(contractData.total || 0).toFixed(2)}`;
+        const variables = {
+          '{customerName}': customerName,
+          '{leadName}': customerName,
+          '{customerEmail}': customerEmail,
+          '{leadEmail}': customerEmail,
+          '{contractTotal}': totalFormatted,
+          '{saleAmountFormatted}': totalFormatted,
+          '{invoiceNumber}': contractData.invoiceNumber || '',
+          '{signedDate}': contract.signed_at ? new Date(contract.signed_at).toLocaleDateString('en-GB') : '',
+          '{signedTime}': contract.signed_at ? new Date(contract.signed_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '',
+          '{photoCount}': photoCount.toString(),
+          '{companyName}': 'Edge Talent',
+          '{attachmentList}': `
+            <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+              ${contract.signed_pdf_url ? '<li>Your signed contract (PDF)</li>' : ''}
+              ${photoCount > 0 ? `<li>Your ${photoCount} selected image${photoCount > 1 ? 's' : ''}</li>` : ''}
+            </ul>
+          `
+        };
+
+        emailSubject = deliveryTemplate.subject || emailSubject;
+        emailHtml = deliveryTemplate.email_body || '';
+
+        Object.entries(variables).forEach(([key, value]) => {
+          emailSubject = emailSubject.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
+          emailHtml = emailHtml.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
+        });
+      }
+    } catch (templateError) {
+      console.error('Error fetching template:', templateError.message);
+    }
+
+    // Use default template if none found
+    if (!emailHtml) {
+      emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; color: white; border-radius: 8px 8px 0 0; }
+    .content { padding: 30px; background: #f9f9f9; }
+    .highlight { background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; background: #f0f0f0; border-radius: 0 0 8px 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>EDGE TALENT</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">Your Images Are Ready!</p>
+    </div>
+    <div class="content">
+      <p>Dear ${customerName},</p>
+      <p>Please find attached your signed contract and selected images.</p>
+      <div class="highlight">
+        <p style="margin: 0;"><strong>Attachments:</strong></p>
+        <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+          ${contract.signed_pdf_url ? '<li>Signed contract (PDF)</li>' : ''}
+          ${photoCount > 0 ? `<li>${photoCount} selected image${photoCount > 1 ? 's' : ''}</li>` : ''}
+        </ul>
+      </div>
+      <p>Best regards,<br><strong>The Edge Talent Team</strong></p>
+    </div>
+    <div class="footer">
+      <p><strong>Edge Talent</strong></p>
+      <p>Email: hello@edgetalent.co.uk</p>
+    </div>
+  </div>
+</body>
+</html>`;
+    }
+
+    // Send email
+    const emailResult = await sendEmail(
+      customerEmail,
+      emailSubject,
+      emailHtml,
+      attachments,
+      'primary'
+    );
+
+    if (emailResult.success) {
+      // Update contract with delivery info
+      const updatedContractData = {
+        ...contract.contract_data,
+        delivery_email_sent: true,
+        delivery_email_time: new Date().toISOString(),
+        delivery_email_to: customerEmail,
+        delivery_resent_count: (contractData.delivery_resent_count || 0) + 1
+      };
+
+      await supabase
+        .from('contracts')
+        .update({
+          contract_data: updatedContractData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', contractId);
+
+      console.log(`✅ Delivery email resent to ${customerEmail}`);
+
+      res.json({
+        success: true,
+        message: 'Delivery email sent successfully',
+        sentTo: customerEmail,
+        attachments: attachments.length
+      });
+    } else {
+      console.error('❌ Failed to send delivery email:', emailResult.error);
+      res.status(500).json({ message: 'Failed to send email', error: emailResult.error });
+    }
+  } catch (error) {
+    console.error('Error resending delivery email:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 

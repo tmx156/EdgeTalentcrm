@@ -163,12 +163,22 @@ const PublicBooking = () => {
   const [paymentMethodId, setPaymentMethodId] = useState(null);
   const [customerId, setCustomerId] = useState(null);
 
-  // Calendar restriction: only allow 3 months (current + 2 ahead)
+  // Calendar restriction: only allow 3 weeks ahead
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const maxBookingDate = new Date(today);
+  maxBookingDate.setDate(today.getDate() + 21); // 3 weeks ahead
+
   const minMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const maxMonth = new Date(today.getFullYear(), today.getMonth() + 2, 1);
+  const maxMonth = new Date(maxBookingDate.getFullYear(), maxBookingDate.getMonth(), 1);
   const isAtMinMonth = currentMonth.getFullYear() === minMonth.getFullYear() && currentMonth.getMonth() === minMonth.getMonth();
   const isAtMaxMonth = currentMonth.getFullYear() === maxMonth.getFullYear() && currentMonth.getMonth() === maxMonth.getMonth();
+
+  // Check if date is beyond 3 weeks
+  const isDateTooFar = (date) => {
+    if (!date) return true;
+    return date > maxBookingDate;
+  };
 
   const timeSlots = [
     '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
@@ -281,7 +291,7 @@ const PublicBooking = () => {
   };
 
   const getAvailableCount = (date) => {
-    if (!date || isDateBlocked(date) || isDateInPast(date)) return 0;
+    if (!date || isDateBlocked(date) || isDateInPast(date) || isDateTooFar(date)) return 0;
     return timeSlots.filter(t => !getBookedTimes(date).includes(t)).length;
   };
 

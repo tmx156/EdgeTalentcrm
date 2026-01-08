@@ -107,6 +107,20 @@ const LazyImage = memo(({
   videoLoop = true,
   ...rest
 }) => {
+  // Handle null/undefined/empty src - show fallback immediately
+  if (!src || src === 'null' || src === '') {
+    return (
+      <img
+        src="/images/fallback.jpeg"
+        alt={alt || 'Image'}
+        className={className}
+        style={style}
+        onClick={onClick}
+        title={title}
+      />
+    );
+  }
+
   const mediaType = getMediaType(src);
 
   // Check if this image was previously loaded (survives remounts)

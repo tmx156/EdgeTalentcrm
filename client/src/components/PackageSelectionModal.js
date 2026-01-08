@@ -573,7 +573,7 @@ const PackageSelectionModal = ({
                   </button>
                 )}
 
-                {/* Send Contract Button - Show when package selected */}
+                {/* Generate Invoice Button - Show when package selected */}
                 {onSendContract && selectedMainPackage && (
                   <button
                     onClick={() => onSendContract({
@@ -586,14 +586,14 @@ const PackageSelectionModal = ({
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
                   >
                     <FileText className="w-4 h-4" />
-                    <span>Send Contract</span>
+                    <span>Generate Invoice</span>
                   </button>
                 )}
 
-                {/* Individual Items - Send Contract OR Generate Invoice */}
+                {/* Individual Items - Generate Invoice */}
                 {!selectedMainPackage && Object.values(selectedIndividuals).some(q => q > 0) && (
                   <>
-                    {/* Send Contract for Individual Items */}
+                    {/* Generate Invoice for Individual Items */}
                     {onSendContract && (
                       <button
                         onClick={() => {
@@ -625,7 +625,7 @@ const PackageSelectionModal = ({
                         className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
                       >
                         <FileText className="w-4 h-4" />
-                        <span>Send Contract</span>
+                        <span>Generate Invoice</span>
                       </button>
                     )}
 

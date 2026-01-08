@@ -2,19 +2,21 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FiX, FiChevronLeft, FiChevronRight, FiPlay, FiPause,
   FiCheck, FiPlus, FiShoppingBag, FiImage, FiCheckSquare, FiSquare,
-  FiMaximize, FiMinimize
+  FiMaximize, FiMinimize, FiLoader
 } from 'react-icons/fi';
 import { getCloudinaryUrl, getBlurPlaceholder } from '../utils/imageUtils';
 import OptimizedImage from './OptimizedImage';
+import axios from 'axios';
 
 /**
  * PresentationGallery - Fullscreen slideshow for presenting photos to clients
  * Features smooth crossfade transitions, auto-play, and photo selection
+ * Fetches ALL photos for the lead when opened (independent of parent's pagination)
  */
 const PresentationGallery = ({
   isOpen,
   onClose,
-  photos = [],
+  photos: initialPhotos = [], // Used as initial data while fetching all
   leadId,
   leadName,
   onProceedToPackage,
@@ -23,6 +25,8 @@ const PresentationGallery = ({
   selectionMode = false // true when selecting after package chosen
 }) => {
   // State
+  const [photos, setPhotos] = useState(initialPhotos); // Local photos state - will be replaced with ALL photos
+  const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [previousIndex, setPreviousIndex] = useState(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -47,8 +51,42 @@ const PresentationGallery = ({
       setIsPlaying(true);
       setImageLoaded(false);
       setIsImmersive(false);
+      // Use initial photos immediately while we fetch all
+      setPhotos(initialPhotos);
     }
-  }, [isOpen, initialSelectedIds]);
+  }, [isOpen, initialSelectedIds, initialPhotos]);
+
+  // Fetch ALL photos for the lead when gallery opens (independent fetch)
+  useEffect(() => {
+    const fetchAllPhotos = async () => {
+      if (!isOpen || !leadId) return;
+
+      setIsLoadingPhotos(true);
+      try {
+        // Fetch ALL photos (limit 500 is server max)
+        const response = await axios.get('/api/photos', {
+          params: {
+            leadId,
+            limit: 500, // Fetch all photos for the gallery
+            fields: 'minimal'
+          }
+        });
+
+        if (response.data.success && response.data.photos) {
+          const allPhotos = response.data.photos;
+          console.log(`📸 Gallery: Fetched ${allPhotos.length} photos for lead ${leadId}`);
+          setPhotos(allPhotos);
+        }
+      } catch (error) {
+        console.error('Error fetching all photos for gallery:', error);
+        // Keep using initialPhotos if fetch fails
+      } finally {
+        setIsLoadingPhotos(false);
+      }
+    };
+
+    fetchAllPhotos();
+  }, [isOpen, leadId]);
 
   // Select All / Deselect All handler
   const handleSelectAll = () => {
@@ -285,6 +323,12 @@ const PresentationGallery = ({
             <span className="text-white/60 text-sm">
               {currentIndex + 1} / {photos.length}
             </span>
+            {isLoadingPhotos && (
+              <span className="text-white/60 text-sm flex items-center space-x-1">
+                <FiLoader className="w-4 h-4 animate-spin" />
+                <span>Loading all photos...</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center space-x-3">
@@ -410,11 +454,13 @@ const PresentationGallery = ({
         )}
       </div>
 
-      {/* Navigation Arrows */}
+      {/* Navigation Arrows - always visible, more subtle in fullscreen */}
       <button
         onClick={() => { goToPrevious(); setIsPlaying(false); }}
-        className={`absolute left-4 top-1/2 -translate-y-1/2 z-20 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-all hover:scale-110 ${
-          isImmersive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        className={`absolute left-4 top-1/2 -translate-y-1/2 z-20 text-white p-4 rounded-full transition-all hover:scale-110 ${
+          isImmersive
+            ? 'bg-white/5 hover:bg-white/20 opacity-50 hover:opacity-100'
+            : 'bg-white/10 hover:bg-white/20 opacity-100'
         }`}
         title="Previous (←)"
       >
@@ -423,8 +469,10 @@ const PresentationGallery = ({
 
       <button
         onClick={() => { goToNext(); setIsPlaying(false); }}
-        className={`absolute right-4 top-1/2 -translate-y-1/2 z-20 bg-white/10 hover:bg-white/20 text-white p-4 rounded-full transition-all hover:scale-110 ${
-          isImmersive ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        className={`absolute right-4 top-1/2 -translate-y-1/2 z-20 text-white p-4 rounded-full transition-all hover:scale-110 ${
+          isImmersive
+            ? 'bg-white/5 hover:bg-white/20 opacity-50 hover:opacity-100'
+            : 'bg-white/10 hover:bg-white/20 opacity-100'
         }`}
         title="Next (→)"
       >

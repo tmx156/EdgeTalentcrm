@@ -206,12 +206,9 @@ export const getOptimizedImageUrl = (originalUrl, size = 'optimized') => {
     return null;
   }
 
-  // For external URLs, apply quality optimization where possible
+  // For ALL external URLs (http/https), return them directly
+  // This includes: matchmodels.co.uk, modelhunt.co.uk, supabase.co, etc.
   if (originalUrl.startsWith('http://') || originalUrl.startsWith('https://')) {
-    // Apply thumbnail quality reduction (80% quality = 20% reduction)
-    if (size === 'thumbnail') {
-      return applyThumbnailOptimization(originalUrl);
-    }
     return originalUrl;
   }
 

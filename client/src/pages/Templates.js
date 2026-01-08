@@ -48,7 +48,7 @@ const Templates = () => {
     const categories = {
       'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation'],
       'Bookers Templates': ['no_answer', 'no_photo', 'invitation_email'], // Templates created by booker role users
-      'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance', 'contract_signing'],
+      'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance', 'contract_signing', 'contract_delivery'],
       'Receipts': ['receipt', 'sale_receipt', 'payment_receipt'],
       'Lead Details Templates': ['custom', 'booker']
     };
@@ -90,6 +90,13 @@ const Templates = () => {
     }
   }, [user]);
 
+  // Fetch type-specific variables when template type changes in form
+  useEffect(() => {
+    if (showModal && formData.type) {
+      fetchVariables(formData.type);
+    }
+  }, [formData.type, showModal]);
+
   const fetchTemplates = async () => {
     try {
       console.log('🔄 Fetching templates...');
@@ -115,9 +122,10 @@ const Templates = () => {
     }
   };
 
-  const fetchVariables = async () => {
+  const fetchVariables = async (templateType = null) => {
     try {
-      const response = await fetch('/api/templates/variables/list', {
+      const typeParam = templateType ? `?type=${templateType}` : '';
+      const response = await fetch(`/api/templates/variables/list${typeParam}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -265,23 +273,20 @@ const Templates = () => {
     }
   };
 
-  const handlePreview = async (template) => {
-    try {
-      const response = await fetch(`/api/templates/${template._id}/preview`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setPreviewData(data);
-        setShowPreview(true);
+  const handlePreview = (template) => {
+    // Directly use template data for preview - no API call needed
+    setPreviewData({
+      template: {
+        name: template.name,
+        type: template.type,
+        subject: template.subject,
+        emailBody: template.emailBody || template.email_body,
+        smsBody: template.smsBody || template.sms_body,
+        sendEmail: template.sendEmail || template.send_email,
+        sendSMS: template.sendSMS || template.send_sms
       }
-    } catch (error) {
-      console.error('Error previewing template:', error);
-    }
+    });
+    setShowPreview(true);
   };
 
   const handleTest = async (template) => {
@@ -459,7 +464,7 @@ const Templates = () => {
               const cat = Object.entries({
                 'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation'],
                 'Bookers Templates': ['no_answer', 'no_photo', 'invitation_email'],
-                'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance', 'contract_signing'],
+                'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance', 'contract_signing', 'contract_delivery'],
                 'Lead Details Templates': ['custom', 'booker']
               }).find(([cat, types]) => types.includes(t.type));
               return cat ? cat[0] === categoryFilter : categoryFilter === 'Diary Templates';
@@ -667,6 +672,7 @@ const Templates = () => {
                             <option key="sale_finance_agreement" value="sale_finance_agreement">📋 Finance Agreement - Welcome</option>
                             <option key="sale_followup_finance" value="sale_followup_finance">💳 Finance Agreement - Follow-up</option>
                             <option key="contract_signing" value="contract_signing">📝 Contract Signing</option>
+                            <option key="contract_delivery" value="contract_delivery">📦 Contract Delivery (Photos + PDF)</option>
                             <option key="receipt" value="receipt">🧾 Receipt</option>
                             <option key="sale_receipt" value="sale_receipt">🧾 Sale Receipt</option>
                             <option key="payment_receipt" value="payment_receipt">🧾 Payment Receipt</option>
@@ -993,15 +999,42 @@ const Templates = () => {
                         <h4 className="text-lg font-semibold text-gray-900 mb-4">Live Preview</h4>
                         <div className="space-y-4">
                           {formData.emailBody && (
-                            <div className="bg-white rounded-lg p-4 border border-gray-200">
-                              <div className="text-sm font-semibold text-gray-600 mb-2">Email Preview:</div>
-                              <div className="text-sm text-gray-800 whitespace-pre-wrap">{formData.emailBody}</div>
+                            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                              <div className="text-sm font-semibold text-gray-600 p-3 bg-gray-50 border-b flex items-center justify-between">
+                                <span>Email Preview:</span>
+                                <span className="text-xs text-gray-400">Rendered HTML</span>
+                              </div>
+                              {/* Check if content looks like HTML */}
+                              {formData.emailBody.includes('<') && formData.emailBody.includes('>') ? (
+                                <div className="p-4">
+                                  <iframe
+                                    title="Email Preview"
+                                    srcDoc={formData.emailBody}
+                                    className="w-full border-0 rounded"
+                                    style={{ minHeight: '400px', maxHeight: '600px' }}
+                                    sandbox="allow-same-origin"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="p-4 text-sm text-gray-800 whitespace-pre-wrap">
+                                  {formData.emailBody}
+                                </div>
+                              )}
                             </div>
                           )}
                           {formData.smsBody && (
-                            <div className="bg-white rounded-lg p-4 border border-gray-200">
-                              <div className="text-sm font-semibold text-gray-600 mb-2">SMS Preview:</div>
-                              <div className="text-sm text-gray-800 font-mono">{formData.smsBody}</div>
+                            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                              <div className="text-sm font-semibold text-gray-600 p-3 bg-gray-50 border-b">
+                                SMS Preview:
+                              </div>
+                              <div className="p-4">
+                                {/* SMS Phone mockup */}
+                                <div className="max-w-xs mx-auto bg-gray-100 rounded-2xl p-4">
+                                  <div className="bg-green-500 text-white rounded-2xl rounded-br-sm p-3 text-sm">
+                                    {formData.smsBody}
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1034,59 +1067,101 @@ const Templates = () => {
 
         {/* Preview Modal */}
         {showPreview && previewData && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b">
+          <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6">
                 <div className="flex justify-between items-center">
-                  <h2 className="text-2xl font-bold">Template Preview</h2>
+                  <div>
+                    <h2 className="text-2xl font-bold">Template Preview</h2>
+                    <p className="text-blue-100 mt-1">{previewData.template.name} - {previewData.template.type?.replace('_', ' ')}</p>
+                  </div>
                   <button
                     onClick={() => setShowPreview(false)}
-                    className="p-2 hover:bg-gray-100 rounded"
+                    className="text-white hover:text-blue-200 p-2 rounded-full hover:bg-white hover:bg-opacity-20 transition-all"
                   >
-                    <FiX />
+                    <FiX className="h-6 w-6" />
                   </button>
                 </div>
               </div>
 
-              <div className="p-6">
+              <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 100px)' }}>
                 <div className="space-y-6">
                   {/* Email Preview */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                      <FiMail /> Email Preview
-                    </h3>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="mb-2">
-                        <strong>Subject:</strong> {previewData.template.subject}
+                  {(previewData.template.sendEmail !== false && previewData.template.emailBody) && (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-3 border-b flex items-center gap-2">
+                        <FiMail className="text-blue-600" />
+                        <span className="font-semibold text-gray-700">Email Preview</span>
                       </div>
-                      <div className="whitespace-pre-wrap text-sm">
-                        {previewData.template.emailBody}
+
+                      {/* Subject */}
+                      <div className="px-4 py-3 bg-gray-50 border-b">
+                        <span className="text-sm text-gray-500">Subject:</span>
+                        <span className="ml-2 font-medium">{previewData.template.subject || '(No subject)'}</span>
+                      </div>
+
+                      {/* Email Body - Rendered HTML */}
+                      <div className="p-4 bg-white">
+                        {previewData.template.emailBody?.includes('<') && previewData.template.emailBody?.includes('>') ? (
+                          <iframe
+                            title="Email Preview"
+                            srcDoc={previewData.template.emailBody}
+                            className="w-full border border-gray-200 rounded-lg"
+                            style={{ minHeight: '400px', maxHeight: '500px' }}
+                            sandbox="allow-same-origin"
+                          />
+                        ) : (
+                          <div className="whitespace-pre-wrap text-sm text-gray-800 p-4 bg-gray-50 rounded-lg">
+                            {previewData.template.emailBody || '(No email content)'}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* SMS Preview */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                      <FiPhone /> SMS Preview
-                    </h3>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="whitespace-pre-wrap text-sm">
-                        {previewData.template.smsBody}
+                  {(previewData.template.sendSMS !== false && previewData.template.smsBody) && (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                      <div className="bg-gray-50 px-4 py-3 border-b flex items-center gap-2">
+                        <FiPhone className="text-green-600" />
+                        <span className="font-semibold text-gray-700">SMS Preview</span>
+                        <span className="ml-auto text-xs text-gray-400">
+                          {previewData.template.smsBody?.length || 0} characters
+                        </span>
+                      </div>
+
+                      {/* SMS Phone Mockup */}
+                      <div className="p-6 bg-gradient-to-b from-gray-100 to-gray-200 flex justify-center">
+                        <div className="w-72 bg-white rounded-3xl shadow-xl overflow-hidden border-4 border-gray-800">
+                          {/* Phone notch */}
+                          <div className="bg-gray-800 h-6 flex justify-center items-end pb-1">
+                            <div className="w-20 h-4 bg-black rounded-b-xl"></div>
+                          </div>
+                          {/* Screen */}
+                          <div className="p-4 min-h-[200px] bg-gray-50">
+                            <div className="text-xs text-gray-400 text-center mb-3">Edge Talent</div>
+                            <div className="bg-green-500 text-white rounded-2xl rounded-bl-sm p-3 text-sm shadow-md">
+                              {previewData.template.smsBody || '(No SMS content)'}
+                            </div>
+                            <div className="text-xs text-gray-400 text-right mt-1">Just now</div>
+                          </div>
+                          {/* Home indicator */}
+                          <div className="bg-white h-8 flex justify-center items-center">
+                            <div className="w-24 h-1 bg-gray-300 rounded-full"></div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Sample Data */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-3">Sample Data Used</h3>
-                    <div className="bg-gray-50 p-4 rounded-lg text-sm">
-                      <div><strong>Lead:</strong> {previewData.sampleData.lead.name}</div>
-                      <div><strong>Email:</strong> {previewData.sampleData.lead.email}</div>
-                      <div><strong>Phone:</strong> {previewData.sampleData.lead.phone}</div>
-                      <div><strong>Booking Date:</strong> {previewData.sampleData.bookingDate ? new Date(previewData.sampleData.bookingDate).toDateString() : 'Not available'}</div>
+                  {/* No content message */}
+                  {!previewData.template.emailBody && !previewData.template.smsBody && (
+                    <div className="text-center py-12 text-gray-500">
+                      <div className="text-4xl mb-3">📭</div>
+                      <p>This template has no content yet.</p>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
