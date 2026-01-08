@@ -517,9 +517,24 @@ async function updateDailyPerformance(userId, date = new Date().toISOString().sp
 
     // Get leads for this user and date
     const leads = await dbManager.query('leads', {
-      select: 'id, status, assigned_at, booked_at, has_sale, sales',
+      select: 'id, status, assigned_at, booked_at, has_sale, updated_at',
       eq: { booker_id: userId }
     });
+
+    // Get sales for this user and date (sales are linked via lead_id)
+    const leadIds = leads.map(l => l.id);
+    let sales = [];
+    if (leadIds.length > 0) {
+      try {
+        sales = await dbManager.query('sales', {
+          select: 'lead_id, amount, created_at',
+          in: { lead_id: leadIds }
+        }) || [];
+      } catch (salesError) {
+        console.warn('Error fetching sales for daily performance:', salesError.message);
+        sales = [];
+      }
+    }
 
     // Calculate metrics
     const leadsAssignedToday = leads.filter(l =>
@@ -537,13 +552,14 @@ async function updateDailyPerformance(userId, date = new Date().toISOString().sp
       l.status === 'Attended' && l.updated_at && new Date(l.updated_at) >= startOfDay && new Date(l.updated_at) <= endOfDay
     ).length;
 
-    const salesMadeToday = leads.filter(l =>
-      l.has_sale && l.updated_at && new Date(l.updated_at) >= startOfDay && new Date(l.updated_at) <= endOfDay
+    // Calculate sales made today and total sale amount from sales table
+    const salesMadeToday = sales.filter(s =>
+      s.created_at && new Date(s.created_at) >= startOfDay && new Date(s.created_at) <= endOfDay
     ).length;
 
-    const totalSaleAmountToday = leads
-      .filter(l => l.has_sale && l.updated_at && new Date(l.updated_at) >= startOfDay && new Date(l.updated_at) <= endOfDay)
-      .reduce((sum, l) => sum + parseFloat(l.sales || 0), 0);
+    const totalSaleAmountToday = sales
+      .filter(s => s.created_at && new Date(s.created_at) >= startOfDay && new Date(s.created_at) <= endOfDay)
+      .reduce((sum, s) => sum + parseFloat(s.amount || 0), 0);
 
     // Calculate rates
     const conversionRate = leadsAssignedToday > 0 ? (leadsBookedToday / leadsAssignedToday * 100) : 0;

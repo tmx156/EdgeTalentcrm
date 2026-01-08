@@ -9,9 +9,6 @@ const express = require('express');
 const router = express.Router();
 const Stripe = require('stripe');
 
-// Initialize Stripe with secret key
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
 /**
  * @route   POST /api/stripe/create-setup-intent
  * @desc    Create a SetupIntent for saving card details (no charge)
@@ -19,6 +16,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
  */
 router.post('/create-setup-intent', async (req, res) => {
   try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const { leadId, email, name } = req.body;
 
     if (!leadId) {
@@ -100,6 +98,7 @@ router.post('/create-setup-intent', async (req, res) => {
  */
 router.post('/confirm-setup', async (req, res) => {
   try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const { setupIntentId, leadId } = req.body;
 
     if (!setupIntentId || !leadId) {
@@ -154,6 +153,7 @@ router.post('/confirm-setup', async (req, res) => {
  */
 router.post('/charge-no-show', async (req, res) => {
   try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const { customerId, paymentMethodId, leadId, leadName } = req.body;
 
     if (!customerId || !paymentMethodId) {
