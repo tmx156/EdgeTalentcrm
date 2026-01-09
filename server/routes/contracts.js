@@ -1096,6 +1096,45 @@ router.post('/sign/:token', async (req, res) => {
 <p>Best regards,<br>The Edge Talent Team</p>`;
         }
 
+        // Process template attachments (e.g., agency list PDF)
+        if (deliveryTemplate && deliveryTemplate.attachments) {
+          try {
+            let templateAttachments = deliveryTemplate.attachments;
+            // Parse if string
+            if (typeof templateAttachments === 'string') {
+              templateAttachments = JSON.parse(templateAttachments);
+            }
+
+            if (Array.isArray(templateAttachments) && templateAttachments.length > 0) {
+              console.log(`📎 Processing ${templateAttachments.length} template attachment(s)...`);
+
+              for (const attachment of templateAttachments) {
+                if (attachment.url) {
+                  try {
+                    console.log(`📎 Downloading template attachment: ${attachment.name || attachment.url}`);
+                    const attachmentResponse = await axios.get(attachment.url, {
+                      responseType: 'arraybuffer',
+                      timeout: 30000
+                    });
+
+                    attachments.push({
+                      buffer: Buffer.from(attachmentResponse.data),
+                      filename: attachment.name || attachment.filename || 'attachment.pdf',
+                      contentType: attachment.contentType || attachment.type || 'application/octet-stream'
+                    });
+
+                    console.log(`✅ Downloaded template attachment: ${attachment.name || 'file'} (${attachmentResponse.data.length} bytes)`);
+                  } catch (attachmentError) {
+                    console.error(`❌ Failed to download template attachment ${attachment.name}:`, attachmentError.message);
+                  }
+                }
+              }
+            }
+          } catch (parseError) {
+            console.error('❌ Failed to parse template attachments:', parseError.message);
+          }
+        }
+
         let deliveryEmailStatus = {
           sent: false,
           error: null,
@@ -1597,6 +1636,40 @@ router.post('/:contractId/resend-delivery', auth, async (req, res) => {
           emailSubject = emailSubject.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
           emailHtml = emailHtml.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
         });
+
+        // Process template attachments
+        if (deliveryTemplate.attachments) {
+          let templateAttachments = deliveryTemplate.attachments;
+          if (typeof templateAttachments === 'string') {
+            templateAttachments = JSON.parse(templateAttachments);
+          }
+
+          if (Array.isArray(templateAttachments) && templateAttachments.length > 0) {
+            console.log(`📎 Processing ${templateAttachments.length} template attachment(s)...`);
+
+            for (const attachment of templateAttachments) {
+              if (attachment.url) {
+                try {
+                  console.log(`📎 Downloading template attachment: ${attachment.name || attachment.url}`);
+                  const attachmentResponse = await axios.get(attachment.url, {
+                    responseType: 'arraybuffer',
+                    timeout: 30000
+                  });
+
+                  attachments.push({
+                    buffer: Buffer.from(attachmentResponse.data),
+                    filename: attachment.name || attachment.filename || 'attachment.pdf',
+                    contentType: attachment.contentType || attachment.type || 'application/octet-stream'
+                  });
+
+                  console.log(`✅ Downloaded template attachment: ${attachment.name || 'file'} (${attachmentResponse.data.length} bytes)`);
+                } catch (attachmentError) {
+                  console.error(`❌ Failed to download template attachment ${attachment.name}:`, attachmentError.message);
+                }
+              }
+            }
+          }
+        }
       }
     } catch (templateError) {
       console.error('Error fetching template:', templateError.message);
