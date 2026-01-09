@@ -919,14 +919,15 @@ router.post('/sign/:token', async (req, res) => {
         }
 
         // Zip images if there are any (handles large packages with 100+ images)
+        let imagesDownloadUrl = null; // For S3 link if zip is too large
         if (photoAttachments.length > 0) {
           try {
             console.log(`📦 Creating zip file for ${photoAttachments.length} images...`);
 
-            // Create zip in memory
+            // Create zip in memory with higher compression for large files
             const zipBuffer = await new Promise((resolve, reject) => {
               const chunks = [];
-              const archive = archiver('zip', { zlib: { level: 5 } }); // Level 5 = balanced compression
+              const archive = archiver('zip', { zlib: { level: 9 } }); // Level 9 = max compression
 
               archive.on('data', (chunk) => chunks.push(chunk));
               archive.on('end', () => resolve(Buffer.concat(chunks)));
@@ -942,13 +943,39 @@ router.post('/sign/:token', async (req, res) => {
             });
 
             const zipFilename = `EdgeTalent_YourImages_${new Date().toISOString().split('T')[0]}.zip`;
-            attachments.push({
-              buffer: zipBuffer,
-              filename: zipFilename,
-              contentType: 'application/zip'
-            });
+            const zipSizeMB = zipBuffer.length / 1024 / 1024;
+            console.log(`✅ Created zip file: ${zipFilename} (${zipSizeMB.toFixed(2)} MB, ${photoAttachments.length} images)`);
 
-            console.log(`✅ Created zip file: ${zipFilename} (${(zipBuffer.length / 1024 / 1024).toFixed(2)} MB, ${photoAttachments.length} images)`);
+            // Gmail has 25MB limit, but base64 encoding adds ~33% overhead
+            // Use 15MB threshold to be safe (15 * 1.33 = ~20MB)
+            const MAX_ATTACHMENT_SIZE_MB = 15;
+
+            if (zipSizeMB > MAX_ATTACHMENT_SIZE_MB) {
+              // Upload to S3 instead of attaching
+              console.log(`⚠️ Zip file (${zipSizeMB.toFixed(2)} MB) exceeds ${MAX_ATTACHMENT_SIZE_MB}MB limit - uploading to S3...`);
+
+              try {
+                const s3Key = `delivery-images/${new Date().getFullYear()}/${Date.now()}-${zipFilename}`;
+                const s3Url = await uploadToS3(zipBuffer, s3Key, 'application/zip');
+                imagesDownloadUrl = s3Url;
+                console.log(`✅ Zip uploaded to S3: ${s3Url}`);
+              } catch (s3Error) {
+                console.error('❌ Failed to upload zip to S3:', s3Error.message);
+                // Still try to attach - Gmail might accept it
+                attachments.push({
+                  buffer: zipBuffer,
+                  filename: zipFilename,
+                  contentType: 'application/zip'
+                });
+              }
+            } else {
+              // Small enough to attach directly
+              attachments.push({
+                buffer: zipBuffer,
+                filename: zipFilename,
+                contentType: 'application/zip'
+              });
+            }
           } catch (zipError) {
             console.error('❌ Failed to create zip file:', zipError.message);
             // Fallback: attach images individually if zip fails
@@ -979,6 +1006,17 @@ router.post('/sign/:token', async (req, res) => {
 
             // Process template variables
             const totalFormatted = `£${parseFloat(signedContractData.total || 0).toFixed(2)}`;
+
+            // Build image bullet text based on whether images are attached or on S3
+            let bulletImagesText = '';
+            if (photoAttachments.length > 0) {
+              if (imagesDownloadUrl) {
+                bulletImagesText = `<li>Your ${photoAttachments.length} selected images - <a href="${imagesDownloadUrl}" style="color: #2563eb; font-weight: bold;">Click here to download your images (ZIP file)</a></li>`;
+              } else {
+                bulletImagesText = `<li>Your ${photoAttachments.length} selected images in a ZIP file - simply download and extract to view</li>`;
+              }
+            }
+
             const variables = {
               '{customerName}': customerName,
               '{leadName}': customerName,
@@ -992,9 +1030,10 @@ router.post('/sign/:token', async (req, res) => {
               '{photoCount}': photoAttachments.length.toString(),
               '{hasPdf}': pdfUrl ? 'yes' : 'no',
               '{companyName}': 'Edge Talent',
+              '{imagesDownloadUrl}': imagesDownloadUrl || '',
               // Conditional bullets based on package
               '{bulletContract}': pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : '',
-              '{bulletImages}': photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected images in a ZIP file - simply download and extract to view</li>` : '',
+              '{bulletImages}': bulletImagesText,
               '{bulletAgencyList}': (signedContractData.recommendedAgencyList || signedContractData.agencyList) ? '<li>Your \'recommended agency list\' is attached to this email</li>' : '',
               '{bulletProjectInfluencer}': signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : '',
               '{bulletEfolio}': signedContractData.efolio ? '<li>Your Efolio URL and login details will be issued to you from Edge Talent within 7 days</li>' : '',
@@ -1003,7 +1042,7 @@ router.post('/sign/:token', async (req, res) => {
               '{attachmentList}': `
                 <ul style="margin: 10px 0 0 0; padding-left: 20px;">
                   ${pdfUrl ? '<li>Your signed contract (PDF)</li>' : ''}
-                  ${photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected images (ZIP file)</li>` : ''}
+                  ${photoAttachments.length > 0 ? (imagesDownloadUrl ? `<li><a href="${imagesDownloadUrl}">Download your ${photoAttachments.length} images (ZIP)</a></li>` : `<li>Your ${photoAttachments.length} selected images (ZIP file)</li>`) : ''}
                 </ul>
               `
             };
@@ -1029,13 +1068,24 @@ router.post('/sign/:token', async (req, res) => {
         // Use default template if none found in database
         if (!emailHtml) {
           console.log('📧 Using HARDCODED DEFAULT template (no database template found)');
+
+          // Build images text for fallback template
+          let imagesText = '';
+          if (photoAttachments.length > 0) {
+            if (imagesDownloadUrl) {
+              imagesText = `<li>Your ${photoAttachments.length} selected images - <a href="${imagesDownloadUrl}" style="color: #2563eb; font-weight: bold;">Click here to download your images (ZIP file)</a></li>`;
+            } else {
+              imagesText = `<li>Your ${photoAttachments.length} selected images in a ZIP file - simply download and extract to view</li>`;
+            }
+          }
+
           emailHtml = `<p>Dear ${customerName},</p>
 <p>Thank you for your purchase with Edge Talent!</p>
 <p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
-<p>Please find attached:</p>
+<p>Please find ${imagesDownloadUrl ? 'your contract attached and download link below' : 'attached'}:</p>
 <ul>
   ${pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : ''}
-  ${photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected images in a ZIP file - simply download and extract to view</li>` : ''}
+  ${imagesText}
   ${signedContractData.recommendedAgencyList || signedContractData.agencyList ? '<li>Your \'recommended agency list\' is attached to this email</li>' : ''}
   ${signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : ''}
   ${signedContractData.efolio ? '<li>Your Efolio URL and login details will be issued to you from Edge Talent within 7 days</li>' : ''}
