@@ -1111,7 +1111,8 @@ router.post('/sign/:token', async (req, res) => {
               for (const attachment of templateAttachments) {
                 if (attachment.url) {
                   try {
-                    console.log(`📎 Downloading template attachment: ${attachment.name || attachment.url}`);
+                    const attachmentName = attachment.originalName || attachment.name || attachment.filename || 'attachment.pdf';
+                    console.log(`📎 Downloading template attachment: ${attachmentName}`);
                     const attachmentResponse = await axios.get(attachment.url, {
                       responseType: 'arraybuffer',
                       timeout: 30000
@@ -1119,13 +1120,13 @@ router.post('/sign/:token', async (req, res) => {
 
                     attachments.push({
                       buffer: Buffer.from(attachmentResponse.data),
-                      filename: attachment.name || attachment.filename || 'attachment.pdf',
-                      contentType: attachment.contentType || attachment.type || 'application/octet-stream'
+                      filename: attachmentName,
+                      contentType: attachment.mimetype || attachment.contentType || attachment.type || 'application/octet-stream'
                     });
 
-                    console.log(`✅ Downloaded template attachment: ${attachment.name || 'file'} (${attachmentResponse.data.length} bytes)`);
+                    console.log(`✅ Downloaded template attachment: ${attachmentName} (${attachmentResponse.data.length} bytes)`);
                   } catch (attachmentError) {
-                    console.error(`❌ Failed to download template attachment ${attachment.name}:`, attachmentError.message);
+                    console.error(`❌ Failed to download template attachment:`, attachmentError.message);
                   }
                 }
               }
@@ -1650,7 +1651,8 @@ router.post('/:contractId/resend-delivery', auth, async (req, res) => {
             for (const attachment of templateAttachments) {
               if (attachment.url) {
                 try {
-                  console.log(`📎 Downloading template attachment: ${attachment.name || attachment.url}`);
+                  const attachmentName = attachment.originalName || attachment.name || attachment.filename || 'attachment.pdf';
+                  console.log(`📎 Downloading template attachment: ${attachmentName}`);
                   const attachmentResponse = await axios.get(attachment.url, {
                     responseType: 'arraybuffer',
                     timeout: 30000
@@ -1658,13 +1660,13 @@ router.post('/:contractId/resend-delivery', auth, async (req, res) => {
 
                   attachments.push({
                     buffer: Buffer.from(attachmentResponse.data),
-                    filename: attachment.name || attachment.filename || 'attachment.pdf',
-                    contentType: attachment.contentType || attachment.type || 'application/octet-stream'
+                    filename: attachmentName,
+                    contentType: attachment.mimetype || attachment.contentType || attachment.type || 'application/octet-stream'
                   });
 
-                  console.log(`✅ Downloaded template attachment: ${attachment.name || 'file'} (${attachmentResponse.data.length} bytes)`);
+                  console.log(`✅ Downloaded template attachment: ${attachmentName} (${attachmentResponse.data.length} bytes)`);
                 } catch (attachmentError) {
-                  console.error(`❌ Failed to download template attachment ${attachment.name}:`, attachmentError.message);
+                  console.error(`❌ Failed to download template attachment:`, attachmentError.message);
                 }
               }
             }
