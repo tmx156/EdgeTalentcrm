@@ -28,7 +28,7 @@ const SendContractModal = ({
   const [checkingStatus, setCheckingStatus] = useState(false);
 
   // New state for Step 3 redesign
-  const [deliveryEmailSent, setDeliveryEmailSent] = useState(false);
+  const [deliveryEmailSent, setDeliveryEmailSent] = useState(null); // null = unknown, true = sent, false = failed
   const [deliveryEmailTime, setDeliveryEmailTime] = useState(null);
   const [deliveryEmailTo, setDeliveryEmailTo] = useState('');
   const [deliveryEmailError, setDeliveryEmailError] = useState(null);
@@ -1386,8 +1386,8 @@ const SendContractModal = ({
                               )}
                             </button>
                           </div>
-                        ) : deliveryEmailError || deliveryEmailSent === false ? (
-                          /* Error sending OR explicitly failed - show error and resend button */
+                        ) : deliveryEmailError ? (
+                          /* Has actual error - show error and resend button */
                           <div className="space-y-3">
                             <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                               <div className="flex items-center space-x-2 text-red-700">
@@ -1395,7 +1395,7 @@ const SendContractModal = ({
                                 <span className="text-sm font-medium">Failed to Send</span>
                               </div>
                               <p className="text-sm text-red-600 mt-1">
-                                {deliveryEmailError || 'Auto-delivery email failed. Click below to retry.'}
+                                {deliveryEmailError}
                               </p>
                               {deliveryEmailTime && (
                                 <p className="text-xs text-red-400 mt-1">
@@ -1429,22 +1429,22 @@ const SendContractModal = ({
                             </button>
                           </div>
                         ) : (
-                          /* No status recorded - needs manual send */
+                          /* Status pending/unknown - show loading or send option */
                           <div className="space-y-3">
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                              <div className="flex items-center space-x-2 text-gray-700">
-                                <AlertTriangle className="w-4 h-4" />
-                                <span className="text-sm font-medium">Not Sent</span>
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                              <div className="flex items-center space-x-2 text-blue-700">
+                                <Loader className="w-4 h-4 animate-spin" />
+                                <span className="text-sm font-medium">Processing...</span>
                               </div>
-                              <p className="text-sm text-gray-600 mt-1">
-                                Delivery email status unknown. Send manually below.
+                              <p className="text-sm text-blue-600 mt-1">
+                                Delivery email is being sent automatically. This may take a moment.
                               </p>
                             </div>
 
                             <button
                               onClick={resendDeliveryEmail}
                               disabled={resendingDelivery}
-                              className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center space-x-2 text-sm font-medium"
+                              className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center space-x-2 text-sm"
                             >
                               {resendingDelivery ? (
                                 <>
@@ -1453,8 +1453,8 @@ const SendContractModal = ({
                                 </>
                               ) : (
                                 <>
-                                  <Send className="w-4 h-4" />
-                                  <span>Send Delivery Email</span>
+                                  <RefreshCw className="w-4 h-4" />
+                                  <span>Send Manually</span>
                                 </>
                               )}
                             </button>
