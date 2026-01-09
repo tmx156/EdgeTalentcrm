@@ -101,8 +101,8 @@ const contractSigningTemplate = {
   is_active: true,
   is_default: true,
   send_email: true,
-  send_sms: false,
-  email_account: 'secondary',
+  send_sms: true,  // SMS enabled by default for contract signing
+  email_account: 'primary',
   category: 'sales',
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString()

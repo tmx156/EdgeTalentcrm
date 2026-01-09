@@ -14,6 +14,8 @@ const axios = require('axios');
 const { generateContractPDF, buildContractData } = require('../utils/contractGenerator');
 const { uploadToS3 } = require('../utils/s3Service');
 const { sendEmail } = require('../utils/emailService');
+const { sendSMS } = require('../utils/smsService');
+const archiver = require('archiver');
 
 const router = express.Router();
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
@@ -25,6 +27,82 @@ function generateContractToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+/**
+ * Generate invoice number in format INV DDMMYY-XX
+ * @param {Date} date - The date for the invoice
+ * @param {number} sequenceNumber - The sequence number for that day
+ * @returns {string} Invoice number like "INV 090126-01"
+ */
+function formatInvoiceNumber(date, sequenceNumber) {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2);
+  const seq = String(sequenceNumber).padStart(2, '0');
+  return `INV ${day}${month}${year}-${seq}`;
+}
+
+/**
+ * @route   GET /api/contracts/next-invoice-number
+ * @desc    Get the next invoice number for today
+ * @access  Private
+ */
+router.get('/next-invoice-number', auth, async (req, res) => {
+  try {
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = String(today.getFullYear()).slice(-2);
+    const datePrefix = `INV ${day}${month}${year}-`;
+
+    // Get today's start and end for filtering
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today);
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // Count contracts created today that have invoice numbers with today's date prefix
+    const { data: contracts, error } = await supabase
+      .from('contracts')
+      .select('contract_data')
+      .gte('created_at', todayStart.toISOString())
+      .lte('created_at', todayEnd.toISOString());
+
+    if (error) {
+      console.error('Error fetching contracts for invoice number:', error);
+      return res.status(500).json({ message: 'Error generating invoice number' });
+    }
+
+    // Count how many have invoice numbers matching today's date
+    let maxSequence = 0;
+    if (contracts && contracts.length > 0) {
+      contracts.forEach(contract => {
+        const invoiceNumber = contract.contract_data?.invoiceNumber || '';
+        if (invoiceNumber.startsWith(datePrefix)) {
+          const seqPart = invoiceNumber.split('-')[1];
+          const seq = parseInt(seqPart, 10);
+          if (!isNaN(seq) && seq > maxSequence) {
+            maxSequence = seq;
+          }
+        }
+      });
+    }
+
+    const nextSequence = maxSequence + 1;
+    const nextInvoiceNumber = formatInvoiceNumber(today, nextSequence);
+
+    console.log(`📋 Next invoice number: ${nextInvoiceNumber} (found ${maxSequence} existing today)`);
+
+    res.json({
+      success: true,
+      invoiceNumber: nextInvoiceNumber,
+      date: today.toISOString(),
+      sequence: nextSequence
+    });
+  } catch (error) {
+    console.error('Error generating next invoice number:', error);
+    res.status(500).json({ message: 'Error generating invoice number', error: error.message });
+  }
+});
 
 /**
  * @route   POST /api/contracts/create
@@ -236,7 +314,7 @@ router.post('/create', auth, async (req, res) => {
 
 /**
  * @route   POST /api/contracts/send/:contractId
- * @desc    Send contract signing link via email
+ * @desc    Send contract signing link via email AND SMS (based on template settings)
  * @access  Private (Viewer, Admin)
  */
 router.post('/send/:contractId', auth, async (req, res) => {
@@ -266,23 +344,81 @@ router.post('/send/:contractId', auth, async (req, res) => {
       return res.status(400).json({ message: 'Contract is already signed' });
     }
 
-    // Determine recipient email
+    // Determine recipient email and phone
     const recipientEmail = overrideEmail || contract.contract_data?.email || contract.lead?.email;
+    const recipientPhone = contract.contract_data?.phone || contract.lead?.phone;
+
     if (!recipientEmail) {
       return res.status(400).json({ message: 'No email address available' });
     }
 
     const customerName = contract.contract_data?.customerName || contract.lead?.name || 'Customer';
+    const contractData = contract.contract_data || {};
+    const totalAmount = contractData.total ? `£${parseFloat(contractData.total).toFixed(2)}` : '';
+    const packageInfo = contractData.notes || '';
 
-    // Send email using Gmail API
+    // Fetch contract_signing template from database
+    let template = null;
     try {
-      // Get contract details for email
-      const contractData = contract.contract_data || {};
-      const totalAmount = contractData.total ? `£${parseFloat(contractData.total).toFixed(2)}` : '';
-      const packageInfo = contractData.notes || '';
+      const { data: templateData, error: templateError } = await supabase
+        .from('templates')
+        .select('*')
+        .eq('type', 'contract_signing')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
 
-      const emailSubject = `Edge Talent - Your Contract is Ready for Signing`;
-      const emailHtml = `
+      if (!templateError && templateData) {
+        template = templateData;
+        console.log(`📝 Using contract_signing template: "${template.name}" (ID: ${template.id})`);
+        console.log(`📝 Template settings: send_email=${template.send_email}, send_sms=${template.send_sms}`);
+      } else {
+        console.log('⚠️ No active contract_signing template found, using hardcoded default');
+      }
+    } catch (templateFetchError) {
+      console.error('❌ Error fetching contract_signing template:', templateFetchError.message);
+    }
+
+    // Variable replacements for templates
+    const templateVariables = {
+      '{customerName}': customerName,
+      '{leadName}': customerName,
+      '{totalAmount}': totalAmount,
+      '{packageInfo}': packageInfo,
+      '{signingUrl}': contract.signing_url,
+      '{companyName}': 'Edge Talent'
+    };
+
+    // Function to replace variables in template
+    const replaceVariables = (text) => {
+      if (!text) return text;
+      let result = text;
+      Object.entries(templateVariables).forEach(([key, value]) => {
+        result = result.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value || '');
+      });
+      return result;
+    };
+
+    let emailSent = false;
+    let smsSent = false;
+    let emailError = null;
+    let smsError = null;
+
+    // Send EMAIL
+    const shouldSendEmail = template ? template.send_email !== false : true;
+    if (shouldSendEmail) {
+      try {
+        let emailSubject, emailHtml;
+
+        if (template && template.email_body) {
+          // Use database template
+          emailSubject = replaceVariables(template.subject) || 'Edge Talent - Your Contract is Ready for Signing';
+          emailHtml = replaceVariables(template.email_body);
+        } else {
+          // Fallback to hardcoded template
+          emailSubject = `Edge Talent - Your Contract is Ready for Signing`;
+          emailHtml = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -342,14 +478,14 @@ router.post('/send/:contractId', auth, async (req, res) => {
         </ol>
       </div>
       <div class="warning">
-        <strong>⏰ Important:</strong> This link will expire in 7 days. Please complete your signing before then.
+        <strong>Important:</strong> This link will expire in 7 days. Please complete your signing before then.
       </div>
       <p>If the button above doesn't work, copy and paste this link into your browser:</p>
       <div class="link-backup">${contract.signing_url}</div>
       <div class="contact">
         <p>Need help? Contact us:</p>
-        <p>📧 <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
-        <p>🌐 <a href="https://www.edgetalent.co.uk">www.edgetalent.co.uk</a></p>
+        <p>Email: <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
+        <p>Website: <a href="https://www.edgetalent.co.uk">www.edgetalent.co.uk</a></p>
       </div>
     </div>
     <div class="footer">
@@ -361,24 +497,61 @@ router.post('/send/:contractId', auth, async (req, res) => {
   </div>
 </body>
 </html>`;
+        }
 
-      // Send via Gmail API (uses hello@edgetalent.co.uk - primary account)
-      const emailResult = await sendEmail(
-        recipientEmail,
-        emailSubject,
-        emailHtml,
-        [], // no attachments
-        'primary' // use hello@edgetalent.co.uk account
-      );
+        const emailAccount = template?.email_account || 'primary';
+        const emailResult = await sendEmail(
+          recipientEmail,
+          emailSubject,
+          emailHtml,
+          [], // no attachments
+          emailAccount
+        );
 
-      if (emailResult.success) {
-        console.log(`✅ Contract email sent to ${recipientEmail} via Gmail API`);
-      } else {
-        console.error('❌ Contract email failed:', emailResult.error);
+        if (emailResult.success) {
+          emailSent = true;
+          console.log(`✅ Contract email sent to ${recipientEmail} via Gmail API`);
+        } else {
+          emailError = emailResult.error;
+          console.error('❌ Contract email failed:', emailResult.error);
+        }
+      } catch (err) {
+        emailError = err.message;
+        console.error('Email sending failed:', err);
       }
-    } catch (emailError) {
-      console.error('Email sending failed:', emailError);
-      // Continue even if email fails - URL can still be shared manually
+    }
+
+    // Send SMS (if enabled in template AND phone number available)
+    const shouldSendSms = template && template.send_sms === true;
+    if (shouldSendSms && recipientPhone) {
+      try {
+        let smsBody;
+
+        if (template && template.sms_body) {
+          // Use database template
+          smsBody = replaceVariables(template.sms_body);
+        } else {
+          // Fallback to default SMS
+          smsBody = `Hi ${customerName}, your Edge Talent contract is ready for signing. Please complete within 7 days: ${contract.signing_url}`;
+        }
+
+        console.log(`📱 Sending contract SMS to ${recipientPhone}...`);
+        const smsResult = await sendSMS(recipientPhone, smsBody);
+
+        if (smsResult.success) {
+          smsSent = true;
+          console.log(`✅ Contract SMS sent to ${recipientPhone}`);
+        } else {
+          smsError = smsResult.error;
+          console.error('❌ Contract SMS failed:', smsResult.error);
+        }
+      } catch (err) {
+        smsError = err.message;
+        console.error('SMS sending failed:', err);
+      }
+    } else if (shouldSendSms && !recipientPhone) {
+      console.log('⚠️ SMS enabled but no phone number available');
+      smsError = 'No phone number available';
     }
 
     // Update contract status
@@ -387,7 +560,8 @@ router.post('/send/:contractId', auth, async (req, res) => {
       .update({
         status: 'sent',
         sent_at: new Date().toISOString(),
-        sent_to_email: recipientEmail
+        sent_to_email: recipientEmail,
+        sent_to_phone: smsSent ? recipientPhone : null
       })
       .eq('id', contractId);
 
@@ -395,7 +569,11 @@ router.post('/send/:contractId', auth, async (req, res) => {
       success: true,
       message: 'Contract sent successfully',
       sentTo: recipientEmail,
-      signingUrl: contract.signing_url
+      signingUrl: contract.signing_url,
+      emailSent,
+      smsSent,
+      emailError,
+      smsError
     });
   } catch (error) {
     console.error('Error sending contract:', error);
@@ -725,14 +903,14 @@ router.post('/sign/:token', async (req, res) => {
       if (customerEmail) {
         const attachments = [];
 
-        // Add signed PDF if available
+        // Add signed PDF if available (kept as separate attachment for easy access)
         if (pdfUrl) {
           try {
             console.log(`📄 Downloading signed PDF from S3: ${pdfUrl}`);
             const pdfResponse = await axios.get(pdfUrl, { responseType: 'arraybuffer', timeout: 30000 });
             attachments.push({
               buffer: Buffer.from(pdfResponse.data),
-              filename: `signed_contract_${contract.id}.pdf`,
+              filename: `EdgeTalent_SignedContract_${new Date().toISOString().split('T')[0]}.pdf`,
               contentType: 'application/pdf'
             });
             console.log(`✅ Downloaded signed PDF for attachment (${pdfResponse.data.length} bytes)`);
@@ -743,15 +921,52 @@ router.post('/sign/:token', async (req, res) => {
           console.log('⚠️ No PDF URL available - PDF will not be attached to email');
         }
 
-        // Add selected images
-        attachments.push(...photoAttachments);
+        // Zip images if there are any (handles large packages with 100+ images)
+        if (photoAttachments.length > 0) {
+          try {
+            console.log(`📦 Creating zip file for ${photoAttachments.length} images...`);
+
+            // Create zip in memory
+            const zipBuffer = await new Promise((resolve, reject) => {
+              const chunks = [];
+              const archive = archiver('zip', { zlib: { level: 5 } }); // Level 5 = balanced compression
+
+              archive.on('data', (chunk) => chunks.push(chunk));
+              archive.on('end', () => resolve(Buffer.concat(chunks)));
+              archive.on('error', (err) => reject(err));
+
+              // Add each photo to the zip
+              photoAttachments.forEach((photo, index) => {
+                const filename = photo.filename || `image_${index + 1}.jpg`;
+                archive.append(photo.buffer, { name: filename });
+              });
+
+              archive.finalize();
+            });
+
+            const zipFilename = `EdgeTalent_YourImages_${new Date().toISOString().split('T')[0]}.zip`;
+            attachments.push({
+              buffer: zipBuffer,
+              filename: zipFilename,
+              contentType: 'application/zip'
+            });
+
+            console.log(`✅ Created zip file: ${zipFilename} (${(zipBuffer.length / 1024 / 1024).toFixed(2)} MB, ${photoAttachments.length} images)`);
+          } catch (zipError) {
+            console.error('❌ Failed to create zip file:', zipError.message);
+            // Fallback: attach images individually if zip fails
+            console.log('⚠️ Falling back to individual image attachments...');
+            attachments.push(...photoAttachments);
+          }
+        }
 
         // Try to fetch contract_delivery template from database
         let emailSubject = 'Your Signed Contract and Selected Images - Edge Talent';
         let emailHtml = '';
+        let deliveryTemplate = null;
 
         try {
-          const { data: deliveryTemplate, error: templateError } = await supabase
+          const { data: templateData, error: templateError } = await supabase
             .from('templates')
             .select('*')
             .eq('type', 'contract_delivery')
@@ -760,9 +975,10 @@ router.post('/sign/:token', async (req, res) => {
             .limit(1)
             .single();
 
-          if (!templateError && deliveryTemplate) {
+          if (!templateError && templateData) {
+            deliveryTemplate = templateData;
             console.log(`✅ 📧 USING DATABASE TEMPLATE: "${deliveryTemplate.name}" (ID: ${deliveryTemplate.id})`);
-            console.log(`📧 Template subject: ${deliveryTemplate.subject}`);
+            console.log(`📧 Template settings: send_email=${deliveryTemplate.send_email}, send_sms=${deliveryTemplate.send_sms}`);
 
             // Process template variables
             const totalFormatted = `£${parseFloat(signedContractData.total || 0).toFixed(2)}`;
@@ -779,10 +995,18 @@ router.post('/sign/:token', async (req, res) => {
               '{photoCount}': photoAttachments.length.toString(),
               '{hasPdf}': pdfUrl ? 'yes' : 'no',
               '{companyName}': 'Edge Talent',
+              // Conditional bullets based on package
+              '{bulletContract}': pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : '',
+              '{bulletImages}': photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected images in a ZIP file - simply download and extract to view</li>` : '',
+              '{bulletAgencyList}': (signedContractData.recommendedAgencyList || signedContractData.agencyList) ? '<li>Your \'recommended agency list\' is attached to this email</li>' : '',
+              '{bulletProjectInfluencer}': signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : '',
+              '{bulletEfolio}': signedContractData.efolio ? '<li>Your Efolio URL and login details will be issued to you from Edge Talent within 7 days</li>' : '',
+              '{bulletZCard}': signedContractData.digitalZCard ? '<li>Your Digital Z-Card will be emailed to you by Edge Talent within 7 days</li>' : '',
+              '{bullet3Lance}': (signedContractData.threeLanceCastings || signedContractData['3lanceCastings']) ? '<li>Your 3Lance Castings membership will be activated within 7 days</li>' : '',
               '{attachmentList}': `
                 <ul style="margin: 10px 0 0 0; padding-left: 20px;">
                   ${pdfUrl ? '<li>Your signed contract (PDF)</li>' : ''}
-                  ${photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected image${photoAttachments.length > 1 ? 's' : ''}</li>` : ''}
+                  ${photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected images (ZIP file)</li>` : ''}
                 </ul>
               `
             };
@@ -808,52 +1032,21 @@ router.post('/sign/:token', async (req, res) => {
         // Use default template if none found in database
         if (!emailHtml) {
           console.log('📧 Using HARDCODED DEFAULT template (no database template found)');
-          emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; color: white; border-radius: 8px 8px 0 0; }
-    .header h1 { margin: 0; font-size: 28px; }
-    .content { padding: 30px; background: #f9f9f9; }
-    .content p { margin: 0 0 15px 0; }
-    .highlight { background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; }
-    .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; background: #f0f0f0; border-radius: 0 0 8px 8px; }
-    .footer p { margin: 5px 0; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>EDGE TALENT</h1>
-      <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank You for Your Purchase!</p>
-    </div>
-    <div class="content">
-      <p>Dear ${customerName},</p>
-      <p>Thank you for signing your contract with Edge Talent!</p>
-
-      <div class="highlight">
-        <p style="margin: 0;"><strong>Please find attached:</strong></p>
-        <ul style="margin: 10px 0 0 0; padding-left: 20px;">
-          ${pdfUrl ? '<li>Your signed contract (PDF)</li>' : ''}
-          ${photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected image${photoAttachments.length > 1 ? 's' : ''}</li>` : ''}
-        </ul>
-      </div>
-
-      <p>If you have any questions about your order, please don't hesitate to contact us.</p>
-      <p>Best regards,<br><strong>The Edge Talent Team</strong></p>
-    </div>
-    <div class="footer">
-      <p><strong>Edge Talent</strong> | A trading name of S&A Advertising Ltd</p>
-      <p>Company No 8708429 | VAT Reg No 171339904</p>
-      <p>129A Weedington Rd, London NW5 4NX</p>
-      <p>Email: <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
-    </div>
-  </div>
-</body>
-</html>`;
+          emailHtml = `<p>Dear ${customerName},</p>
+<p>Thank you for your purchase with Edge Talent!</p>
+<p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
+<p>Please find attached:</p>
+<ul>
+  ${pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : ''}
+  ${photoAttachments.length > 0 ? `<li>Your ${photoAttachments.length} selected images in a ZIP file - simply download and extract to view</li>` : ''}
+  ${signedContractData.recommendedAgencyList || signedContractData.agencyList ? '<li>Your \'recommended agency list\' is attached to this email</li>' : ''}
+  ${signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : ''}
+  ${signedContractData.efolio ? '<li>Your Efolio URL and login details will be issued to you from Edge Talent within 7 days</li>' : ''}
+  ${signedContractData.digitalZCard ? '<li>Your Digital Z-Card will be emailed to you by Edge Talent within 7 days</li>' : ''}
+  ${signedContractData.threeLanceCastings || signedContractData['3lanceCastings'] ? '<li>Your 3Lance Castings membership will be activated within 7 days</li>' : ''}
+</ul>
+<p>If you have any questions about your order, please don't hesitate to contact us.</p>
+<p>Best regards,<br>The Edge Talent Team</p>`;
         }
 
         let deliveryEmailStatus = {
@@ -926,6 +1119,46 @@ router.post('/sign/:token', async (req, res) => {
           }
         } catch (statusUpdateError) {
           console.error('Failed to save delivery email status:', statusUpdateError.message);
+        }
+
+        // Send SMS if template has send_sms enabled
+        if (deliveryTemplate && deliveryTemplate.send_sms === true) {
+          const customerPhone = signedContractData.phone || contract.lead?.phone;
+          if (customerPhone && deliveryTemplate.sms_body) {
+            try {
+              console.log(`📱 Sending delivery SMS to ${customerPhone}...`);
+
+              // Process SMS variables
+              const totalFormatted = `£${parseFloat(signedContractData.total || 0).toFixed(2)}`;
+              const smsVariables = {
+                '{customerName}': customerName,
+                '{leadName}': customerName,
+                '{contractTotal}': totalFormatted,
+                '{saleAmountFormatted}': totalFormatted,
+                '{companyName}': 'Edge Talent',
+                '{photoCount}': photoAttachments.length.toString()
+              };
+
+              let smsBody = deliveryTemplate.sms_body;
+              Object.entries(smsVariables).forEach(([key, value]) => {
+                smsBody = smsBody.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
+              });
+
+              const smsResult = await sendSMS(customerPhone, smsBody);
+
+              if (smsResult.success) {
+                console.log(`✅ Delivery SMS sent to ${customerPhone}`);
+              } else {
+                console.error('❌ Failed to send delivery SMS:', smsResult.error);
+              }
+            } catch (smsError) {
+              console.error('Error sending delivery SMS:', smsError.message);
+            }
+          } else if (!customerPhone) {
+            console.log('⚠️ Delivery SMS enabled but no phone number available');
+          } else if (!deliveryTemplate.sms_body) {
+            console.log('⚠️ Delivery SMS enabled but no sms_body in template');
+          }
         }
       }
     } catch (emailError) {

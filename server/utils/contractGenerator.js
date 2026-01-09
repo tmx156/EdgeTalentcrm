@@ -5,6 +5,56 @@
  */
 
 const puppeteer = require('puppeteer');
+const { createClient } = require('@supabase/supabase-js');
+const config = require('../config');
+
+// Initialize Supabase client
+const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
+
+// Default template values (fallback if no custom template exists)
+const DEFAULT_TEMPLATE = {
+  company_name: 'EDGE TALENT',
+  company_website: 'www.edgetalent.co.uk',
+  company_address: '129A Weedington Rd, London NW5 4NX',
+  form_title: 'INVOICE & ORDER FORM',
+  form_subtitle: 'PLEASE CHECK YOUR ORDER BEFORE LEAVING YOUR VIEWING',
+  form_contact_info: 'FOR ALL ENQUIRIES PLEASE EMAIL CUSTOMER SERVICES ON SALES@EDGETALENT.CO.UK',
+  terms_and_conditions: `By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Payl8r documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk`,
+  signature_instruction: 'PLEASE SIGN BELOW TO INDICATE YOUR ACCEPTANCE OF THE ABOVE TERMS, AND ENSURE YOU RECEIVE YOUR OWN SIGNED COPY OF THIS INVOICE FOR YOUR RECORDS',
+  footer_line1: 'Edge Talent is a trading name of S&A Advertising Ltd',
+  footer_line2: 'Company No 8708429 VAT Reg No 171339904',
+  confirmation1_text: 'I understand that Edge Talent is <strong>not a talent casting company/agency and will not find me work.</strong>',
+  confirmation2_text: 'I understand that once I leave the premises I <strong>cannot cancel</strong>, amend or reduce the order.',
+  confirmation3_text: 'I confirm that I am happy for Edge Talent to <strong>pass on details and photos</strong> of the client named on this order form. Talent Agencies we pass your details to typically charge between £50 - £200 to register onto their books',
+  confirmation4_text: "I confirm that I'm happy and comfortable with my decision to purchase.",
+  image_permission_text: 'I give permission for Edge Talent to use my images',
+  image_no_permission_text: 'I DO NOT give permission for Edge Talent to use my images'
+};
+
+/**
+ * Get active contract template from database or return defaults
+ */
+async function getActiveTemplate() {
+  try {
+    const { data: template, error } = await supabase
+      .from('contract_templates')
+      .select('*')
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.warn('Error fetching contract template, using defaults:', error.message);
+      return DEFAULT_TEMPLATE;
+    }
+
+    return template || DEFAULT_TEMPLATE;
+  } catch (err) {
+    console.warn('Error fetching contract template, using defaults:', err.message);
+    return DEFAULT_TEMPLATE;
+  }
+}
 
 /**
  * Format currency value
@@ -25,16 +75,26 @@ function formatDate(date) {
 
 /**
  * Generate the HTML for the contract (matches ContractSigning.js exactly)
+ * @param {Object} contractData - The contract data with customer info, financials, signatures
+ * @param {Object} template - Optional custom template (if not provided, uses DEFAULT_TEMPLATE)
  */
-function generateContractHTML(contractData) {
+function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
+  // Merge with defaults to ensure all values exist
+  const t = { ...DEFAULT_TEMPLATE, ...template };
+
+  // Generate image permission text based on allowImageUse flag
+  const imagePermissionText = contractData.allowImageUse
+    ? `I <strong>DO</strong> ${t.image_permission_text || 'give permission for Edge Talent to use my images'}`
+    : `I <strong>DO NOT</strong> ${(t.image_no_permission_text || 'give permission for Edge Talent to use my images').replace('I DO NOT ', '')}`;
+
   const page1HTML = `
     <div class="page" style="padding: 30px; font-family: Arial, sans-serif; font-size: 11px; background: white;">
       <!-- Header -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
-        <p style="font-size: 10px; margin: 0;">www.edgetalent.co.uk</p>
+      <div data-editable="header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+        <p style="font-size: 10px; margin: 0;">${t.company_website}</p>
         <div style="text-align: center;">
-          <h1 style="font-size: 28px; font-weight: bold; letter-spacing: 3px; margin: 0;">EDGE TALENT</h1>
-          <p style="font-size: 10px; margin: 3px 0 0 0;">129A Weedington Rd, London NW5 4NX</p>
+          <h1 style="font-size: 28px; font-weight: bold; letter-spacing: 3px; margin: 0;">${t.company_name}</h1>
+          <p style="font-size: 10px; margin: 3px 0 0 0;">${t.company_address}</p>
         </div>
         <div style="border: 1px solid black; padding: 8px 15px;">
           <span style="font-size: 10px;">Date: </span>
@@ -43,10 +103,10 @@ function generateContractHTML(contractData) {
       </div>
 
       <!-- Title -->
-      <div style="text-align: center; margin-bottom: 15px;">
-        <h2 style="font-size: 18px; font-weight: bold; margin: 0 0 5px 0;">INVOICE & ORDER FORM</h2>
-        <p style="font-size: 9px; margin: 2px 0;">PLEASE CHECK YOUR ORDER BEFORE LEAVING YOUR VIEWING</p>
-        <p style="font-size: 9px; margin: 2px 0;">FOR ALL ENQUIRIES PLEASE EMAIL CUSTOMER SERVICES ON SALES@EDGETALENT.CO.UK</p>
+      <div data-editable="title" style="text-align: center; margin-bottom: 15px;">
+        <h2 style="font-size: 18px; font-weight: bold; margin: 0 0 5px 0;">${t.form_title}</h2>
+        <p style="font-size: 9px; margin: 2px 0;">${t.form_subtitle}</p>
+        <p style="font-size: 9px; margin: 2px 0;">${t.form_contact_info}</p>
       </div>
 
       <!-- Info Row -->
@@ -140,8 +200,8 @@ function generateContractHTML(contractData) {
               <td style="border-left: 1px solid black; padding: 5px;">LOGIN: <span style="font-weight: 500;">${contractData.influencerLogin || ''}</span></td>
             </tr>
             <tr style="border-bottom: 1px solid black;">
-              <td style="padding: 5px;" colspan="3">
-                I <strong>${contractData.allowImageUse ? 'DO' : 'DO NOT'}</strong> give permission for Edge Talent to use my images
+              <td data-editable="image_permission" style="padding: 5px;" colspan="3">
+                ${imagePermissionText}
               </td>
             </tr>
             <tr>
@@ -175,8 +235,8 @@ function generateContractHTML(contractData) {
       </div>
 
       <!-- Terms -->
-      <div style="font-size: 8px; color: #444; margin-bottom: 10px; line-height: 1.3;">
-        <strong>Terms and Conditions:</strong> By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Payl8r documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk
+      <div data-editable="terms" style="font-size: 8px; color: #444; margin-bottom: 10px; line-height: 1.3;">
+        <strong>Terms and Conditions:</strong> ${t.terms_and_conditions}
       </div>
 
       <!-- Payment Details -->
@@ -216,7 +276,7 @@ function generateContractHTML(contractData) {
       </table>
 
       <!-- Signature Section -->
-      <p style="font-size: 9px; font-weight: bold; margin-bottom: 8px;">PLEASE SIGN BELOW TO INDICATE YOUR ACCEPTANCE OF THE ABOVE TERMS, AND ENSURE YOU RECEIVE YOUR OWN SIGNED COPY OF THIS INVOICE FOR YOUR RECORDS</p>
+      <p data-editable="signature_instruction" style="font-size: 9px; font-weight: bold; margin-bottom: 8px;">${t.signature_instruction}</p>
       <table style="width: 100%; border-collapse: collapse; border: 1px solid black;">
         <tr>
           <td style="padding: 8px; border-right: 1px solid black; width: 75%;">
@@ -233,9 +293,9 @@ function generateContractHTML(contractData) {
       </table>
 
       <!-- Footer -->
-      <div style="text-align: center; font-size: 9px; color: #666; padding-top: 12px;">
-        <p style="margin: 2px 0;">Edge Talent is a trading name of S&A Advertising Ltd</p>
-        <p style="margin: 2px 0;">Company No 8708429 VAT Reg No 171339904</p>
+      <div data-editable="footer" style="text-align: center; font-size: 9px; color: #666; padding-top: 12px;">
+        <p style="margin: 2px 0;">${t.footer_line1}</p>
+        <p style="margin: 2px 0;">${t.footer_line2}</p>
       </div>
     </div>
   `;
@@ -252,49 +312,49 @@ function generateContractHTML(contractData) {
       <div style="display: flex; flex-direction: column; gap: 25px;">
 
         <!-- Box 1 -->
-        <div style="display: flex; gap: 25px; align-items: flex-start;">
+        <div data-editable="confirmation1" style="display: flex; gap: 25px; align-items: flex-start;">
           <div style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
             ${contractData.signatures?.notAgency ? `<img src="${contractData.signatures.notAgency}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
-              I understand that Edge Talent is <strong>not a talent casting company/agency and will not find me work.</strong>
+              ${t.confirmation1_text}
             </p>
           </div>
         </div>
 
         <!-- Box 2 -->
-        <div style="display: flex; gap: 25px; align-items: flex-start;">
+        <div data-editable="confirmation2" style="display: flex; gap: 25px; align-items: flex-start;">
           <div style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
             ${contractData.signatures?.noCancel ? `<img src="${contractData.signatures.noCancel}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
-              I understand that once I leave the premises I <strong>cannot cancel</strong>, amend or reduce the order.
+              ${t.confirmation2_text}
             </p>
           </div>
         </div>
 
         <!-- Box 3 -->
-        <div style="display: flex; gap: 25px; align-items: flex-start;">
+        <div data-editable="confirmation3" style="display: flex; gap: 25px; align-items: flex-start;">
           <div style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
             ${contractData.signatures?.passDetails ? `<img src="${contractData.signatures.passDetails}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
-              I confirm that I am happy for Edge Talent to <strong>pass on details and photos</strong> of the client named on this order form. Talent Agencies we pass your details to typically charge between £50 - £200 to register onto their books
+              ${t.confirmation3_text}
             </p>
           </div>
         </div>
 
         <!-- Box 4 -->
-        <div style="display: flex; gap: 25px; align-items: flex-start;">
+        <div data-editable="confirmation4" style="display: flex; gap: 25px; align-items: flex-start;">
           <div style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
             ${contractData.signatures?.happyPurchase ? `<img src="${contractData.signatures.happyPurchase}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
-              I confirm that I'm happy and comfortable with my decision to purchase.
+              ${t.confirmation4_text}
             </p>
           </div>
         </div>
@@ -335,8 +395,12 @@ async function generateContractPDF(contractData) {
   try {
     console.log('🔄 Starting Puppeteer PDF generation...');
 
-    // Generate HTML
-    const html = generateContractHTML(contractData);
+    // Fetch custom template from database (or use defaults)
+    const template = await getActiveTemplate();
+    console.log('📄 Using contract template:', template.id ? 'Custom' : 'Default');
+
+    // Generate HTML with template
+    const html = generateContractHTML(contractData, template);
 
     // Launch Puppeteer - use system Chromium on Railway/Alpine
     browser = await puppeteer.launch({
@@ -441,6 +505,8 @@ module.exports = {
   generateContractPDF,
   generateContractHTML,
   buildContractData,
+  getActiveTemplate,
   formatCurrency,
-  formatDate
+  formatDate,
+  DEFAULT_TEMPLATE
 };

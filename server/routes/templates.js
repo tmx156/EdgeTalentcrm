@@ -932,13 +932,13 @@ router.post('/create-contract-delivery-default', auth, async (req, res) => {
 <p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
 <p>Please find attached:</p>
 <ul>
-  <li>A copy of your signed contract</li>
-  <li>Your {photoCount} selected images are attached to this email</li>
-  <li>Your 'recommended agency list' is attached to this email</li>
-  <li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>
-  <li>Your Efolio URL and login details will be issued to you from Edge Talent within 7 days</li>
-  <li>Your Digital Z-Card will be emailed to you by Edge Talent within 7 days</li>
-  <li>Your 3Lance Castings membership will be activated within 7 days</li>
+  {bulletContract}
+  {bulletImages}
+  {bulletAgencyList}
+  {bulletProjectInfluencer}
+  {bulletEfolio}
+  {bulletZCard}
+  {bullet3Lance}
 </ul>
 <p>If you have any questions about your order, please don't hesitate to contact us.</p>
 <p>Best regards,<br>The Edge Talent Team</p>`,

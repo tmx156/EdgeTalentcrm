@@ -1416,15 +1416,24 @@ router.post('/bulk-communication', auth, async (req, res) => {
           smsBody = smsBody.replace(new RegExp(key, 'g'), value);
         });
 
+        // IMPORTANT: Respect template's send_email/send_sms settings
+        // Combine user's communication type selection with what the template allows
+        const wantsEmail = communicationType === 'email' || communicationType === 'both';
+        const wantsSms = communicationType === 'sms' || communicationType === 'both';
+        const templateAllowsEmail = template.send_email !== false; // Default to true if not set
+        const templateAllowsSms = template.send_sms !== false; // Default to true if not set
+
         // Use the same approach as calendar system - create a custom template object
         const customTemplate = {
           ...template,
           subject: emailSubject,
           email_body: emailBody,
           sms_body: smsBody,
-          send_email: (communicationType === 'email' || communicationType === 'both'),
-          send_sms: (communicationType === 'sms' || communicationType === 'both')
+          send_email: wantsEmail && templateAllowsEmail,
+          send_sms: wantsSms && templateAllowsSms
         };
+
+        console.log(`📧 Template settings: send_email=${customTemplate.send_email}, send_sms=${customTemplate.send_sms} (user wanted email=${wantsEmail}, sms=${wantsSms}, template allows email=${templateAllowsEmail}, sms=${templateAllowsSms})`);
 
         // Use MessagingService.processTemplate like calendar system does
         const MessagingService = require('../utils/messagingService');

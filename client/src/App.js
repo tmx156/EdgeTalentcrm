@@ -27,6 +27,7 @@ import BlockedSlots from './pages/BlockedSlots';
 import PublicBooking from './pages/PublicBooking';
 import Photographer from './pages/Photographer';
 import ContractSigning from './pages/ContractSigning';
+import ContractEditor from './pages/ContractEditor';
 
 // Create browser history
 const history = createBrowserHistory();
@@ -94,6 +95,7 @@ function App() {
                           <Route path="/leads/:id" element={<LeadDetail />} />
                           <Route path="/users" element={<Users />} />
                           <Route path="/templates" element={<Templates />} />
+                          <Route path="/contract-editor" element={<ContractEditor />} />
                           <Route path="/calendar" element={<Calendar />} />
                           <Route path="/reports" element={<Reports />} />
                           <Route path="/bookers-templates" element={<BookersTemplates />} />

@@ -61,6 +61,7 @@ const packagesRoutes = require('./routes/packages');
 const invoicesRoutes = require('./routes/invoices');
 const signatureRoutes = require('./routes/signature');
 const contractsRoutes = require('./routes/contracts');
+const contractTemplatesRoutes = require('./routes/contract-templates');
 const stripeRoutes = require('./routes/stripe');
 const imageProxyRoutes = require('./routes/image-proxy');
 // TEMPORARILY DISABLED: const scheduler = require('./utils/scheduler');
@@ -508,6 +509,8 @@ app.use('/api/invoices', invoicesRoutes);
 app.use('/api/signature', signatureRoutes);
 // Contracts API (for Edge Talent contract signing)
 app.use('/api/contracts', contractsRoutes);
+// Contract Templates API (for editing contract template content)
+app.use('/api/contract-templates', contractTemplatesRoutes);
 // Public Booking API (for client self-service booking)
 const publicBookingRoutes = require('./routes/public-booking');
 app.use('/api/public/booking', publicBookingRoutes);
@@ -820,56 +823,21 @@ testDatabaseConnection().then(() => {
           name: 'Contract Delivery Email',
           type: 'contract_delivery',
           subject: 'Your Signed Contract and Selected Images - Edge Talent',
-          email_body: `<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; color: white; border-radius: 8px 8px 0 0; }
-    .header h1 { margin: 0; font-size: 28px; }
-    .content { padding: 30px; background: #f9f9f9; }
-    .content p { margin: 0 0 15px 0; }
-    .highlight { background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; }
-    .order-details { background: #fff; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e0e0e0; }
-    .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; background: #f0f0f0; border-radius: 0 0 8px 8px; }
-    .footer p { margin: 5px 0; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>EDGE TALENT</h1>
-      <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank You for Your Purchase!</p>
-    </div>
-    <div class="content">
-      <p>Dear {customerName},</p>
-      <p>Thank you for signing your contract with Edge Talent!</p>
-
-      <div class="order-details">
-        <h3 style="margin-top: 0; color: #1a1a2e;">Order Details</h3>
-        <p><strong>Invoice Number:</strong> {invoiceNumber}</p>
-        <p><strong>Total Amount:</strong> {contractTotal}</p>
-        <p><strong>Signed On:</strong> {signedDate} at {signedTime}</p>
-      </div>
-
-      <div class="highlight">
-        <p style="margin: 0;"><strong>Please find attached:</strong></p>
-        {attachmentList}
-      </div>
-
-      <p>Your images are ready to download and use. If you have any questions about your order, please don't hesitate to contact us.</p>
-      <p>Best regards,<br><strong>The Edge Talent Team</strong></p>
-    </div>
-    <div class="footer">
-      <p><strong>Edge Talent</strong> | A trading name of S&A Advertising Ltd</p>
-      <p>Company No 8708429 | VAT Reg No 171339904</p>
-      <p>129A Weedington Rd, London NW5 4NX</p>
-      <p>Email: <a href="mailto:hello@edgetalent.co.uk">hello@edgetalent.co.uk</a></p>
-    </div>
-  </div>
-</body>
-</html>`,
+          email_body: `<p>Dear {customerName},</p>
+<p>Thank you for your purchase with Edge Talent!</p>
+<p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
+<p>Please find attached:</p>
+<ul>
+  {bulletContract}
+  {bulletImages}
+  {bulletAgencyList}
+  {bulletProjectInfluencer}
+  {bulletEfolio}
+  {bulletZCard}
+  {bullet3Lance}
+</ul>
+<p>If you have any questions about your order, please don't hesitate to contact us.</p>
+<p>Best regards,<br>The Edge Talent Team</p>`,
           sms_body: '',
           is_active: true,
           is_default: true,

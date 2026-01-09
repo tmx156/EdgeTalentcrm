@@ -39,8 +39,97 @@ const SendContractModal = ({
   const [authCodeSaved, setAuthCodeSaved] = useState(false);
   const [localAuthCode, setLocalAuthCode] = useState('');
 
+  // Resume/discard state
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+  const [savedStateData, setSavedStateData] = useState(null);
+
   // Current step: 'edit' | 'review' | 'send'
   const [step, setStep] = useState('edit');
+
+  // LocalStorage key for saving contract state
+  const getStorageKey = (leadId) => `contract_draft_${leadId}`;
+
+  // Save current state to localStorage
+  const saveStateToStorage = (leadId, state) => {
+    if (!leadId) return;
+    const dataToSave = {
+      contractDetails: state.contractDetails,
+      step: state.step,
+      contract: state.contract,
+      emailSent: state.emailSent,
+      contractStatus: state.contractStatus,
+      timestamp: Date.now(),
+      leadId: leadId
+    };
+    localStorage.setItem(getStorageKey(leadId), JSON.stringify(dataToSave));
+    console.log(`💾 Contract state saved for lead ${leadId}`);
+  };
+
+  // Load saved state from localStorage
+  const loadStateFromStorage = (leadId) => {
+    if (!leadId) return null;
+    try {
+      const saved = localStorage.getItem(getStorageKey(leadId));
+      if (saved) {
+        const data = JSON.parse(saved);
+        // Check if saved data is less than 24 hours old
+        const hoursSinceSave = (Date.now() - data.timestamp) / (1000 * 60 * 60);
+        if (hoursSinceSave < 24) {
+          return data;
+        } else {
+          // Clear expired data
+          localStorage.removeItem(getStorageKey(leadId));
+        }
+      }
+    } catch (err) {
+      console.error('Error loading saved contract state:', err);
+    }
+    return null;
+  };
+
+  // Clear saved state from localStorage
+  const clearSavedState = (leadId) => {
+    if (!leadId) return;
+    localStorage.removeItem(getStorageKey(leadId));
+    console.log(`🗑️ Cleared saved contract state for lead ${leadId}`);
+  };
+
+  // Handle resume - restore saved state
+  const handleResume = () => {
+    if (savedStateData) {
+      setContractDetails(savedStateData.contractDetails);
+      setStep(savedStateData.step);
+      if (savedStateData.contract) {
+        setContract(savedStateData.contract);
+      }
+      if (savedStateData.emailSent) {
+        setEmailSent(savedStateData.emailSent);
+      }
+      if (savedStateData.contractStatus) {
+        setContractStatus(savedStateData.contractStatus);
+      }
+      console.log(`✅ Resumed contract state from step: ${savedStateData.step}`);
+    }
+    setShowResumePrompt(false);
+    setSavedStateData(null);
+  };
+
+  // Handle discard - clear saved state and start fresh
+  const handleDiscard = () => {
+    if (lead?.id) {
+      clearSavedState(lead.id);
+    }
+    setShowResumePrompt(false);
+    setSavedStateData(null);
+    // The useEffect will initialize fresh state
+  };
+
+  // Handle close - reset resume state
+  const handleClose = () => {
+    setShowResumePrompt(false);
+    setSavedStateData(null);
+    onClose();
+  };
 
   // Editable contract details
   const [contractDetails, setContractDetails] = useState({
@@ -85,10 +174,45 @@ const SendContractModal = ({
   // Initialize contract details from lead and package data
   useEffect(() => {
     if (isOpen && lead) {
+      // Check for saved state first
+      const savedState = loadStateFromStorage(lead.id);
+      if (savedState && !showResumePrompt) {
+        // Show resume prompt
+        setSavedStateData(savedState);
+        setShowResumePrompt(true);
+        return; // Don't initialize until user decides
+      }
+
+      // If resume prompt is showing, don't reinitialize
+      if (showResumePrompt) return;
+
       const price = packageData?.price || 0;
       const subtotal = invoiceData?.subtotal || price;
       const vatAmount = invoiceData?.vatAmount || (price * 0.2);
       const total = invoiceData?.total || (price * 1.2);
+
+      // Fetch next invoice number from API
+      const fetchNextInvoiceNumber = async () => {
+        try {
+          const response = await fetch('/api/contracts/next-invoice-number', {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.invoiceNumber) {
+              setContractDetails(prev => ({
+                ...prev,
+                invoiceNumber: data.invoiceNumber
+              }));
+              console.log(`📋 Invoice number set: ${data.invoiceNumber}`);
+            }
+          }
+        } catch (err) {
+          console.error('Error fetching invoice number:', err);
+        }
+      };
 
       setContractDetails({
         // Customer details from lead
@@ -103,7 +227,7 @@ const SendContractModal = ({
         // Studio info
         studioNumber: invoiceData?.studioNumber || '',
         photographer: invoiceData?.photographer || '',
-        invoiceNumber: invoiceData?.invoiceNumber || `INV-${Date.now().toString().slice(-8)}`,
+        invoiceNumber: '', // Will be set by fetchNextInvoiceNumber
 
         // Order details - detect from package
         digitalImages: true,
@@ -129,13 +253,34 @@ const SendContractModal = ({
         authCode: invoiceData?.authCode || ''
       });
 
+      // Fetch invoice number after setting initial state
+      fetchNextInvoiceNumber();
+
       setContract(null);
       setEmailSent(false);
       setError(null);
       setCopied(false);
       setStep('edit');
     }
-  }, [isOpen, lead, packageData, invoiceData]);
+  }, [isOpen, lead, packageData, invoiceData, showResumePrompt]);
+
+  // Auto-save state when contractDetails or step changes
+  useEffect(() => {
+    if (isOpen && lead?.id && !showResumePrompt && contractDetails.customerName) {
+      // Don't save if contract is signed (completed)
+      if (contractStatus === 'signed') {
+        clearSavedState(lead.id);
+        return;
+      }
+      saveStateToStorage(lead.id, {
+        contractDetails,
+        step,
+        contract,
+        emailSent,
+        contractStatus
+      });
+    }
+  }, [contractDetails, step, contract, emailSent, contractStatus, isOpen, lead?.id, showResumePrompt]);
 
   // Update a single field
   const updateField = (field, value) => {
@@ -421,6 +566,67 @@ const SendContractModal = ({
 
   if (!isOpen) return null;
 
+  // Resume prompt modal
+  if (showResumePrompt && savedStateData) {
+    const savedStep = savedStateData.step;
+    const savedTime = new Date(savedStateData.timestamp);
+    const timeAgo = Math.round((Date.now() - savedStateData.timestamp) / (1000 * 60));
+    const timeAgoText = timeAgo < 60 ? `${timeAgo} minutes ago` : `${Math.round(timeAgo / 60)} hours ago`;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+          {/* Header */}
+          <div className="px-6 py-4 border-b bg-gradient-to-r from-amber-500 to-orange-500">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-white bg-opacity-20 rounded-lg">
+                <RefreshCw className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-lg font-semibold text-white">Resume Contract?</h2>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6">
+            <p className="text-gray-700 mb-4">
+              You have an unfinished contract for <strong>{savedStateData.contractDetails?.customerName || lead?.name}</strong>.
+            </p>
+
+            <div className="bg-gray-50 rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-gray-500">Saved:</span>
+                <span className="text-gray-700">{timeAgoText}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-gray-500">Step:</span>
+                <span className="text-gray-700 capitalize">{savedStep === 'edit' ? 'Edit Details' : savedStep === 'review' ? 'Review' : 'Send'}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Invoice:</span>
+                <span className="text-gray-700 font-mono">{savedStateData.contractDetails?.invoiceNumber || '-'}</span>
+              </div>
+            </div>
+
+            <div className="flex space-x-3">
+              <button
+                onClick={handleDiscard}
+                className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+              >
+                Start New
+              </button>
+              <button
+                onClick={handleResume}
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -442,7 +648,7 @@ const SendContractModal = ({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
           >
             <X className="w-5 h-5 text-white" />
@@ -1287,7 +1493,7 @@ const SendContractModal = ({
           </div>
           <div className="flex space-x-3">
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
             >
               {emailSent ? 'Done' : 'Cancel'}

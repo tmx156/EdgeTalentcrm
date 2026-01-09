@@ -12,6 +12,7 @@ const ContractSigning = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [contract, setContract] = useState(null);
+  const [template, setTemplate] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -39,6 +40,7 @@ const ContractSigning = () => {
         }
 
         setContract(data.contract);
+        setTemplate(data.template);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -172,9 +174,9 @@ const ContractSigning = () => {
         {/* Contract Content */}
         <div className="bg-white shadow-2xl overflow-x-auto">
           {currentPage === 1 ? (
-            <Page1Content contractData={contractData} signatures={signatures} setSignatures={setSignatures} formatCurrency={formatCurrency} formatDate={formatDate} />
+            <Page1Content contractData={contractData} signatures={signatures} setSignatures={setSignatures} formatCurrency={formatCurrency} formatDate={formatDate} template={template} />
           ) : (
-            <Page2Content contractData={contractData} signatures={signatures} setSignatures={setSignatures} formatDate={formatDate} />
+            <Page2Content contractData={contractData} signatures={signatures} setSignatures={setSignatures} formatDate={formatDate} template={template} />
           )}
         </div>
 
@@ -191,8 +193,8 @@ const ContractSigning = () => {
 
         {/* Footer */}
         <div className="text-center text-xs text-gray-400 mt-4 px-2">
-          <p>Edge Talent is a trading name of S&A Advertising Ltd</p>
-          <p>Company No 8708429 | VAT Reg No 171339904</p>
+          <p>{template?.footer_line1 || 'Edge Talent is a trading name of S&A Advertising Ltd'}</p>
+          <p>{template?.footer_line2 || 'Company No 8708429 | VAT Reg No 171339904'}</p>
         </div>
       </div>
     </div>
@@ -202,15 +204,28 @@ const ContractSigning = () => {
 /**
  * Page 1 - Invoice & Order Form (Mobile Responsive)
  */
-const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency, formatDate }) => {
+const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency, formatDate, template }) => {
+  // Use template values with fallbacks
+  const t = {
+    company_name: template?.company_name || 'EDGE TALENT',
+    company_website: template?.company_website || 'www.edgetalent.co.uk',
+    company_address: template?.company_address || '129A Weedington Rd, London NW5 4NX',
+    form_title: template?.form_title || 'INVOICE & ORDER FORM',
+    form_subtitle: template?.form_subtitle || 'PLEASE CHECK YOUR ORDER BEFORE LEAVING YOUR VIEWING',
+    form_contact_info: template?.form_contact_info || 'FOR ALL ENQUIRIES PLEASE EMAIL CUSTOMER SERVICES ON SALES@EDGETALENT.CO.UK',
+    terms_and_conditions: template?.terms_and_conditions || 'By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Payl8r documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk',
+    signature_instruction: template?.signature_instruction || 'PLEASE SIGN BELOW TO INDICATE YOUR ACCEPTANCE OF THE ABOVE TERMS, AND ENSURE YOU RECEIVE YOUR OWN SIGNED COPY OF THIS INVOICE FOR YOUR RECORDS',
+    image_permission_text: template?.image_permission_text || 'give permission for Edge Talent to use my images'
+  };
+
   return (
     <div className="p-3 sm:p-6 text-xs sm:text-sm">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
-        <p className="text-xs hidden sm:block">www.edgetalent.co.uk</p>
+        <p className="text-xs hidden sm:block">{t.company_website}</p>
         <div className="text-center">
-          <h1 className="text-xl sm:text-3xl font-bold tracking-wider sm:tracking-widest">EDGE TALENT</h1>
-          <p className="text-xs">129A Weedington Rd, London NW5 4NX</p>
+          <h1 className="text-xl sm:text-3xl font-bold tracking-wider sm:tracking-widest">{t.company_name}</h1>
+          <p className="text-xs">{t.company_address}</p>
         </div>
         <div className="border border-black px-3 py-1 sm:px-4 sm:py-2">
           <span className="text-xs">Date: </span>
@@ -220,9 +235,9 @@ const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency,
 
       {/* Title */}
       <div className="text-center mb-4">
-        <h2 className="text-base sm:text-xl font-bold mb-1">INVOICE & ORDER FORM</h2>
-        <p className="text-xs hidden sm:block">PLEASE CHECK YOUR ORDER BEFORE LEAVING YOUR VIEWING</p>
-        <p className="text-xs hidden sm:block">FOR ALL ENQUIRIES PLEASE EMAIL CUSTOMER SERVICES ON SALES@EDGETALENT.CO.UK</p>
+        <h2 className="text-base sm:text-xl font-bold mb-1">{t.form_title}</h2>
+        <p className="text-xs hidden sm:block">{t.form_subtitle}</p>
+        <p className="text-xs hidden sm:block">{t.form_contact_info}</p>
       </div>
 
       {/* Info Row - Stacked on mobile */}
@@ -308,7 +323,7 @@ const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency,
               <div className="border-l border-black p-2 flex-1">-</div>
             </div>
             <div className="p-2 border-b border-black">
-              I <span className="font-bold">{contractData.allowImageUse ? 'DO' : 'DO NOT'}</span> give permission for Edge Talent to use my images
+              I <span className="font-bold">{contractData.allowImageUse ? 'DO' : 'DO NOT'}</span> {t.image_permission_text}
             </div>
             <div className="flex">
               <div className="p-2 flex-1">Digital Images checked & received?</div>
@@ -342,7 +357,7 @@ const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency,
       <details className="mb-3">
         <summary className="text-xs font-bold cursor-pointer text-gray-700">Terms and Conditions (tap to read)</summary>
         <div className="text-xs text-gray-600 mt-2 leading-tight" style={{ fontSize: '9px' }}>
-          By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Payl8r documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk
+          {t.terms_and_conditions}
         </div>
       </details>
 
@@ -374,7 +389,7 @@ const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency,
 
       {/* Main Signature Section */}
       <div className="mb-3">
-        <p className="text-xs font-bold mb-2">PLEASE SIGN BELOW TO ACCEPT THE TERMS</p>
+        <p className="text-xs font-bold mb-2">{t.signature_instruction}</p>
         <div className="border border-black">
           <div className="p-2">
             <span className="text-xs text-gray-600">CUSTOMER SIGNATURE:</span>
@@ -405,28 +420,24 @@ const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency,
 /**
  * Page 2 - Confirmation Signatures (Mobile Responsive)
  */
-const Page2Content = ({ contractData, signatures, setSignatures, formatDate }) => {
+const Page2Content = ({ contractData, signatures, setSignatures, formatDate, template }) => {
+  // Use template values with fallbacks for confirmation texts
   const confirmations = [
     {
       key: 'notAgency',
-      text: 'I understand that Edge Talent is ',
-      bold: 'not a talent casting company/agency and will not find me work.'
+      html: template?.confirmation1_text || 'I understand that Edge Talent is <strong>not a talent casting company/agency and will not find me work.</strong>'
     },
     {
       key: 'noCancel',
-      text: 'I understand that once I leave the premises I ',
-      bold: 'cannot cancel, amend or reduce the order.'
+      html: template?.confirmation2_text || 'I understand that once I leave the premises I <strong>cannot cancel</strong>, amend or reduce the order.'
     },
     {
       key: 'passDetails',
-      text: 'I confirm that I am happy for Edge Talent to ',
-      bold: 'pass on details and photos',
-      after: ' of the client named on this order form.'
+      html: template?.confirmation3_text || 'I confirm that I am happy for Edge Talent to <strong>pass on details and photos</strong> of the client named on this order form. Talent Agencies we pass your details to typically charge between £50 - £200 to register onto their books'
     },
     {
       key: 'happyPurchase',
-      text: "I confirm that I'm happy and comfortable with my decision to purchase.",
-      bold: ''
+      html: template?.confirmation4_text || "I confirm that I'm happy and comfortable with my decision to purchase."
     },
   ];
 
@@ -463,9 +474,7 @@ const Page2Content = ({ contractData, signatures, setSignatures, formatDate }) =
             </div>
             {/* Text */}
             <div className="flex-1 order-1 sm:order-2">
-              <p className="text-sm sm:text-base leading-relaxed">
-                {conf.text}<strong>{conf.bold}</strong>{conf.after || ''}
-              </p>
+              <p className="text-sm sm:text-base leading-relaxed" dangerouslySetInnerHTML={{ __html: conf.html }} />
             </div>
           </div>
         ))}

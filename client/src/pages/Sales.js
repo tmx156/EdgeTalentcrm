@@ -755,6 +755,12 @@ const Sales = () => {
                             <span className="font-semibold text-gray-600">Sales Agent:</span>
                             <span className="text-gray-900">{selectedSale.user_name}</span>
                           </div>
+                          {fullSaleDetails?.contract?.contract_data?.authCode && (
+                            <div className="flex justify-between">
+                              <span className="font-semibold text-gray-600">Auth Code:</span>
+                              <span className="text-gray-900 font-mono bg-gray-100 px-2 py-0.5 rounded">{fullSaleDetails.contract.contract_data.authCode}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

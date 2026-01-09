@@ -24,7 +24,8 @@ import {
   FiMessageSquare,
   FiLock,
   FiPhone,
-  FiImage
+  FiImage,
+  FiFileText
 } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
 
@@ -728,6 +729,7 @@ const Layout = ({ children }) => {
     { name: 'Reports', href: '/reports', icon: FiBarChart2 },
     { name: 'My Templates', href: '/bookers-templates', icon: FiMail, bookerOnly: true },
     { name: 'Templates', href: '/templates', icon: FiMail, adminOnly: true },
+    { name: 'Contract Editor', href: '/contract-editor', icon: FiFileText, adminOnly: true },
     { name: 'Users', href: '/users', icon: FiUser, adminOnly: true },
   ];
 
