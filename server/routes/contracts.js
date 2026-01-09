@@ -955,10 +955,10 @@ router.post('/sign/:token', async (req, res) => {
               console.log(`⚠️ Zip file (${zipSizeMB.toFixed(2)} MB) exceeds ${MAX_ATTACHMENT_SIZE_MB}MB limit - uploading to S3...`);
 
               try {
-                const s3Key = `delivery-images/${new Date().getFullYear()}/${Date.now()}-${zipFilename}`;
-                const s3Url = await uploadToS3(zipBuffer, s3Key, 'application/zip');
-                imagesDownloadUrl = s3Url;
-                console.log(`✅ Zip uploaded to S3: ${s3Url}`);
+                const folder = `delivery-images/${new Date().getFullYear()}`;
+                const s3Result = await uploadToS3(zipBuffer, zipFilename, folder, 'application/zip');
+                imagesDownloadUrl = s3Result.url;
+                console.log(`✅ Zip uploaded to S3: ${imagesDownloadUrl}`);
               } catch (s3Error) {
                 console.error('❌ Failed to upload zip to S3:', s3Error.message);
                 // Still try to attach - Gmail might accept it
