@@ -226,22 +226,19 @@ router.post('/create', auth, async (req, res) => {
     const contractToken = generateContractToken();
 
     // Determine base URL for signing link
-    // Priority: FRONTEND_URL > CLIENT_URL > RAILWAY_PUBLIC_DOMAIN > production default > localhost
-    let baseUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL;
-
-    if (!baseUrl && process.env.RAILWAY_PUBLIC_DOMAIN) {
-      baseUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
-    }
-
-    if (!baseUrl) {
-      // Default to production URL if in production, otherwise localhost
-      baseUrl = process.env.NODE_ENV === 'production'
-        ? 'https://crm.edgetalent.co.uk'
-        : 'http://localhost:3000';
-    }
+    // Use config which has proper fallbacks for production
+    let baseUrl = config.FRONTEND_URL || config.CLIENT_URL || 'https://crm.edgetalent.co.uk';
 
     // Ensure URL doesn't have trailing slash
     baseUrl = baseUrl.replace(/\/$/, '');
+
+    // Log for debugging
+    console.log('🔗 Contract URL config:', {
+      FRONTEND_URL: config.FRONTEND_URL,
+      CLIENT_URL: config.CLIENT_URL,
+      NODE_ENV: config.NODE_ENV,
+      finalBaseUrl: baseUrl
+    });
 
     const signingUrl = `${baseUrl}/sign-contract/${contractToken}`;
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days

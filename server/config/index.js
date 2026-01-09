@@ -70,7 +70,9 @@ const config = {
   },
 
   // Client Configuration
-  CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:3000',
+  // IMPORTANT: Production URL must be set correctly for contract signing links
+  CLIENT_URL: process.env.CLIENT_URL || (process.env.NODE_ENV === 'production' ? 'https://crm.edgetalent.co.uk' : 'http://localhost:3000'),
+  FRONTEND_URL: process.env.FRONTEND_URL || process.env.CLIENT_URL || (process.env.NODE_ENV === 'production' ? 'https://crm.edgetalent.co.uk' : 'http://localhost:3000'),
 
   // AWS S3 Configuration (for photo storage)
   aws: {
