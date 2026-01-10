@@ -1141,7 +1141,8 @@ router.post('/sign/:token', async (req, res) => {
           error: null,
           time: new Date().toISOString(),
           to: customerEmail,
-          attachmentCount: attachments.length
+          attachmentCount: attachments.length,
+          photoCount: photoAttachments.length // Actual number of photos (not zip count)
         };
 
         if (attachments.length > 0) {
@@ -1194,7 +1195,8 @@ router.post('/sign/:token', async (req, res) => {
               delivery_email_time: deliveryEmailStatus.time,
               delivery_email_to: deliveryEmailStatus.to,
               delivery_email_error: deliveryEmailStatus.error,
-              delivery_attachment_count: deliveryEmailStatus.attachmentCount
+              delivery_attachment_count: deliveryEmailStatus.attachmentCount,
+              delivery_photo_count: deliveryEmailStatus.photoCount
             };
 
             await supabase
@@ -1412,6 +1414,7 @@ router.get('/:contractId', auth, async (req, res) => {
     const deliveryEmailTo = contractData.delivery_email_to || contractData.email || null;
     const deliveryEmailError = contractData.delivery_email_error || null;
     const deliveryAttachmentCount = contractData.delivery_attachment_count || 0;
+    const deliveryPhotoCount = contractData.delivery_photo_count || 0;
     const selectedPhotoCount = contractData.selectedPhotoIds?.length || 0;
 
     res.json({
@@ -1435,6 +1438,7 @@ router.get('/:contractId', auth, async (req, res) => {
         deliveryEmailTo: deliveryEmailTo,
         deliveryEmailError: deliveryEmailError,
         deliveryAttachmentCount: deliveryAttachmentCount,
+        deliveryPhotoCount: deliveryPhotoCount,
         selectedPhotoCount: selectedPhotoCount,
         authCode: contractData.authCode || ''
       }
@@ -1737,6 +1741,7 @@ router.post('/:contractId/resend-delivery', auth, async (req, res) => {
         delivery_email_sent: true,
         delivery_email_time: new Date().toISOString(),
         delivery_email_to: customerEmail,
+        delivery_photo_count: photoCount,
         delivery_resent_count: (contractData.delivery_resent_count || 0) + 1
       };
 
@@ -1754,7 +1759,8 @@ router.post('/:contractId/resend-delivery', auth, async (req, res) => {
         success: true,
         message: 'Delivery email sent successfully',
         sentTo: customerEmail,
-        attachments: attachments.length
+        attachments: attachments.length,
+        photoCount: photoCount
       });
     } else {
       console.error('❌ Failed to send delivery email:', emailResult.error);

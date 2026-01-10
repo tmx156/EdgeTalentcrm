@@ -33,6 +33,7 @@ const SendContractModal = ({
   const [deliveryEmailTo, setDeliveryEmailTo] = useState('');
   const [deliveryEmailError, setDeliveryEmailError] = useState(null);
   const [deliveryAttachmentCount, setDeliveryAttachmentCount] = useState(0);
+  const [deliveryPhotoCount, setDeliveryPhotoCount] = useState(0);
   const [selectedPhotoCount, setSelectedPhotoCount] = useState(0);
   const [resendingDelivery, setResendingDelivery] = useState(false);
   const [savingAuthCode, setSavingAuthCode] = useState(false);
@@ -432,6 +433,7 @@ const SendContractModal = ({
             setDeliveryEmailTo(data.contract.deliveryEmailTo || contractData.email);
             setDeliveryEmailError(data.contract.deliveryEmailError || null);
             setDeliveryAttachmentCount(data.contract.deliveryAttachmentCount || 0);
+            setDeliveryPhotoCount(data.contract.deliveryPhotoCount || 0);
           } else if (contractData.delivery_email_sent !== undefined) {
             // Fallback to contract_data fields
             setDeliveryEmailSent(contractData.delivery_email_sent);
@@ -439,6 +441,7 @@ const SendContractModal = ({
             setDeliveryEmailTo(contractData.delivery_email_to || contractData.email);
             setDeliveryEmailError(contractData.delivery_email_error || null);
             setDeliveryAttachmentCount(contractData.delivery_attachment_count || 0);
+            setDeliveryPhotoCount(contractData.delivery_photo_count || 0);
           }
 
           if (data.contract.selectedPhotoCount) {
@@ -502,6 +505,7 @@ const SendContractModal = ({
       setDeliveryEmailTo(data.sentTo);
       setDeliveryEmailError(null); // Clear any previous error
       setDeliveryAttachmentCount(data.attachments || 0);
+      setDeliveryPhotoCount(data.photoCount || 0);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1368,7 +1372,7 @@ const SendContractModal = ({
                                 })}
                               </p>
                               <p className="text-xs text-green-500 mt-1">
-                                PDF + {deliveryAttachmentCount || selectedPhotoCount || selectedPhotoIds?.length || 0} images attached
+                                PDF + {deliveryPhotoCount || selectedPhotoCount || selectedPhotoIds?.length || 0} images attached
                               </p>
                             </div>
 
