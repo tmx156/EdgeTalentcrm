@@ -1026,6 +1026,21 @@ router.post('/sign/:token', async (req, res) => {
               }
             }
 
+            // Build individual bullet items
+            const bulletContract = pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : '';
+            const bulletImages = bulletImagesText;
+            const bulletAgencyList = (signedContractData.recommendedAgencyList || signedContractData.agencyList) ? '<li>Your \'recommended agency list\' is attached to this email</li>' : '';
+            const bulletProjectInfluencer = signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : '';
+            const bulletEfolio = signedContractData.efolio ? '<li>Your Efolio URL and login details will be issued to you from Edge Talent within 7 days</li>' : '';
+            const bulletZCard = signedContractData.digitalZCard ? '<li>Your Digital Z-Card will be emailed to you by Edge Talent within 7 days</li>' : '';
+            const bullet3Lance = (signedContractData.threeLanceCastings || signedContractData['3lanceCastings']) ? '<li>Your 3Lance Castings membership will be activated within 7 days</li>' : '';
+
+            // Build combined bullets - only includes items that are actually in the package
+            const allBullets = [bulletContract, bulletImages, bulletAgencyList, bulletProjectInfluencer, bulletEfolio, bulletZCard, bullet3Lance]
+              .filter(b => b) // Remove empty strings
+              .join('\n');
+            const allConditionalBullets = allBullets ? `<ul style="margin: 10px 0; padding-left: 20px;">\n${allBullets}\n</ul>` : '';
+
             const variables = {
               '{customerName}': customerName,
               '{leadName}': customerName,
@@ -1040,14 +1055,16 @@ router.post('/sign/:token', async (req, res) => {
               '{hasPdf}': pdfUrl ? 'yes' : 'no',
               '{companyName}': 'Edge Talent',
               '{imagesDownloadUrl}': imagesDownloadUrl || '',
-              // Conditional bullets based on package
-              '{bulletContract}': pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : '',
-              '{bulletImages}': bulletImagesText,
-              '{bulletAgencyList}': (signedContractData.recommendedAgencyList || signedContractData.agencyList) ? '<li>Your \'recommended agency list\' is attached to this email</li>' : '',
-              '{bulletProjectInfluencer}': signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : '',
-              '{bulletEfolio}': signedContractData.efolio ? '<li>Your Efolio URL and login details will be issued to you from Edge Talent within 7 days</li>' : '',
-              '{bulletZCard}': signedContractData.digitalZCard ? '<li>Your Digital Z-Card will be emailed to you by Edge Talent within 7 days</li>' : '',
-              '{bullet3Lance}': (signedContractData.threeLanceCastings || signedContractData['3lanceCastings']) ? '<li>Your 3Lance Castings membership will be activated within 7 days</li>' : '',
+              // Conditional bullets based on package - only shows if item is in package
+              '{bulletContract}': bulletContract,
+              '{bulletImages}': bulletImages,
+              '{bulletAgencyList}': bulletAgencyList,
+              '{bulletProjectInfluencer}': bulletProjectInfluencer,
+              '{bulletEfolio}': bulletEfolio,
+              '{bulletZCard}': bulletZCard,
+              '{bullet3Lance}': bullet3Lance,
+              // Combined variable - automatically includes all relevant items
+              '{allConditionalBullets}': allConditionalBullets,
               '{attachmentList}': `
                 <ul style="margin: 10px 0 0 0; padding-left: 20px;">
                   ${pdfUrl ? '<li>Your signed contract (PDF)</li>' : ''}

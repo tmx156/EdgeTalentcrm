@@ -729,8 +729,19 @@ router.get('/variables/list', auth, async (req, res) => {
         { name: '{signedDate}', description: 'Date contract was signed', example: '08/01/2026' },
         { name: '{signedTime}', description: 'Time contract was signed', example: '14:30' },
         { name: '{photoCount}', description: 'Number of photos attached', example: '5' },
-        { name: '{attachmentList}', description: 'HTML list of attachments (PDF + images)', example: '<ul><li>PDF</li><li>5 images</li></ul>' },
-        { name: '{companyName}', description: 'Company name', example: 'Edge Talent' }
+        { name: '{companyName}', description: 'Company name', example: 'Edge Talent' },
+        { name: '{imagesDownloadUrl}', description: 'Download URL for images (if too large for email)', example: 'https://...' },
+        { name: '--- CONDITIONAL ITEMS (only show if purchased) ---', description: '', example: '' },
+        { name: '{bulletContract}', description: 'Shows ONLY if PDF attached', example: '<li>A copy of your signed contract (PDF)</li>' },
+        { name: '{bulletImages}', description: 'Shows ONLY if images attached', example: '<li>Your 5 selected images...</li>' },
+        { name: '{bulletAgencyList}', description: 'Shows ONLY if agency list in package', example: '<li>Your recommended agency list...</li>' },
+        { name: '{bulletProjectInfluencer}', description: 'Shows ONLY if Project Influencer in package', example: '<li>Your Project Influencer Login...</li>' },
+        { name: '{bulletEfolio}', description: 'Shows ONLY if E-folio in package', example: '<li>Your Efolio URL and login...</li>' },
+        { name: '{bulletZCard}', description: 'Shows ONLY if Z-Card in package', example: '<li>Your Digital Z-Card...</li>' },
+        { name: '{bullet3Lance}', description: 'Shows ONLY if 3Lance/Castings in package', example: '<li>Your 3Lance Castings membership...</li>' },
+        { name: '--- COMBINED VARIABLES ---', description: '', example: '' },
+        { name: '{allConditionalBullets}', description: 'ALL conditional bullets combined (recommended)', example: '<ul><li>Contract</li><li>Images</li>...</ul>' },
+        { name: '{attachmentList}', description: 'HTML list of attachments only (PDF + images)', example: '<ul><li>PDF</li><li>5 images</li></ul>' }
       ];
     }
 
