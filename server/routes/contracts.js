@@ -1405,7 +1405,9 @@ router.get('/:contractId', auth, async (req, res) => {
 
     // Extract delivery email info from contract_data
     const contractData = contract.contract_data || {};
-    const deliveryEmailSent = contractData.delivery_email_sent || false;
+    // IMPORTANT: Don't default to false - undefined/null means "still processing"
+    // Only use true/false when we have an actual result from sending
+    const deliveryEmailSent = contractData.delivery_email_sent !== undefined ? contractData.delivery_email_sent : null;
     const deliveryEmailTime = contractData.delivery_email_time || null;
     const deliveryEmailTo = contractData.delivery_email_to || contractData.email || null;
     const deliveryEmailError = contractData.delivery_email_error || null;

@@ -457,16 +457,20 @@ const SendContractModal = ({
     }
   };
 
-  // Auto-refresh contract status every second when waiting for signature
+  // Auto-refresh contract status every second when waiting for signature or delivery email status
   useEffect(() => {
-    if (!contract?.id || contractStatus === 'signed' || step !== 'send') return;
+    if (!contract?.id || step !== 'send') return;
+
+    // Stop polling only when contract is signed AND delivery email status is known (sent or failed)
+    // deliveryEmailSent === null means still processing, true/false means we have a result
+    if (contractStatus === 'signed' && deliveryEmailSent !== null) return;
 
     const interval = setInterval(() => {
       checkContractStatus();
     }, 1000); // Every 1 second
 
     return () => clearInterval(interval);
-  }, [contract?.id, contractStatus, step]);
+  }, [contract?.id, contractStatus, step, deliveryEmailSent]);
 
   // Resend delivery email
   const resendDeliveryEmail = async () => {
