@@ -809,13 +809,47 @@ testDatabaseConnection().then(() => {
 
     // Auto-create or update contract_delivery template with dynamic variables
     try {
-      const dynamicEmailBody = `<p>Dear {customerName},</p>
-<p>Thank you for your purchase with Edge Talent!</p>
-<p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
-<p>Please find attached:</p>
-{allConditionalBullets}
-<p>If you have any questions about your order, please don't hesitate to contact us at <a href="mailto:sales@edgetalent.co.uk">sales@edgetalent.co.uk</a></p>
-<p>Best regards,<br><strong>The Edge Talent Team</strong></p>`;
+      const dynamicEmailBody = `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; color: white; border-radius: 8px 8px 0 0; }
+    .header h1 { margin: 0; font-size: 28px; }
+    .content { padding: 30px; background: #f9f9f9; }
+    .content p { margin: 0 0 15px 0; }
+    .highlight { background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; background: #f0f0f0; border-radius: 0 0 8px 8px; }
+    .footer p { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>EDGE TALENT</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank You for Your Purchase!</p>
+    </div>
+    <div class="content">
+      <p>Dear {customerName},</p>
+      <p>Thank you for your purchase with Edge Talent!</p>
+      <p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
+
+      <div class="highlight">
+        <p style="margin: 0 0 10px 0;"><strong>Please find attached:</strong></p>
+        {allConditionalBullets}
+      </div>
+
+      <p>If you have any questions about your order, please don't hesitate to contact us at <a href="mailto:sales@edgetalent.co.uk" style="color: #2563eb;">sales@edgetalent.co.uk</a></p>
+      <p>Best regards,<br><strong>The Edge Talent Team</strong></p>
+    </div>
+    <div class="footer">
+      <p>Edge Talent | www.edgetalent.co.uk</p>
+      <p>129A Weedington Rd, London NW5 4NX</p>
+    </div>
+  </div>
+</body>
+</html>`;
 
       const { data: existingTemplate } = await supabase
         .from('templates')

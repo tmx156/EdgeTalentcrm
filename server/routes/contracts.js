@@ -1105,21 +1105,60 @@ router.post('/sign/:token', async (req, res) => {
             }
           }
 
-          emailHtml = `<p>Dear ${customerName},</p>
-<p>Thank you for your purchase with Edge Talent!</p>
-<p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
-<p>Please find ${imagesDownloadUrl ? 'your contract attached and download link below' : 'attached'}:</p>
-<ul>
-  ${pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : ''}
-  ${imagesText}
-  ${signedContractData.recommendedAgencyList || signedContractData.agencyList ? '<li>Your \'recommended agency list\' is attached to this email</li>' : ''}
-  ${signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : ''}
-  ${signedContractData.efolio ? '<li>Your Efolio URL and login details will be issued to you from Edge Talent within 7 days</li>' : ''}
-  ${signedContractData.digitalZCard ? '<li>Your Digital Z-Card will be emailed to you by Edge Talent within 7 days</li>' : ''}
-  ${signedContractData.threeLanceCastings || signedContractData['3lanceCastings'] ? '<li>Your 3Lance Castings membership will be activated within 7 days</li>' : ''}
-</ul>
-<p>If you have any questions about your order, please don't hesitate to contact us.</p>
-<p>Best regards,<br>The Edge Talent Team</p>`;
+          // Build dynamic bullets for fallback template
+          const fallbackBullets = [
+            pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : '',
+            imagesText,
+            (signedContractData.recommendedAgencyList || signedContractData.agencyList) ? '<li>Your \'recommended agency list\' is attached to this email</li>' : '',
+            signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : '',
+            signedContractData.efolio ? '<li>Your Efolio URL and login details will be issued to you from Edge Talent within 7 days</li>' : '',
+            signedContractData.digitalZCard ? '<li>Your Digital Z-Card will be emailed to you by Edge Talent within 7 days</li>' : '',
+            (signedContractData.threeLanceCastings || signedContractData['3lanceCastings']) ? '<li>Your 3Lance Castings membership will be activated within 7 days</li>' : ''
+          ].filter(b => b).join('\n');
+
+          emailHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); padding: 30px; text-align: center; color: white; border-radius: 8px 8px 0 0; }
+    .header h1 { margin: 0; font-size: 28px; }
+    .content { padding: 30px; background: #f9f9f9; }
+    .content p { margin: 0 0 15px 0; }
+    .highlight { background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    .footer { padding: 20px; text-align: center; color: #666; font-size: 12px; background: #f0f0f0; border-radius: 0 0 8px 8px; }
+    .footer p { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>EDGE TALENT</h1>
+      <p style="margin: 10px 0 0 0; opacity: 0.9;">Thank You for Your Purchase!</p>
+    </div>
+    <div class="content">
+      <p>Dear ${customerName},</p>
+      <p>Thank you for your purchase with Edge Talent!</p>
+      <p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
+
+      <div class="highlight">
+        <p style="margin: 0 0 10px 0;"><strong>Please find attached:</strong></p>
+        <ul style="margin: 10px 0; padding-left: 20px;">
+          ${fallbackBullets}
+        </ul>
+      </div>
+
+      <p>If you have any questions about your order, please don't hesitate to contact us at <a href="mailto:sales@edgetalent.co.uk" style="color: #2563eb;">sales@edgetalent.co.uk</a></p>
+      <p>Best regards,<br><strong>The Edge Talent Team</strong></p>
+    </div>
+    <div class="footer">
+      <p>Edge Talent | www.edgetalent.co.uk</p>
+      <p>129A Weedington Rd, London NW5 4NX</p>
+    </div>
+  </div>
+</body>
+</html>`;
         }
 
         // Process template attachments (e.g., agency list PDF)
