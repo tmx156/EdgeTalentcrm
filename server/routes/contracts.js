@@ -121,6 +121,10 @@ router.post('/create', auth, async (req, res) => {
       return res.status(400).json({ message: 'Lead ID is required' });
     }
 
+    // Validate packageId is a valid UUID or null - 'individual-items' is not a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const validPackageId = packageId && uuidRegex.test(packageId) ? packageId : null;
+
     // Get lead data
     const { data: lead, error: leadError } = await supabase
       .from('leads')
@@ -136,6 +140,10 @@ router.post('/create', auth, async (req, res) => {
     let contractData;
 
     if (contractDetails) {
+      // Log if we're handling individual items (no valid package UUID)
+      if (!validPackageId && packageId) {
+        console.log(`📦 Processing individual items - packageId "${packageId}" is not a valid UUID, using null`);
+      }
       // Use the edited contract details from the pre-screen form
       contractData = {
         // Dates - convert to ISO strings for JSONB storage
@@ -199,11 +207,11 @@ router.post('/create', auth, async (req, res) => {
     } else {
       // Fallback: Build contract data from lead and package
       let pkg = packageData;
-      if (packageId && !packageData) {
+      if (validPackageId && !packageData) {
         const { data: pkgData, error: pkgError } = await supabase
           .from('packages')
           .select('*')
-          .eq('id', packageId)
+          .eq('id', validPackageId)
           .single();
 
         if (!pkgError && pkgData) {
@@ -251,7 +259,8 @@ router.post('/create', auth, async (req, res) => {
     // Create contract record
     console.log('Creating contract with data:', {
       lead_id: leadId,
-      package_id: packageId || null,
+      package_id: validPackageId,
+      original_package_id: packageId,
       contract_token: contractToken.substring(0, 10) + '...',
       signing_url: signingUrl,
       expires_at: expiresAt.toISOString(),
@@ -265,7 +274,7 @@ router.post('/create', auth, async (req, res) => {
       .from('contracts')
       .insert({
         lead_id: leadId,
-        package_id: packageId || null,
+        package_id: validPackageId,
         contract_token: contractToken,
         signing_url: signingUrl,
         expires_at: expiresAt.toISOString(),
