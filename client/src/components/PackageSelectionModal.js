@@ -606,12 +606,21 @@ const PackageSelectionModal = ({
                             })
                             .filter(Boolean);
 
+                          // Check what extras were actually purchased by item name/code
+                          const allItemNames = individualItemsList.map(i => (i.name || '').toLowerCase() + ' ' + (i.code || '').toLowerCase()).join(' ');
+
                           const combinedPackage = {
                             id: 'individual-items',
                             name: individualItemsList.map(i => `${i.name}${i.quantity > 1 ? ` x${i.quantity}` : ''}`).join(', '),
                             code: 'individual',
                             price: totals.subtotal,
-                            includes: individualItemsList.flatMap(i => i.includes || [])
+                            includes: individualItemsList.flatMap(i => i.includes || []),
+                            // Explicit flags based on actual purchased items (by name/code, not includes)
+                            hasZCard: allItemNames.includes('z-card') || allItemNames.includes('zcard'),
+                            hasEfolio: allItemNames.includes('efolio') || allItemNames.includes('e-folio'),
+                            hasProjectInfluencer: allItemNames.includes('influencer'),
+                            has3Lance: allItemNames.includes('3lance') || allItemNames.includes('casting'),
+                            hasAgencyList: allItemNames.includes('agency') || allItemNames.includes('agency list')
                           };
 
                           onSendContract({

@@ -231,14 +231,27 @@ const SendContractModal = ({
         invoiceNumber: '', // Will be set by fetchNextInvoiceNumber
 
         // Order details - detect from package
+        // For individual items, use explicit flags; for main packages, check includes array
         digitalImages: true,
         digitalImagesQty: packageData?.imageCount || packageData?.image_count || 'All',
-        digitalZCard: packageData?.includes?.some(i => i.toLowerCase().includes('z-card')) || false,
-        efolio: packageData?.includes?.some(i => i.toLowerCase().includes('efolio') || i.toLowerCase().includes('e-folio')) || false,
+        digitalZCard: packageData?.hasZCard !== undefined
+          ? packageData.hasZCard
+          : (packageData?.includes?.some(i => i.toLowerCase().includes('z-card')) || false),
+        efolio: packageData?.hasEfolio !== undefined
+          ? packageData.hasEfolio
+          : (packageData?.includes?.some(i => i.toLowerCase().includes('efolio') || i.toLowerCase().includes('e-folio')) || false),
         efolioUrl: '',
-        projectInfluencer: packageData?.includes?.some(i => i.toLowerCase().includes('influencer')) || false,
+        projectInfluencer: packageData?.hasProjectInfluencer !== undefined
+          ? packageData.hasProjectInfluencer
+          : (packageData?.includes?.some(i => i.toLowerCase().includes('influencer')) || false),
         influencerLogin: '',
         influencerPassword: '',
+        threeLanceCastings: packageData?.has3Lance !== undefined
+          ? packageData.has3Lance
+          : (packageData?.includes?.some(i => i.toLowerCase().includes('3lance') || i.toLowerCase().includes('casting')) || false),
+        recommendedAgencyList: packageData?.hasAgencyList !== undefined
+          ? packageData.hasAgencyList
+          : (packageData?.includes?.some(i => i.toLowerCase().includes('agency')) || false),
 
         // Permissions
         allowImageUse: true,
