@@ -807,11 +807,19 @@ testDatabaseConnection().then(() => {
     console.log(`🔌 WebSocket server ready for real-time sync`);
     console.log(`🗄️  Connected to Supabase database`);
 
-    // Auto-create default contract_delivery template if it doesn't exist
+    // Auto-create or update contract_delivery template with dynamic variables
     try {
+      const dynamicEmailBody = `<p>Dear {customerName},</p>
+<p>Thank you for your purchase with Edge Talent!</p>
+<p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
+<p>Please find attached:</p>
+{allConditionalBullets}
+<p>If you have any questions about your order, please don't hesitate to contact us at <a href="mailto:sales@edgetalent.co.uk">sales@edgetalent.co.uk</a></p>
+<p>Best regards,<br><strong>The Edge Talent Team</strong></p>`;
+
       const { data: existingTemplate } = await supabase
         .from('templates')
-        .select('id')
+        .select('id, email_body')
         .eq('type', 'contract_delivery')
         .limit(1)
         .single();
@@ -823,21 +831,7 @@ testDatabaseConnection().then(() => {
           name: 'Contract Delivery Email',
           type: 'contract_delivery',
           subject: 'Your Signed Contract and Selected Images - Edge Talent',
-          email_body: `<p>Dear {customerName},</p>
-<p>Thank you for your purchase with Edge Talent!</p>
-<p>We hope this is the start of an exciting journey into the world of modelling/influencing.</p>
-<p>Please find attached:</p>
-<ul>
-  {bulletContract}
-  {bulletImages}
-  {bulletAgencyList}
-  {bulletProjectInfluencer}
-  {bulletEfolio}
-  {bulletZCard}
-  {bullet3Lance}
-</ul>
-<p>If you have any questions about your order, please don't hesitate to contact us.</p>
-<p>Best regards,<br>The Edge Talent Team</p>`,
+          email_body: dynamicEmailBody,
           sms_body: '',
           is_active: true,
           is_default: true,
@@ -858,7 +852,31 @@ testDatabaseConnection().then(() => {
           console.log('✅ Default contract_delivery template created successfully');
         }
       } else {
-        console.log('📧 Contract delivery template already exists');
+        // Check if template needs updating (doesn't have dynamic variables)
+        const hasOldContent = existingTemplate.email_body &&
+          !existingTemplate.email_body.includes('{allConditionalBullets}') &&
+          (existingTemplate.email_body.includes('Project Influencer Login details will be issued') ||
+           existingTemplate.email_body.includes('Efolio URL and login details') ||
+           existingTemplate.email_body.includes('Digital Z-Card will be emailed'));
+
+        if (hasOldContent) {
+          console.log('📧 Updating contract_delivery template with dynamic variables...');
+          const { error: updateError } = await supabase
+            .from('templates')
+            .update({
+              email_body: dynamicEmailBody,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingTemplate.id);
+
+          if (updateError) {
+            console.error('❌ Failed to update contract_delivery template:', updateError.message);
+          } else {
+            console.log('✅ Contract delivery template updated with dynamic variables');
+          }
+        } else {
+          console.log('📧 Contract delivery template already has dynamic variables');
+        }
       }
     } catch (templateError) {
       console.error('❌ Error checking/creating contract_delivery template:', templateError.message);
