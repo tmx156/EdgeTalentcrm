@@ -262,15 +262,8 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'card' ? '✓' : ''}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'cash' ? '✓' : ''}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'finance' ? '✓' : ''}</td>
-          <td style="padding: 5px; text-align: right; font-weight: 500;">${contractData.paymentMethod === 'finance' ? formatCurrency(contractData.depositAmount || 0) : formatCurrency(contractData.subtotal)}</td>
+          <td style="padding: 5px; text-align: right; font-weight: 500;">${formatCurrency(contractData.subtotal)}</td>
         </tr>
-        ${contractData.paymentMethod === 'finance' ? `
-        <tr style="border-bottom: 1px solid black;">
-          <td style="padding: 5px; border-right: 1px solid black;">FINANCE AMOUNT</td>
-          <td style="padding: 5px; border-right: 1px solid black;" colspan="3"></td>
-          <td style="padding: 5px; text-align: right; font-weight: 500;">${formatCurrency(contractData.financeAmount || 0)}</td>
-        </tr>
-        ` : ''}
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 5px; border-right: 1px solid black; font-size: 9px; color: #666;" rowspan="2">Viewer must initial any cash<br/>received and sign here</td>
           <td style="padding: 5px; border-right: 1px solid black;" rowspan="2"></td>
