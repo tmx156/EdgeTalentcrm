@@ -291,11 +291,29 @@ const Sales = () => {
     }
   };
 
-  const getPaymentTypeColor = (paymentType) => {
-    switch (paymentType) {
-      case 'full_payment': return 'bg-green-100 text-green-800';
+  const getPaymentMethodColor = (paymentMethod) => {
+    // Type guard: ensure paymentMethod is a valid string
+    if (!paymentMethod || typeof paymentMethod !== 'string') {
+      return 'bg-gray-100 text-gray-800';
+    }
+    switch (paymentMethod.toLowerCase()) {
+      case 'card': return 'bg-green-100 text-green-800';
+      case 'cash': return 'bg-yellow-100 text-yellow-800';
       case 'finance': return 'bg-blue-100 text-blue-800';
       default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getPaymentMethodLabel = (paymentMethod) => {
+    // Type guard: ensure paymentMethod is a valid string
+    if (!paymentMethod || typeof paymentMethod !== 'string') {
+      return 'Unknown';
+    }
+    switch (paymentMethod.toLowerCase()) {
+      case 'card': return 'Card';
+      case 'cash': return 'Cash';
+      case 'finance': return 'Finance';
+      default: return paymentMethod;
     }
   };
 
@@ -576,7 +594,7 @@ const Sales = () => {
                   Amount
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Payment Type
+                  Payment Method
                 </th>
                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Sales Agent
@@ -625,8 +643,8 @@ const Sales = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentTypeColor(sale.payment_type)}`}>
-                      {sale.payment_type?.replace('_', ' ') || 'Unknown'}
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentMethodColor(sale.payment_method)}`}>
+                      {getPaymentMethodLabel(sale.payment_method)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -747,9 +765,11 @@ const Sales = () => {
                             <span className="font-semibold text-gray-600">Amount:</span>
                             <span className="text-gray-900 font-bold text-green-600">{formatCurrency(selectedSale.amount)}</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="font-semibold text-gray-600">Payment Type:</span>
-                            <span className="text-gray-900">{selectedSale.payment_type?.replace('_', ' ')}</span>
+                          <div className="flex justify-between items-center">
+                            <span className="font-semibold text-gray-600">Payment Method:</span>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentMethodColor(selectedSale.payment_method)}`}>
+                              {getPaymentMethodLabel(selectedSale.payment_method)}
+                            </span>
                           </div>
                           <div className="flex justify-between">
                             <span className="font-semibold text-gray-600">Sales Agent:</span>

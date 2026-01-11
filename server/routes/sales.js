@@ -290,6 +290,14 @@ router.get('/', auth, async (req, res) => {
         .select('id, name, email, phone, status')
         .in('id', leadIds) : { data: [] };
 
+      // Fetch contracts to get actual payment method (card/cash/finance)
+      // Order by created_at DESC to ensure we get the most recent contract for each lead
+      const { data: contracts } = leadIds.length > 0 ? await supabase
+        .from('contracts')
+        .select('id, lead_id, contract_data, created_at')
+        .in('lead_id', leadIds)
+        .order('created_at', { ascending: false }) : { data: [] };
+
       // Create lookup maps
       const userMap = (users || []).reduce((acc, user) => {
         acc[user.id] = user;
@@ -301,18 +309,49 @@ router.get('/', auth, async (req, res) => {
         return acc;
       }, {});
 
+      // Create contract map to get payment method by lead_id
+      // Since contracts are ordered by created_at DESC, only store the first one (most recent)
+      const contractMap = (contracts || []).reduce((acc, contract) => {
+        // Only store if we haven't already stored a contract for this lead (first = most recent)
+        if (!acc[contract.lead_id]) {
+          acc[contract.lead_id] = contract;
+        }
+        return acc;
+      }, {});
+
       // Flatten the data for frontend compatibility
-      const flattenedSales = sales.map(sale => ({
-        ...sale,
-        user_name: sale.user_id && userMap[sale.user_id] ? userMap[sale.user_id].name : (sale.user_id ? `User ${sale.user_id.slice(-4)}` : 'System'),
-        user_email: sale.user_id && userMap[sale.user_id] ? userMap[sale.user_id].email : null,
-        lead_name: sale.lead_id && leadMap[sale.lead_id] ? leadMap[sale.lead_id].name : null,
-        lead_email: sale.lead_id && leadMap[sale.lead_id] ? leadMap[sale.lead_id].email : null,
-        lead_phone: sale.lead_id && leadMap[sale.lead_id] ? leadMap[sale.lead_id].phone : null,
-        lead_status: sale.lead_id && leadMap[sale.lead_id] ? leadMap[sale.lead_id].status : null,
-        sale_created_at: sale.created_at,
-        sale_updated_at: sale.updated_at
-      }));
+      const flattenedSales = sales.map(sale => {
+        // Get payment method from contract data
+        const contract = sale.lead_id ? contractMap[sale.lead_id] : null;
+
+        // Handle contract_data whether it's a string (JSON) or already an object
+        let contractData = null;
+        if (contract?.contract_data) {
+          try {
+            contractData = typeof contract.contract_data === 'string'
+              ? JSON.parse(contract.contract_data)
+              : contract.contract_data;
+          } catch (e) {
+            console.warn(`Failed to parse contract_data for sale ${sale.id}:`, e.message);
+            contractData = null;
+          }
+        }
+
+        const paymentMethod = contractData?.paymentMethod || null;
+
+        return {
+          ...sale,
+          user_name: sale.user_id && userMap[sale.user_id] ? userMap[sale.user_id].name : (sale.user_id ? `User ${sale.user_id.slice(-4)}` : 'System'),
+          user_email: sale.user_id && userMap[sale.user_id] ? userMap[sale.user_id].email : null,
+          lead_name: sale.lead_id && leadMap[sale.lead_id] ? leadMap[sale.lead_id].name : null,
+          lead_email: sale.lead_id && leadMap[sale.lead_id] ? leadMap[sale.lead_id].email : null,
+          lead_phone: sale.lead_id && leadMap[sale.lead_id] ? leadMap[sale.lead_id].phone : null,
+          lead_status: sale.lead_id && leadMap[sale.lead_id] ? leadMap[sale.lead_id].status : null,
+          payment_method: paymentMethod, // Actual payment method: 'card', 'cash', or 'finance'
+          sale_created_at: sale.created_at,
+          sale_updated_at: sale.updated_at
+        };
+      });
 
       console.log(`[DEBUG] /api/sales returned ${flattenedSales.length} sales for user ${req.user.name} (${req.user.role})`);
       flattenedSales?.slice(0, 3).forEach(sale => {
