@@ -28,7 +28,14 @@ const DEFAULT_TEMPLATE = {
   confirmation3_text: 'I confirm that I am happy for Edge Talent to <strong>pass on details and photos</strong> of the client named on this order form. Talent Agencies we pass your details to typically charge between £50 - £200 to register onto their books',
   confirmation4_text: "I confirm that I'm happy and comfortable with my decision to purchase.",
   image_permission_text: 'I give permission for Edge Talent to use my images',
-  image_no_permission_text: 'I DO NOT give permission for Edge Talent to use my images'
+  image_no_permission_text: 'I DO NOT give permission for Edge Talent to use my images',
+  // Finance section labels (dynamic - only shown when finance payment selected)
+  finance_payment_label: 'DEPOSIT TODAY',
+  non_finance_payment_label: 'PAYMENT TODAY',
+  finance_deposit_label: 'DEPOSIT PAID',
+  finance_amount_label: 'FINANCE AMOUNT',
+  finance_provider_text: 'FINANCE VIA PAYL8R',
+  finance_info_text: 'Complete docs before receipt'
 };
 
 /**
@@ -45,13 +52,23 @@ async function getActiveTemplate() {
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      console.warn('Error fetching contract template, using defaults:', error.message);
+      // Real error (not "no rows returned")
+      console.warn('⚠️ Error fetching contract template from database:', error.message);
+      console.warn('⚠️ FALLING BACK to hardcoded DEFAULT_TEMPLATE');
       return DEFAULT_TEMPLATE;
     }
 
-    return template || DEFAULT_TEMPLATE;
+    if (template && template.id) {
+      console.log('✅ Found active contract template in database (ID:', template.id, ', Name:', template.name, ')');
+      return template;
+    }
+
+    // No template in database - use defaults
+    console.log('⚠️ No active template found in database - using hardcoded DEFAULT_TEMPLATE');
+    return DEFAULT_TEMPLATE;
   } catch (err) {
-    console.warn('Error fetching contract template, using defaults:', err.message);
+    console.warn('⚠️ Exception fetching contract template:', err.message);
+    console.warn('⚠️ FALLING BACK to hardcoded DEFAULT_TEMPLATE');
     return DEFAULT_TEMPLATE;
   }
 }
@@ -62,12 +79,7 @@ async function getActiveTemplate() {
 function formatCurrency(amount, currency = 'GBP') {
   const symbols = { GBP: '£', USD: '$', EUR: '€' };
   const symbol = symbols[currency] || '£';
-  const num = parseFloat(amount);
-  // Handle NaN, Infinity, undefined, null
-  if (!isFinite(num) || isNaN(num)) {
-    return `${symbol}0.00`;
-  }
-  return `${symbol}${num.toFixed(2)}`;
+  return `${symbol}${parseFloat(amount || 0).toFixed(2)}`;
 }
 
 /**
@@ -75,10 +87,6 @@ function formatCurrency(amount, currency = 'GBP') {
  */
 function formatDate(date) {
   const d = new Date(date || new Date());
-  // Handle invalid dates
-  if (isNaN(d.getTime())) {
-    return new Date().toLocaleDateString('en-GB');
-  }
   return d.toLocaleDateString('en-GB');
 }
 
@@ -88,8 +96,18 @@ function formatDate(date) {
  * @param {Object} template - Optional custom template (if not provided, uses DEFAULT_TEMPLATE)
  */
 function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
-  // Merge with defaults to ensure all values exist
-  const t = { ...DEFAULT_TEMPLATE, ...template };
+  // IMPORTANT: If template has an ID, it's from the database - use it EXCLUSIVELY
+  // Only fall back to DEFAULT_TEMPLATE when no database template exists at all
+  let t;
+  if (template && template.id) {
+    // Database template exists - use ONLY its values, no merging with defaults
+    console.log('📋 Using SAVED database template (ID:', template.id, ')');
+    t = template;
+  } else {
+    // No database template - use hardcoded defaults
+    console.log('⚠️ No saved template found - using hardcoded DEFAULT_TEMPLATE');
+    t = DEFAULT_TEMPLATE;
+  }
 
   // Generate image permission text based on allowImageUse flag
   const imagePermissionText = contractData.allowImageUse
@@ -249,7 +267,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
       </div>
 
       <!-- Payment Details -->
-      <table style="width: 100%; border-collapse: collapse; border: 1px solid black; margin-bottom: 10px; font-size: 10px;">
+      <table data-editable="finance" style="width: 100%; border-collapse: collapse; border: 1px solid black; margin-bottom: 10px; font-size: 10px;">
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 5px; border-right: 1px solid black; width: 100px;">PAYMENT DETAILS</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 100px;">CREDIT/DEBIT CARD</td>
@@ -258,12 +276,24 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
           <td style="padding: 5px; text-align: right;">SUB TOTAL</td>
         </tr>
         <tr style="border-bottom: 1px solid black;">
-          <td style="padding: 5px; border-right: 1px solid black;">PAYMENT TODAY</td>
+          <td style="padding: 5px; border-right: 1px solid black;">${contractData.paymentMethod === 'finance' ? (t.finance_payment_label || 'DEPOSIT TODAY') : (t.non_finance_payment_label || 'PAYMENT TODAY')}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'card' ? '✓' : ''}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'cash' ? '✓' : ''}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'finance' ? '✓' : ''}</td>
           <td style="padding: 5px; text-align: right; font-weight: 500;">${formatCurrency(contractData.subtotal)}</td>
         </tr>
+        ${contractData.paymentMethod === 'finance' ? `
+        <tr style="border-bottom: 1px solid black;">
+          <td style="padding: 5px; border-right: 1px solid black; background: #fef3c7;">${t.finance_deposit_label || 'DEPOSIT PAID'}</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; background: #fef3c7;" colspan="3">
+            <span style="font-weight: bold; font-size: 12px;">${formatCurrency(contractData.depositAmount || 0)}</span>
+          </td>
+          <td style="padding: 5px; text-align: right; background: #fef3c7;">
+            <span style="font-size: 9px; color: #666;">${t.finance_amount_label || 'FINANCE AMOUNT'}:</span><br/>
+            <span style="font-weight: bold; font-size: 12px;">${formatCurrency(contractData.financeAmount || 0)}</span>
+          </td>
+        </tr>
+        ` : ''}
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 5px; border-right: 1px solid black; font-size: 9px; color: #666;" rowspan="2">Viewer must initial any cash<br/>received and sign here</td>
           <td style="padding: 5px; border-right: 1px solid black;" rowspan="2"></td>
@@ -272,8 +302,13 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         </tr>
         <tr>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="2">
+            ${contractData.paymentMethod !== 'finance' ? `
             <span style="font-size: 9px;">AUTHORISATION CODE:</span><br/>
             <span style="font-weight: 500;">${contractData.authCode || ''}</span>
+            ` : `
+            <span style="font-size: 9px; color: #92400e;">${t.finance_provider_text || 'FINANCE VIA PAYL8R'}</span><br/>
+            <span style="font-size: 8px; color: #666;">${t.finance_info_text || 'Complete docs before receipt'}</span>
+            `}
           </td>
           <td style="padding: 5px;">
             <div style="text-align: right;">
@@ -498,9 +533,6 @@ function buildContractData(lead, packageData, invoiceData = {}) {
     paymentMethod: invoiceData.paymentMethod || 'card',
     authCode: invoiceData.authCode || '',
     viewerInitials: '',
-    // Finance-specific fields
-    depositAmount: invoiceData.depositAmount || 0,
-    financeAmount: invoiceData.financeAmount || 0,
 
     // Signatures
     signatures: {

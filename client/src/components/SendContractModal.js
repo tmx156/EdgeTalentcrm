@@ -267,10 +267,7 @@ const SendContractModal = ({
         vatAmount: vatAmount,
         total: total,
         paymentMethod: invoiceData?.paymentMethod || 'card',
-        authCode: invoiceData?.authCode || '',
-        // Finance-specific fields
-        depositAmount: invoiceData?.depositAmount || 0,
-        financeAmount: invoiceData?.financeAmount || 0
+        authCode: invoiceData?.authCode || ''
       });
 
       // Fetch invoice number after setting initial state
@@ -319,30 +316,7 @@ const SendContractModal = ({
       ...prev,
       subtotal,
       vatAmount,
-      total,
-      // Recalculate finance amount if in finance mode
-      financeAmount: prev.paymentMethod === 'finance' ? Math.max(0, total - (prev.depositAmount || 0)) : prev.financeAmount
-    }));
-  };
-
-  // Update deposit and auto-calculate finance amount
-  const updateDeposit = (value) => {
-    const deposit = parseFloat(value) || 0;
-    setContractDetails(prev => ({
-      ...prev,
-      depositAmount: deposit,
-      financeAmount: Math.max(0, prev.total - deposit)
-    }));
-  };
-
-  // Handle payment method change - reset finance fields when switching away from finance
-  const handlePaymentMethodChange = (method) => {
-    setContractDetails(prev => ({
-      ...prev,
-      paymentMethod: method,
-      // Reset finance fields when switching away from finance, auto-calc finance amount
-      depositAmount: method === 'finance' ? prev.depositAmount : 0,
-      financeAmount: method === 'finance' ? Math.max(0, prev.total - (prev.depositAmount || 0)) : 0
+      total
     }));
   };
 
@@ -1051,7 +1025,14 @@ const SendContractModal = ({
                       <label className="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
                       <select
                         value={contractDetails.paymentMethod}
-                        onChange={(e) => handlePaymentMethodChange(e.target.value)}
+                        onChange={(e) => {
+                          updateField('paymentMethod', e.target.value);
+                          // Reset finance fields when switching away from finance
+                          if (e.target.value !== 'finance') {
+                            updateField('depositAmount', 0);
+                            updateField('financeAmount', 0);
+                          }
+                        }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       >
                         <option value="card">Card</option>
@@ -1059,6 +1040,7 @@ const SendContractModal = ({
                         <option value="finance">Finance</option>
                       </select>
                     </div>
+                    {/* Show Auth Code for card/cash, hide for finance */}
                     {contractDetails.paymentMethod !== 'finance' && (
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Auth Code (if applicable)</label>
@@ -1073,40 +1055,47 @@ const SendContractModal = ({
                     )}
                   </div>
 
-                  {/* Finance-specific fields */}
+                  {/* DYNAMIC: Finance Fields - Only shown when Finance is selected */}
                   {contractDetails.paymentMethod === 'finance' && (
-                    <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                      <h4 className="text-sm font-medium text-amber-800 mb-3 flex items-center">
-                        <CreditCard className="w-4 h-4 mr-2" />
-                        Finance Details (Payl8r)
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                      <h4 className="text-xs font-semibold text-amber-800 mb-3 flex items-center">
+                        <PoundSterling className="w-3 h-3 mr-1" />
+                        FINANCE BREAKDOWN
                       </h4>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Deposit (Paid Today)</label>
+                          <label className="block text-xs font-medium text-amber-700 mb-1">Deposit Amount</label>
                           <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">£</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-600">£</span>
                             <input
-                              type="text"
-                              inputMode="decimal"
+                              type="number"
+                              step="0.01"
+                              min="0"
                               value={contractDetails.depositAmount || ''}
-                              onChange={(e) => updateDeposit(e.target.value)}
+                              onChange={(e) => {
+                                const deposit = parseFloat(e.target.value) || 0;
+                                updateField('depositAmount', deposit);
+                                // Auto-calculate finance amount (total - deposit)
+                                const financeAmt = Math.max(0, contractDetails.total - deposit);
+                                updateField('financeAmount', financeAmt);
+                              }}
                               className="w-full pl-7 pr-3 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white"
                               placeholder="0.00"
                             />
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-600 mb-1">Finance Amount (auto-calculated)</label>
+                          <label className="block text-xs font-medium text-amber-700 mb-1">Finance Amount (Remaining)</label>
                           <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">£</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-600">£</span>
                             <input
                               type="text"
-                              value={contractDetails.financeAmount.toFixed(2)}
+                              value={(contractDetails.financeAmount || 0).toFixed(2)}
                               readOnly
-                              className="w-full pl-7 pr-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-700 font-medium"
+                              className="w-full pl-7 pr-3 py-2 border border-amber-200 rounded-lg text-sm bg-amber-100 text-amber-800 font-semibold"
                             />
                           </div>
-                          <p className="text-xs text-amber-600 mt-1">Total minus deposit</p>
+                          <p className="text-xs text-amber-600 mt-1">Auto-calculated: Total - Deposit</p>
                         </div>
                       </div>
                     </div>
@@ -1205,20 +1194,18 @@ const SendContractModal = ({
                   <div className="pt-2">
                     <span className="text-gray-500">Payment Method:</span>{' '}
                     <span className="capitalize">{contractDetails.paymentMethod}</span>
-                    {contractDetails.paymentMethod !== 'finance' && contractDetails.authCode && (
-                      <span className="text-gray-400 ml-2">(Auth: {contractDetails.authCode})</span>
-                    )}
+                    {contractDetails.authCode && <span className="text-gray-400 ml-2">(Auth: {contractDetails.authCode})</span>}
                   </div>
-                  {/* Finance details */}
+                  {/* DYNAMIC: Finance breakdown in review */}
                   {contractDetails.paymentMethod === 'finance' && (
-                    <div className="mt-2 pt-2 border-t border-amber-200 bg-amber-50 -mx-4 px-4 py-2 rounded-b-lg">
-                      <div className="flex justify-between text-amber-800">
-                        <span className="text-amber-600">Deposit (Paid Today):</span>
-                        <span className="font-medium">{formatCurrency(contractDetails.depositAmount)}</span>
+                    <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-amber-700">Deposit Paid:</span>
+                        <span className="font-medium text-amber-800">{formatCurrency(contractDetails.depositAmount)}</span>
                       </div>
-                      <div className="flex justify-between text-amber-800">
-                        <span className="text-amber-600">Finance Amount:</span>
-                        <span className="font-medium">{formatCurrency(contractDetails.financeAmount)}</span>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-amber-700">Finance Amount:</span>
+                        <span className="font-semibold text-amber-800">{formatCurrency(contractDetails.financeAmount)}</span>
                       </div>
                     </div>
                   )}

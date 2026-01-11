@@ -149,7 +149,15 @@ const ContractEditor = () => {
     confirmation3_text: '',
     confirmation4_text: '',
     image_permission_text: '',
-    image_no_permission_text: ''
+    image_no_permission_text: '',
+    payment_details_html: '',
+    // Finance section fields (dynamic - only shown when finance payment selected)
+    finance_payment_label: '',
+    non_finance_payment_label: '',
+    finance_deposit_label: '',
+    finance_amount_label: '',
+    finance_provider_text: '',
+    finance_info_text: ''
   });
 
   const [originalTemplate, setOriginalTemplate] = useState(null);
@@ -205,6 +213,12 @@ const ContractEditor = () => {
       label: 'Confirmation 4 - Happy with Purchase',
       fields: ['confirmation4_text'],
       page: 2
+    },
+    finance: {
+      label: 'Finance Payment Section',
+      description: 'These labels appear only when Finance payment is selected',
+      fields: ['finance_payment_label', 'non_finance_payment_label', 'finance_deposit_label', 'finance_amount_label', 'finance_provider_text', 'finance_info_text'],
+      page: 1
     }
   };
 
@@ -224,7 +238,14 @@ const ContractEditor = () => {
     confirmation3_text: 'Confirmation Text',
     confirmation4_text: 'Confirmation Text',
     image_permission_text: 'Permission Granted',
-    image_no_permission_text: 'Permission Denied'
+    image_no_permission_text: 'Permission Denied',
+    // Finance section labels
+    finance_payment_label: 'Finance Payment Label (e.g., "DEPOSIT TODAY")',
+    non_finance_payment_label: 'Non-Finance Payment Label (e.g., "PAYMENT TODAY")',
+    finance_deposit_label: 'Deposit Row Label (e.g., "DEPOSIT PAID")',
+    finance_amount_label: 'Finance Amount Label (e.g., "FINANCE AMOUNT")',
+    finance_provider_text: 'Finance Provider Text (e.g., "FINANCE VIA PAYL8R")',
+    finance_info_text: 'Finance Info Text (e.g., "Complete docs before receipt")'
   };
 
   // Fetch actual contract HTML from server
@@ -443,6 +464,29 @@ const ContractEditor = () => {
           <div className="text-xs text-gray-400 ml-2">
             Click highlighted sections to edit
           </div>
+          <div className="h-6 w-px bg-gray-600 ml-2" />
+          <select
+            value={activeSection || ''}
+            onChange={(e) => {
+              if (e.target.value) {
+                setActiveSection(e.target.value);
+                setCurrentPage(sections[e.target.value].page);
+              }
+            }}
+            className="bg-gray-700 text-gray-300 text-sm rounded px-2 py-1 border border-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">Jump to section...</option>
+            <optgroup label="Page 1">
+              {Object.entries(sections).filter(([_, s]) => s.page === 1).map(([key, section]) => (
+                <option key={key} value={key}>{section.label}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Page 2">
+              {Object.entries(sections).filter(([_, s]) => s.page === 2).map(([key, section]) => (
+                <option key={key} value={key}>{section.label}</option>
+              ))}
+            </optgroup>
+          </select>
         </div>
         <div className="flex items-center gap-3">
           {saveMessage && (

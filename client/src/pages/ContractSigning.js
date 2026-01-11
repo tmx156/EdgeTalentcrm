@@ -193,8 +193,8 @@ const ContractSigning = () => {
 
         {/* Footer */}
         <div className="text-center text-xs text-gray-400 mt-4 px-2">
-          <p>{template?.footer_line1 || 'Edge Talent is a trading name of S&A Advertising Ltd'}</p>
-          <p>{template?.footer_line2 || 'Company No 8708429 | VAT Reg No 171339904'}</p>
+          <p>{template?.footer_line1 || ''}</p>
+          <p>{template?.footer_line2 || ''}</p>
         </div>
       </div>
     </div>
@@ -205,17 +205,23 @@ const ContractSigning = () => {
  * Page 1 - Invoice & Order Form (Mobile Responsive)
  */
 const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency, formatDate, template }) => {
-  // Use template values with fallbacks
+  // Use template values directly from server (no hardcoded fallbacks)
+  // Server always returns complete template from database or defaults
   const t = {
-    company_name: template?.company_name || 'EDGE TALENT',
-    company_website: template?.company_website || 'www.edgetalent.co.uk',
-    company_address: template?.company_address || '129A Weedington Rd, London NW5 4NX',
-    form_title: template?.form_title || 'INVOICE & ORDER FORM',
-    form_subtitle: template?.form_subtitle || 'PLEASE CHECK YOUR ORDER BEFORE LEAVING YOUR VIEWING',
-    form_contact_info: template?.form_contact_info || 'FOR ALL ENQUIRIES PLEASE EMAIL CUSTOMER SERVICES ON SALES@EDGETALENT.CO.UK',
-    terms_and_conditions: template?.terms_and_conditions || 'By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Payl8r documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk',
-    signature_instruction: template?.signature_instruction || 'PLEASE SIGN BELOW TO INDICATE YOUR ACCEPTANCE OF THE ABOVE TERMS, AND ENSURE YOU RECEIVE YOUR OWN SIGNED COPY OF THIS INVOICE FOR YOUR RECORDS',
-    image_permission_text: template?.image_permission_text || 'give permission for Edge Talent to use my images'
+    company_name: template?.company_name || '',
+    company_website: template?.company_website || '',
+    company_address: template?.company_address || '',
+    form_title: template?.form_title || '',
+    form_subtitle: template?.form_subtitle || '',
+    form_contact_info: template?.form_contact_info || '',
+    terms_and_conditions: template?.terms_and_conditions || '',
+    signature_instruction: template?.signature_instruction || '',
+    image_permission_text: template?.image_permission_text || 'give permission for Edge Talent to use my images',
+    // Finance section labels (dynamic - only shown when finance selected)
+    finance_deposit_label: template?.finance_deposit_label || '',
+    finance_amount_label: template?.finance_amount_label || '',
+    finance_provider_text: template?.finance_provider_text || '',
+    finance_info_text: template?.finance_info_text || ''
   };
 
   return (
@@ -381,17 +387,23 @@ const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency,
           <div className="p-2">VAT @ 20%:</div>
           <div className="p-2 font-medium text-right">{formatCurrency(contractData.vatAmount)}</div>
         </div>
-        {/* Finance Details - Show deposit and finance amount when payment method is finance */}
+        {/* Finance Details - DYNAMIC: Only shown when payment method is finance */}
         {contractData.paymentMethod === 'finance' && (
           <>
-            <div className="grid grid-cols-2 border-b border-black">
-              <div className="p-2">Deposit:</div>
-              <div className="p-2 font-medium text-right">{formatCurrency(contractData.depositAmount || 0)}</div>
+            <div className="grid grid-cols-2 border-b border-black bg-amber-50">
+              <div className="p-2 text-amber-800">{t.finance_deposit_label || 'Deposit Paid'}:</div>
+              <div className="p-2 font-medium text-right text-amber-800">{formatCurrency(contractData.depositAmount || 0)}</div>
             </div>
-            <div className="grid grid-cols-2 border-b border-black">
-              <div className="p-2">Finance Amount:</div>
-              <div className="p-2 font-medium text-right">{formatCurrency(contractData.financeAmount || 0)}</div>
+            <div className="grid grid-cols-2 border-b border-black bg-amber-50">
+              <div className="p-2 text-amber-800">{t.finance_amount_label || 'Finance Amount'}:</div>
+              <div className="p-2 font-medium text-right text-amber-800">{formatCurrency(contractData.financeAmount || 0)}</div>
             </div>
+            {(t.finance_provider_text || t.finance_info_text) && (
+              <div className="grid grid-cols-1 border-b border-black bg-amber-50 text-center py-1">
+                {t.finance_provider_text && <div className="text-amber-800 font-medium text-xs">{t.finance_provider_text}</div>}
+                {t.finance_info_text && <div className="text-amber-700 text-xs">{t.finance_info_text}</div>}
+              </div>
+            )}
           </>
         )}
         <div className="grid grid-cols-2 bg-gray-50">
@@ -434,23 +446,24 @@ const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency,
  * Page 2 - Confirmation Signatures (Mobile Responsive)
  */
 const Page2Content = ({ contractData, signatures, setSignatures, formatDate, template }) => {
-  // Use template values with fallbacks for confirmation texts
+  // Use template values directly from server (no hardcoded fallbacks)
+  // Server always returns complete template from database or defaults
   const confirmations = [
     {
       key: 'notAgency',
-      html: template?.confirmation1_text || 'I understand that Edge Talent is <strong>not a talent casting company/agency and will not find me work.</strong>'
+      html: template?.confirmation1_text || ''
     },
     {
       key: 'noCancel',
-      html: template?.confirmation2_text || 'I understand that once I leave the premises I <strong>cannot cancel</strong>, amend or reduce the order.'
+      html: template?.confirmation2_text || ''
     },
     {
       key: 'passDetails',
-      html: template?.confirmation3_text || 'I confirm that I am happy for Edge Talent to <strong>pass on details and photos</strong> of the client named on this order form. Talent Agencies we pass your details to typically charge between £50 - £200 to register onto their books'
+      html: template?.confirmation3_text || ''
     },
     {
       key: 'happyPurchase',
-      html: template?.confirmation4_text || "I confirm that I'm happy and comfortable with my decision to purchase."
+      html: template?.confirmation4_text || ''
     },
   ];
 

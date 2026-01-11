@@ -11,7 +11,7 @@ const config = require('../config');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
-const { generateContractPDF, buildContractData } = require('../utils/contractGenerator');
+const { generateContractPDF, buildContractData, getActiveTemplate } = require('../utils/contractGenerator');
 const { uploadToS3 } = require('../utils/s3Service');
 const { sendEmail } = require('../utils/emailService');
 const { sendSMS } = require('../utils/smsService');
@@ -143,24 +143,6 @@ router.post('/create', auth, async (req, res) => {
       // Log if we're handling individual items (no valid package UUID)
       if (!validPackageId && packageId) {
         console.log(`📦 Processing individual items - packageId "${packageId}" is not a valid UUID, using null`);
-      }
-
-      // Validate finance fields if payment method is finance
-      if (contractDetails.paymentMethod === 'finance') {
-        const deposit = parseFloat(contractDetails.depositAmount) || 0;
-        const finance = parseFloat(contractDetails.financeAmount) || 0;
-        const total = parseFloat(contractDetails.total) || 0;
-
-        // Ensure values are non-negative
-        if (deposit < 0 || finance < 0) {
-          return res.status(400).json({ message: 'Deposit and finance amounts cannot be negative' });
-        }
-
-        // Warn if finance split doesn't match total (allow £0.01 tolerance for floating point)
-        const expectedTotal = deposit + finance;
-        if (Math.abs(expectedTotal - total) > 0.01) {
-          console.warn(`⚠️ Finance amount mismatch: deposit (${deposit}) + finance (${finance}) = ${expectedTotal}, but total is ${total}`);
-        }
       }
       // Use the edited contract details from the pre-screen form
       contractData = {
@@ -650,7 +632,11 @@ router.get('/verify/:token', async (req, res) => {
       return res.status(400).json({ message: 'This contract has already been signed' });
     }
 
-    // Return contract data for signing page
+    // Fetch the active contract template from database
+    const template = await getActiveTemplate();
+    console.log('📋 Verify endpoint - returning template:', template?.id ? `DB template (${template.id})` : 'DEFAULT');
+
+    // Return contract data AND template for signing page
     res.json({
       success: true,
       contract: {
@@ -658,7 +644,8 @@ router.get('/verify/:token', async (req, res) => {
         status: contract.status,
         expiresAt: contract.expires_at,
         data: contract.contract_data
-      }
+      },
+      template: template
     });
   } catch (error) {
     console.error('Error verifying contract:', error);
@@ -878,18 +865,14 @@ router.post('/sign/:token', async (req, res) => {
         message: `Auto-created from signed contract`
       });
       console.log(`💰 Creating sale record for contract ${contract.id} with signed_pdf_url: ${pdfUrl ? 'present' : 'missing'}`);
-      // Determine payment type based on payment method
-      const paymentMethod = signedContractData.paymentMethod || 'card';
-      const paymentType = paymentMethod === 'finance' ? 'finance' : 'full_payment';
-
       const saleData = {
         id: saleId,
         lead_id: contract.lead_id,
         user_id: contract.created_by,
         amount: parseFloat(signedContractData.total) || 0,
-        payment_method: paymentMethod,
-        payment_type: paymentType,
-        payment_status: paymentMethod === 'finance' ? 'Partial' : 'Pending',
+        payment_method: signedContractData.paymentMethod || 'card',
+        payment_type: 'full_payment',
+        payment_status: 'Pending',
         status: 'Pending',
         notes: saleNotes,
         created_at: new Date().toISOString(),

@@ -2,7 +2,7 @@ const express = require('express');
 const { auth } = require('../middleware/auth');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
-const { generateContractHTML } = require('../utils/contractGenerator');
+const { generateContractHTML, DEFAULT_PAYMENT_DETAILS_HTML } = require('../utils/contractGenerator');
 
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
 
@@ -65,7 +65,14 @@ const DEFAULT_TEMPLATE = {
   confirmation3_text: 'I confirm that I am happy for Edge Talent to <strong>pass on details and photos</strong> of the client named on this order form. Talent Agencies we pass your details to typically charge between £50 - £200 to register onto their books',
   confirmation4_text: "I confirm that I'm happy and comfortable with my decision to purchase.",
   image_permission_text: 'I give permission for Edge Talent to use my images',
-  image_no_permission_text: 'I DO NOT give permission for Edge Talent to use my images'
+  image_no_permission_text: 'I DO NOT give permission for Edge Talent to use my images',
+  // Finance section labels (dynamic - only shown when finance payment selected)
+  finance_payment_label: 'DEPOSIT TODAY',
+  non_finance_payment_label: 'PAYMENT TODAY',
+  finance_deposit_label: 'DEPOSIT PAID',
+  finance_amount_label: 'FINANCE AMOUNT',
+  finance_provider_text: 'FINANCE VIA PAYL8R',
+  finance_info_text: 'Complete docs before receipt'
 };
 
 // @route   GET /api/contract-templates
@@ -206,6 +213,13 @@ router.post('/', auth, async (req, res) => {
       confirmation4_text: req.body.confirmation4_text,
       image_permission_text: req.body.image_permission_text,
       image_no_permission_text: req.body.image_no_permission_text,
+      // Finance section labels (dynamic - only shown when finance payment selected)
+      finance_payment_label: req.body.finance_payment_label,
+      non_finance_payment_label: req.body.non_finance_payment_label,
+      finance_deposit_label: req.body.finance_deposit_label,
+      finance_amount_label: req.body.finance_amount_label,
+      finance_provider_text: req.body.finance_provider_text,
+      finance_info_text: req.body.finance_info_text,
       updated_at: new Date().toISOString()
       // Note: created_by removed due to foreign key constraint with users table
     };
