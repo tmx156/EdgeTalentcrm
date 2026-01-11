@@ -24,6 +24,7 @@
     "express-rate-limit": "^7.5.1",
     "fast-levenshtein": "^3.0.0",
     "googleapis": "^166.0.0",
+    "handlebars": "^4.7.8",
     "helmet": "^7.2.0",
     "imapflow": "^1.0.194",
     "ioredis": "^5.7.0",

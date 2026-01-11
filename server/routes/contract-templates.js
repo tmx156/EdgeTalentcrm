@@ -8,8 +8,8 @@ const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKe
 
 const router = express.Router();
 
-// Sample contract data for preview
-const SAMPLE_CONTRACT_DATA = {
+// Sample contract data for preview - Normal (Card/Cash) mode
+const SAMPLE_CONTRACT_DATA_NORMAL = {
   date: new Date(),
   signedAt: null,
   customerNumber: '123456',
@@ -48,6 +48,51 @@ const SAMPLE_CONTRACT_DATA = {
   }
 };
 
+// Sample contract data for preview - Finance mode
+const SAMPLE_CONTRACT_DATA_FINANCE = {
+  date: new Date(),
+  signedAt: null,
+  customerNumber: '123456',
+  customerName: 'Jane Smith',
+  clientNameIfDifferent: '',
+  address: '456 Finance Road, Manchester',
+  postcode: 'M1 2AB',
+  phone: '07987 654321',
+  email: 'jane.smith@email.com',
+  isVip: false,
+  studioNumber: 'Studio 2',
+  photographer: 'Mike Brown',
+  invoiceNumber: 'INV-00002',
+  digitalImages: true,
+  digitalImagesQty: '15',
+  digitalZCard: true,
+  efolio: true,
+  efolioUrl: '',
+  projectInfluencer: true,
+  influencerLogin: '',
+  influencerPassword: '',
+  allowImageUse: true,
+  imagesReceived: 'N.A',
+  notes: 'Package: Ultimate Portfolio Package (Finance)',
+  subtotal: 832.50,
+  vatAmount: 166.50,
+  total: 999.00,
+  paymentMethod: 'finance',
+  depositAmount: 199.00,
+  financeAmount: 800.00,
+  authCode: '',
+  signatures: {
+    main: null,
+    notAgency: null,
+    noCancel: null,
+    passDetails: null,
+    happyPurchase: null
+  }
+};
+
+// Legacy alias for backward compatibility
+const SAMPLE_CONTRACT_DATA = SAMPLE_CONTRACT_DATA_NORMAL;
+
 // Default template values (matches current hardcoded template)
 const DEFAULT_TEMPLATE = {
   company_name: 'EDGE TALENT',
@@ -72,7 +117,9 @@ const DEFAULT_TEMPLATE = {
   finance_deposit_label: 'DEPOSIT PAID',
   finance_amount_label: 'FINANCE AMOUNT',
   finance_provider_text: 'FINANCE VIA PAYL8R',
-  finance_info_text: 'Complete docs before receipt'
+  finance_info_text: 'Complete docs before receipt',
+  // Payment section
+  cash_initial_text: 'Viewer must initial any cash received and sign here'
 };
 
 // @route   GET /api/contract-templates
@@ -145,11 +192,15 @@ router.get('/active', auth, async (req, res) => {
 // @route   GET /api/contract-templates/preview
 // @desc    Get the actual HTML preview of the contract using the current template
 // @access  Private (Admin only)
+// @query   mode - 'normal' (default) or 'finance' to show finance section preview
 router.get('/preview', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Admin only.' });
     }
+
+    // Get preview mode from query param (default: normal)
+    const previewMode = req.query.mode === 'finance' ? 'finance' : 'normal';
 
     // Get the active template from database or use defaults
     const { data: dbTemplate, error } = await supabase
@@ -167,11 +218,17 @@ router.get('/preview', auth, async (req, res) => {
 
     const template = dbTemplate || DEFAULT_TEMPLATE;
 
+    // Select sample data based on preview mode
+    const sampleData = previewMode === 'finance'
+      ? SAMPLE_CONTRACT_DATA_FINANCE
+      : SAMPLE_CONTRACT_DATA_NORMAL;
+
     // Generate the actual HTML using the same function that creates PDFs
-    const html = generateContractHTML(SAMPLE_CONTRACT_DATA, template);
+    const html = generateContractHTML(sampleData, template);
 
     res.json({
       html,
+      previewMode,
       template: {
         ...DEFAULT_TEMPLATE,
         ...template,
@@ -220,6 +277,8 @@ router.post('/', auth, async (req, res) => {
       finance_amount_label: req.body.finance_amount_label,
       finance_provider_text: req.body.finance_provider_text,
       finance_info_text: req.body.finance_info_text,
+      // Payment section
+      cash_initial_text: req.body.cash_initial_text,
       updated_at: new Date().toISOString()
       // Note: created_by removed due to foreign key constraint with users table
     };

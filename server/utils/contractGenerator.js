@@ -35,7 +35,9 @@ const DEFAULT_TEMPLATE = {
   finance_deposit_label: 'DEPOSIT PAID',
   finance_amount_label: 'FINANCE AMOUNT',
   finance_provider_text: 'FINANCE VIA PAYL8R',
-  finance_info_text: 'Complete docs before receipt'
+  finance_info_text: 'Complete docs before receipt',
+  // Payment section
+  cash_initial_text: 'Viewer must initial any cash received and sign here'
 };
 
 /**
@@ -295,7 +297,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         </tr>
         ` : ''}
         <tr style="border-bottom: 1px solid black;">
-          <td style="padding: 5px; border-right: 1px solid black; font-size: 9px; color: #666;" rowspan="2">Viewer must initial any cash<br/>received and sign here</td>
+          <td style="padding: 5px; border-right: 1px solid black; font-size: 9px; color: #666;" rowspan="2">${t.cash_initial_text || ''}</td>
           <td style="padding: 5px; border-right: 1px solid black;" rowspan="2"></td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="2">VAT@20%</td>
           <td style="padding: 5px; text-align: right; font-weight: 500;">${formatCurrency(contractData.vatAmount)}</td>

@@ -130,6 +130,7 @@ const ContractEditor = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [zoom, setZoom] = useState(100);
   const [previewHTML, setPreviewHTML] = useState('');
+  const [previewMode, setPreviewMode] = useState('normal'); // 'normal' or 'finance'
   const editorPanelRef = useRef(null);
   const previewContainerRef = useRef(null);
 
@@ -157,7 +158,9 @@ const ContractEditor = () => {
     finance_deposit_label: '',
     finance_amount_label: '',
     finance_provider_text: '',
-    finance_info_text: ''
+    finance_info_text: '',
+    // Payment section
+    cash_initial_text: ''
   });
 
   const [originalTemplate, setOriginalTemplate] = useState(null);
@@ -219,6 +222,11 @@ const ContractEditor = () => {
       description: 'These labels appear only when Finance payment is selected',
       fields: ['finance_payment_label', 'non_finance_payment_label', 'finance_deposit_label', 'finance_amount_label', 'finance_provider_text', 'finance_info_text'],
       page: 1
+    },
+    payment: {
+      label: 'Payment Section',
+      fields: ['cash_initial_text'],
+      page: 1
     }
   };
 
@@ -245,14 +253,16 @@ const ContractEditor = () => {
     finance_deposit_label: 'Deposit Row Label (e.g., "DEPOSIT PAID")',
     finance_amount_label: 'Finance Amount Label (e.g., "FINANCE AMOUNT")',
     finance_provider_text: 'Finance Provider Text (e.g., "FINANCE VIA PAYL8R")',
-    finance_info_text: 'Finance Info Text (e.g., "Complete docs before receipt")'
+    finance_info_text: 'Finance Info Text (e.g., "Complete docs before receipt")',
+    // Payment section
+    cash_initial_text: 'Cash Initial Text (viewer instruction for cash payments)'
   };
 
   // Fetch actual contract HTML from server
-  const fetchPreview = useCallback(async () => {
+  const fetchPreview = useCallback(async (mode = 'normal') => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('/api/contract-templates/preview', {
+      const response = await fetch(`/api/contract-templates/preview?mode=${mode}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {
@@ -268,9 +278,15 @@ const ContractEditor = () => {
     }
   }, []);
 
+  // Initial fetch
   useEffect(() => {
-    fetchPreview();
-  }, [fetchPreview]);
+    fetchPreview(previewMode);
+  }, []);
+
+  // Refetch when preview mode changes
+  useEffect(() => {
+    fetchPreview(previewMode);
+  }, [previewMode]);
 
   // Handle clicks on editable sections via event delegation
   useEffect(() => {
@@ -332,7 +348,7 @@ const ContractEditor = () => {
         setSaveMessage({ type: 'success', text: 'Saved successfully!' });
         setTimeout(() => setSaveMessage(null), 3000);
         // Re-fetch the preview to show updated HTML
-        await fetchPreview();
+        await fetchPreview(previewMode);
       } else {
         const error = await response.json();
         setSaveMessage({ type: 'error', text: error.message || 'Failed to save' });
@@ -362,7 +378,7 @@ const ContractEditor = () => {
         setSaveMessage({ type: 'success', text: 'Reset to defaults!' });
         setTimeout(() => setSaveMessage(null), 3000);
         // Re-fetch the preview
-        await fetchPreview();
+        await fetchPreview(previewMode);
       }
     } catch (error) {
       setSaveMessage({ type: 'error', text: 'Error resetting template' });
@@ -487,6 +503,30 @@ const ContractEditor = () => {
               ))}
             </optgroup>
           </select>
+          <div className="h-6 w-px bg-gray-600 ml-2" />
+          {/* Preview Mode Toggle */}
+          <div className="flex items-center gap-1 bg-gray-700 rounded-lg px-1 py-1">
+            <button
+              onClick={() => setPreviewMode('normal')}
+              className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                previewMode === 'normal'
+                  ? 'bg-green-500 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Normal
+            </button>
+            <button
+              onClick={() => setPreviewMode('finance')}
+              className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                previewMode === 'finance'
+                  ? 'bg-blue-500 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Finance
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {saveMessage && (

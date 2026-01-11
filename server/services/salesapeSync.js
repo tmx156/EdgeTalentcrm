@@ -84,7 +84,7 @@ class SalesApeSyncService {
     try {
       // Get all leads that have been sent to SalesApe
       const leads = await dbManager.query('leads', {
-        select: 'id, name, salesape_record_id, salesape_status, salesape_initial_message_sent, salesape_user_engaged, salesape_goal_hit, salesape_goal_presented',
+        select: 'id, name, salesape_record_id, salesape_status, salesape_initial_message_sent, salesape_user_engaged, salesape_goal_hit, salesape_goal_presented, date_booked, time_booked',
         not: { salesape_record_id: null }
       });
 
@@ -171,10 +171,44 @@ class SalesApeSyncService {
               updateData.salesape_portal_link = fields['Portal Link'];
             }
 
-            // If goal was hit, update lead status
+            // If goal was hit, update lead status and booking details
             if (fields['SalesAPE Goal Hit'] && !lead.salesape_goal_hit) {
               updateData.status = 'Booked';
               console.log(`   🎯 Goal Hit for ${lead.name}! Setting status to "Booked"`);
+
+              // Sync booking date/time from Airtable (check multiple possible field names)
+              const bookingDate = fields['Booking Date'] || fields['Booking_Date'] || fields['booking_date'] || fields['Appointment Date'];
+              const bookingTime = fields['Booking Time'] || fields['Booking_Time'] || fields['booking_time'] || fields['Appointment Time'];
+
+              if (bookingDate) {
+                updateData.date_booked = bookingDate;
+                console.log(`   📅 Booking date synced: ${bookingDate}`);
+              } else {
+                console.log(`   ⚠️ No booking date found in Airtable for ${lead.name}`);
+              }
+
+              if (bookingTime) {
+                updateData.time_booked = bookingTime;
+                console.log(`   🕐 Booking time synced: ${bookingTime}`);
+              } else {
+                console.log(`   ⚠️ No booking time found in Airtable for ${lead.name}`);
+              }
+            }
+
+            // Also sync booking details for leads already marked as goal hit but missing date/time
+            if (fields['SalesAPE Goal Hit'] && lead.salesape_goal_hit && (!lead.date_booked || !lead.time_booked)) {
+              const bookingDate = fields['Booking Date'] || fields['Booking_Date'] || fields['booking_date'] || fields['Appointment Date'];
+              const bookingTime = fields['Booking Time'] || fields['Booking_Time'] || fields['booking_time'] || fields['Appointment Time'];
+
+              if (bookingDate && !lead.date_booked) {
+                updateData.date_booked = bookingDate;
+                console.log(`   📅 Backfilling booking date for ${lead.name}: ${bookingDate}`);
+              }
+
+              if (bookingTime && !lead.time_booked) {
+                updateData.time_booked = bookingTime;
+                console.log(`   🕐 Backfilling booking time for ${lead.name}: ${bookingTime}`);
+              }
             }
 
             // Update in database
