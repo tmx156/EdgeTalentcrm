@@ -405,7 +405,8 @@ const PackageSelectionModal = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {packages.individual.map((pkg) => {
                     const quantity = selectedIndividuals[pkg.id] || 0;
-                    const priceWithVat = pkg.price * 1.2; // Add 20% VAT for display
+                    const price = parseFloat(pkg.price) || 0;
+                    const priceWithVat = price * 1.2; // Add 20% VAT for display
 
                     return (
                       <div

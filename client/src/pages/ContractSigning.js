@@ -381,6 +381,19 @@ const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency,
           <div className="p-2">VAT @ 20%:</div>
           <div className="p-2 font-medium text-right">{formatCurrency(contractData.vatAmount)}</div>
         </div>
+        {/* Finance Details - Show deposit and finance amount when payment method is finance */}
+        {contractData.paymentMethod === 'finance' && (
+          <>
+            <div className="grid grid-cols-2 border-b border-black">
+              <div className="p-2">Deposit:</div>
+              <div className="p-2 font-medium text-right">{formatCurrency(contractData.depositAmount || 0)}</div>
+            </div>
+            <div className="grid grid-cols-2 border-b border-black">
+              <div className="p-2">Finance Amount:</div>
+              <div className="p-2 font-medium text-right">{formatCurrency(contractData.financeAmount || 0)}</div>
+            </div>
+          </>
+        )}
         <div className="grid grid-cols-2 bg-gray-50">
           <div className="p-2 font-bold">TOTAL:</div>
           <div className="p-2 font-bold text-right text-base">{formatCurrency(contractData.total)}</div>
