@@ -172,7 +172,7 @@ const PackageSelectionModal = ({
   };
 
   // Handle generate invoice
-  // Validate image count against selected package limit
+  // Image count info (no longer blocks - allows negotiation flexibility)
   const imageValidation = useMemo(() => {
     if (!selectedMainPackage) {
       return { valid: true, message: null, excess: 0 };
@@ -200,12 +200,13 @@ const PackageSelectionModal = ({
       };
     }
 
+    // More photos than package limit - still allow proceeding (price can be adjusted manually)
     const excess = selectedPhotoCount - imageLimit;
     return {
-      valid: false,
-      message: `${selectedMainPackage.name} includes ${imageLimit} images. You selected ${selectedPhotoCount}.`,
+      valid: true, // Always valid - user can adjust price on next screen
+      message: `${selectedPhotoCount} of ${imageLimit} photos selected (+${excess} extra)`,
       excess,
-      limitMessage: `Please remove ${excess} photo${excess > 1 ? 's' : ''} to continue.`
+      hasExcess: true // Flag to show info message (not blocking)
     };
   }, [selectedMainPackage, selectedPhotoCount]);
 
@@ -516,7 +517,7 @@ const PackageSelectionModal = ({
                 {/* Photo count status */}
                 {selectedPhotoCount > 0 && selectedMainPackage && (
                   <div className={`mt-2 text-sm flex items-center justify-end space-x-1 ${
-                    imageValidation.valid ? 'text-green-600' : 'text-red-600'
+                    imageValidation.hasExcess ? 'text-amber-600' : 'text-green-600'
                   }`}>
                     <Image className="w-4 h-4" />
                     <span>{imageValidation.message}</span>
@@ -524,21 +525,15 @@ const PackageSelectionModal = ({
                 )}
               </div>
 
-              {/* Image limit warning */}
-              {!imageValidation.valid && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-left">
+              {/* Image excess info notice (non-blocking) */}
+              {imageValidation.hasExcess && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-left">
                   <div className="flex items-start space-x-2">
-                    <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium text-red-800">{imageValidation.limitMessage}</p>
-                      {onTrimSelection && (
-                        <button
-                          onClick={onTrimSelection}
-                          className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
-                        >
-                          Go back and adjust selection
-                        </button>
-                      )}
+                      <p className="text-sm font-medium text-amber-800">
+                        {imageValidation.excess} extra photo{imageValidation.excess > 1 ? 's' : ''} beyond package limit - you can adjust pricing on next screen
+                      </p>
                     </div>
                   </div>
                 </div>
