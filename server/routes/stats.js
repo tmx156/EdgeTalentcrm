@@ -74,54 +74,76 @@ router.get('/leads-public', async (req, res) => {
 });
 
 // @route   GET /api/stats/leads
-// @desc    Get lead status counts - SIMPLE DIRECT COUNT
+// @desc    Get lead status counts - WITH PAGINATION TO BYPASS 1000 LIMIT
 // @access  Private
 router.get('/leads', auth, async (req, res) => {
   try {
     const { created_at_start, created_at_end, assigned_at_start, assigned_at_end } = req.query;
 
-    // Simple: Just count leads directly
-    // Include custom_fields for call_status counting
-    let query = dbManager.client
-      .from('leads')
-      .select('status, custom_fields', { count: 'exact', head: false })
-      .neq('postcode', 'ZZGHOST'); // Exclude ghost bookings
+    // Build base query for fetching leads with pagination
+    // We need to fetch ALL leads to count properly (Supabase has 1000 row default limit)
+    const buildQuery = (from, to) => {
+      let query = dbManager.client
+        .from('leads')
+        .select('status, custom_fields, call_status')
+        .neq('postcode', 'ZZGHOST') // Exclude ghost bookings
+        .range(from, to);
 
-    // ROLE-BASED: Non-admins only see their assigned leads
-    // Apply this FIRST to ensure correct filtering
+      // ROLE-BASED: Non-admins only see their assigned leads
+      if (req.user.role !== 'admin') {
+        query = query
+          .eq('booker_id', req.user.id)
+          .neq('status', 'Rejected');
+      }
+
+      // Apply date filter - prioritize assigned_at for "Date Assigned" filter
+      if (assigned_at_start && assigned_at_end) {
+        query = query.gte('assigned_at', assigned_at_start);
+        query = query.lte('assigned_at', assigned_at_end);
+      } else if (created_at_start && created_at_end) {
+        query = query.gte('created_at', created_at_start);
+        query = query.lte('created_at', created_at_end);
+      } else if (req.user.role !== 'admin') {
+        query = query.or(`assigned_at.not.is.null,booker_id.eq.${req.user.id}`);
+      }
+
+      return query;
+    };
+
+    // Log filters being applied
     if (req.user.role !== 'admin') {
-      // ✅ BOOKER RULE: Once assigned, leads stay with booker regardless of status changes
-      // EXCEPT: Rejected leads are excluded from booker stats
-      query = query
-        .eq('booker_id', req.user.id)
-        .neq('status', 'Rejected'); // Exclude rejected leads from booker stats
       console.log(`🔒 Stats: Filtering for booker ${req.user.id} (${req.user.name}) - excluding rejected leads`);
     }
-
-    // Apply date filter - prioritize assigned_at for "Date Assigned" filter
     if (assigned_at_start && assigned_at_end) {
-      // Use assigned_at for "Date Assigned" filter
-      // Filter by assigned_at date range - this will exclude NULL values (which is correct for date filtering)
-      query = query.gte('assigned_at', assigned_at_start);
-      query = query.lte('assigned_at', assigned_at_end);
       console.log(`📅 Stats: Using assigned_at filter: ${assigned_at_start} to ${assigned_at_end}`);
     } else if (created_at_start && created_at_end) {
-      // Fallback to created_at for backward compatibility
-      query = query.gte('created_at', created_at_start);
-      query = query.lte('created_at', created_at_end);
       console.log(`📅 Stats: Using created_at filter: ${created_at_start} to ${created_at_end}`);
-    } else {
-      // If no date filter is applied, ensure leads with booker_id but NULL assigned_at are included
-      // This is important for booker users to see all their assigned leads, even if assigned_at wasn't set initially
-      if (req.user.role !== 'admin') {
-        // For non-admin users, include leads with booker_id even if assigned_at is NULL
-        // This ensures backward compatibility with leads assigned before assigned_at was tracked
-        query = query.or(`assigned_at.not.is.null,booker_id.eq.${req.user.id}`);
-        console.log(`📅 Stats: Including leads with booker_id but null assigned_at for booker ${req.user.id}`);
-      }
+    } else if (req.user.role !== 'admin') {
+      console.log(`📅 Stats: Including leads with booker_id but null assigned_at for booker ${req.user.id}`);
     }
 
-    const { data: leads, error, count } = await query;
+    // Fetch ALL leads using pagination to bypass Supabase 1000 row limit
+    let leads = [];
+    let from = 0;
+    const batchSize = 1000;
+    let error = null;
+
+    while (true) {
+      const { data: batch, error: batchError } = await buildQuery(from, from + batchSize - 1);
+
+      if (batchError) {
+        error = batchError;
+        break;
+      }
+
+      if (!batch || batch.length === 0) break;
+      leads = leads.concat(batch);
+      from += batchSize;
+
+      if (batch.length < batchSize) break; // Last batch
+    }
+
+    const count = leads.length;
 
     if (error) {
       console.error('❌ Error counting leads:', error);
@@ -666,7 +688,7 @@ router.get('/calendar-public', async (req, res) => {
     console.log(`📅 Public Calendar Stats API: Date range ${start} to ${end}, Limit: ${validatedLimit}`);
 
     let queryOptions = {
-      select: 'id, name, phone, email, status, date_booked, booker_id, created_at, is_confirmed',
+      select: 'id, name, phone, email, status, date_booked, time_booked, booker_id, created_at, is_confirmed',
       order: { date_booked: 'asc' },
       limit: validatedLimit,
       neq: { postcode: 'ZZGHOST' } // Exclude ghost bookings
@@ -690,7 +712,6 @@ router.get('/calendar-public', async (req, res) => {
 
     // Convert to flat events format for dashboard
     const events = validLeads.slice(0, validatedLimit).map(lead => {
-      const date = new Date(lead.date_booked);
       return {
         id: lead.id,
         name: lead.name,
@@ -699,7 +720,7 @@ router.get('/calendar-public', async (req, res) => {
         lead_status: lead.status, // Lead status (Booked, Cancelled, etc)
         status: lead.is_confirmed ? 'confirmed' : 'unconfirmed', // Calendar confirmation status
         booking_date: lead.date_booked,
-        booking_time: date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        booking_time: lead.time_booked || null, // Use actual time_booked field
         booker_id: lead.booker_id,
         created_at: lead.created_at,
         is_confirmed: lead.is_confirmed

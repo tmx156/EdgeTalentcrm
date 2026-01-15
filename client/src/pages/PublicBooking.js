@@ -138,6 +138,23 @@ const PublicBooking = () => {
 
   const handleSubmitBooking = async () => {
     if (!selectedDate || !selectedTime) return;
+
+    // Validate name and email
+    if (!name || !name.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+    if (!email || !email.trim()) {
+      setError('Please enter your email address');
+      return;
+    }
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
     try {
       setSubmitting(true);
       setError(null);
@@ -192,6 +209,32 @@ const PublicBooking = () => {
             className="w-12 h-12 sm:w-16 sm:h-16 border-4 border-[#1a1a1a]/10 border-t-[#1e3a5f] rounded-full mx-auto mb-4 sm:mb-6"
           />
           <p className="text-[#1a1a1a]/60 text-base sm:text-lg tracking-wide">Loading your booking...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Error State (when lead not found or initial load fails)
+  if (error && !lead) {
+    return (
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-md w-full text-center px-4"
+        >
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <span className="text-4xl">!</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-light text-[#1a1a1a] mb-4">
+            Booking Not Found
+          </h1>
+          <p className="text-[#1a1a1a]/60 mb-6">
+            {error}
+          </p>
+          <p className="text-[#1a1a1a]/40 text-sm">
+            Please check your booking link and try again, or contact support if the problem persists.
+          </p>
         </motion.div>
       </div>
     );
@@ -534,6 +577,16 @@ const PublicBooking = () => {
                     );
                   })}
                 </motion.div>
+
+                {/* Back Button */}
+                <motion.button
+                  onClick={() => setCurrentStep(1)}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="mt-6 sm:mt-8 w-full py-3 sm:py-4 border-2 border-[#1a1a1a]/20 text-[#1a1a1a]/60 rounded-xl font-medium hover:border-[#1a1a1a]/40 hover:text-[#1a1a1a] transition-colors"
+                >
+                  Back to Details
+                </motion.button>
               </motion.div>
             </motion.div>
           )}
