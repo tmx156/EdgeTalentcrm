@@ -341,36 +341,12 @@ const SendContractModal = ({
     setShowAddressDropdown(false);
 
     try {
-      const apiKey = process.env.REACT_APP_OS_PLACES_API_KEY || '7to0aV9GAv9myWT4xaYjvZh3AXGQa8NB';
-      const response = await fetch(
-        `https://api.os.uk/search/places/v1/postcode?postcode=${encodeURIComponent(cleanPostcode)}&key=${apiKey}`
-      );
+      // Call backend proxy to avoid CSP issues
+      const response = await fetch(`/api/postcode/lookup/${encodeURIComponent(cleanPostcode)}`);
       const data = await response.json();
 
-      if (data.results && data.results.length > 0) {
-        // Extract addresses from results
-        const addresses = data.results.map(result => {
-          const dpa = result.DPA;
-          // Build readable address
-          const parts = [];
-          if (dpa.BUILDING_NUMBER) parts.push(dpa.BUILDING_NUMBER);
-          if (dpa.BUILDING_NAME) parts.push(dpa.BUILDING_NAME);
-          if (dpa.THOROUGHFARE_NAME) parts.push(dpa.THOROUGHFARE_NAME);
-          if (dpa.POST_TOWN) parts.push(dpa.POST_TOWN);
-          if (dpa.POSTCODE) parts.push(dpa.POSTCODE);
-
-          return {
-            display: parts.join(', '),
-            full: dpa.ADDRESS,
-            buildingNumber: dpa.BUILDING_NUMBER || '',
-            buildingName: dpa.BUILDING_NAME || '',
-            street: dpa.THOROUGHFARE_NAME || '',
-            town: dpa.POST_TOWN || '',
-            postcode: dpa.POSTCODE || ''
-          };
-        });
-
-        setAddressSuggestions(addresses);
+      if (data.addresses && data.addresses.length > 0) {
+        setAddressSuggestions(data.addresses);
         setShowAddressDropdown(true);
       }
     } catch (err) {

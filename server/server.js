@@ -64,6 +64,7 @@ const contractsRoutes = require('./routes/contracts');
 const contractTemplatesRoutes = require('./routes/contract-templates');
 const stripeRoutes = require('./routes/stripe');
 const imageProxyRoutes = require('./routes/image-proxy');
+const postcodeRoutes = require('./routes/postcode');
 // TEMPORARILY DISABLED: const scheduler = require('./utils/scheduler');
 // OLD IMAP-based email poller (replaced with Gmail API)
 // const { startEmailPoller } = require('./utils/emailPoller');
@@ -523,6 +524,8 @@ const gmailWebhookRoutes = require('./routes/gmail-webhook');
 app.use('/api/gmail/webhook', gmailWebhookRoutes);
 // Gravity Forms Webhook Integration (for importing leads from Gravity Forms)
 app.use('/api/gravity-forms-webhook', gravityFormsWebhookRoutes);
+// Postcode lookup (OS Places API proxy)
+app.use('/api/postcode', postcodeRoutes);
 // TEMPORARILY DISABLED: app.use('/api/performance', require('./routes/performance'));
 
 // --- Lightweight short link storage for long booking confirmations ---
