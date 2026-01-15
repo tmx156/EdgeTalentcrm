@@ -187,21 +187,36 @@ router.get('/bookers', auth, async (req, res) => {
 
     // Get users with booker or admin roles who are active
     const bookerUsers = await dbManager.query('users', {
-      select: 'id, name, email, leads_assigned',
+      select: 'id, name, email',
       eq: { role: 'booker', is_active: true },
       order: { name: 'asc' }
     });
 
     const adminUsers = await dbManager.query('users', {
-      select: 'id, name, email, leads_assigned',
+      select: 'id, name, email',
       eq: { role: 'admin', is_active: true },
       order: { name: 'asc' }
     });
 
-    // Combine and sort all team members
-    const allBookers = [...bookerUsers, ...adminUsers].sort((a, b) => a.name.localeCompare(b.name));
+    // Combine all team members
+    const allBookers = [...bookerUsers, ...adminUsers];
 
-    console.log('📋 Found bookers:', allBookers);
+    // Calculate actual leads_assigned from leads table for each booker
+    // This ensures accurate counts instead of relying on stale counters
+    for (const booker of allBookers) {
+      const { count } = await dbManager.client
+        .from('leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('booker_id', booker.id)
+        .neq('postcode', 'ZZGHOST');
+
+      booker.leads_assigned = count || 0;
+    }
+
+    // Sort by name
+    allBookers.sort((a, b) => a.name.localeCompare(b.name));
+
+    console.log('📋 Found bookers with accurate lead counts:', allBookers.map(b => ({ name: b.name, leads: b.leads_assigned })));
     res.json(allBookers);
   } catch (error) {
     console.error('Get bookers error:', error);

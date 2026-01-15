@@ -71,6 +71,8 @@ const LeadsNew = () => {
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
   const [showBulkCommunicationModal, setShowBulkCommunicationModal] = useState(false);
+  const [showSalesApeModal, setShowSalesApeModal] = useState(false);
+  const [sendingToSalesApe, setSendingToSalesApe] = useState(false);
   const [selectedLead, setSelectedLead] = useState(null);
   const [salesTeam, setSalesTeam] = useState([]);
   const [selectedBooker, setSelectedBooker] = useState('');
@@ -897,6 +899,54 @@ const LeadsNew = () => {
     }
   };
 
+  // Handle send to Sales Ape queue
+  const handleSendToSalesApe = async () => {
+    if (selectedLeads.length === 0) {
+      alert('Please select leads to send to Sales Ape');
+      return;
+    }
+
+    setSendingToSalesApe(true);
+    try {
+      const token = localStorage.getItem('token');
+      let successCount = 0;
+      let failCount = 0;
+      const errors = [];
+
+      // Send each lead to Sales Ape queue using the proper endpoint
+      for (const leadId of selectedLeads) {
+        try {
+          await axios.post('/api/salesape-dashboard/queue/add',
+            { leadId },
+            { headers: { 'x-auth-token': token } }
+          );
+          successCount++;
+        } catch (error) {
+          failCount++;
+          const errorMsg = error.response?.data?.message || error.message;
+          errors.push(errorMsg);
+          console.error(`Failed to send lead ${leadId} to Sales Ape:`, errorMsg);
+        }
+      }
+
+      setShowSalesApeModal(false);
+      setSelectedLeads([]);
+      fetchLeads();
+      fetchLeadCounts();
+
+      if (failCount === 0) {
+        alert(`Successfully sent ${successCount} leads to Sales Ape queue`);
+      } else {
+        alert(`Sent ${successCount} leads to Sales Ape queue.\n${failCount} failed: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}`);
+      }
+    } catch (error) {
+      console.error('Error sending leads to Sales Ape:', error);
+      alert('Failed to send leads to Sales Ape');
+    } finally {
+      setSendingToSalesApe(false);
+    }
+  };
+
   if (loading && leads.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center">
@@ -966,6 +1016,18 @@ const LeadsNew = () => {
                       >
                         <FiUserPlus className="h-5 w-5 group-hover:animate-pulse" />
                         <span className="font-medium">Assign Leads</span>
+                      </button>
+
+                      <button
+                        onClick={() => setShowSalesApeModal(true)}
+                        className="group px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-xl hover:from-orange-600 hover:to-amber-600 transition-all duration-200 shadow-lg hover:shadow-xl flex items-center space-x-2 hover:scale-105 transform"
+                        style={{
+                          pointerEvents: 'auto',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <span className="text-lg group-hover:animate-bounce">🦍</span>
+                        <span className="font-medium">Sales Ape</span>
                       </button>
 
                       <button
@@ -1784,6 +1846,49 @@ const LeadsNew = () => {
         </div>
       )}
 
+      {/* Sales Ape Queue Modal */}
+      {showSalesApeModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ pointerEvents: 'auto' }}>
+          <div className="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex items-center justify-center w-16 h-16 mx-auto bg-orange-100 rounded-full mb-4">
+                <span className="text-3xl">🦍</span>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 text-center mb-2">Send to Sales Ape</h3>
+              <p className="text-sm text-gray-500 text-center mb-6">
+                Send <strong>{selectedLeads.length}</strong> selected leads to the Sales Ape AI queue for automated outreach.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowSalesApeModal(false)}
+                  disabled={sendingToSalesApe}
+                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSendToSalesApe}
+                  disabled={sendingToSalesApe}
+                  className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white rounded-md hover:from-orange-600 hover:to-amber-600 transition-colors disabled:opacity-50 flex items-center space-x-2"
+                >
+                  {sendingToSalesApe ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>🦍</span>
+                      <span>Send {selectedLeads.length} Leads</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bulk Assign Modal */}
       {showBulkAssignModal && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ pointerEvents: 'auto' }}>
@@ -1796,7 +1901,7 @@ const LeadsNew = () => {
               <p className="text-sm text-gray-500 text-center mb-6">
                 Assign <strong>{selectedLeads.length}</strong> selected leads to a team member.
               </p>
-              
+
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Select Team Member

@@ -109,11 +109,11 @@ router.get('/', auth, async (req, res) => {
       .select(selectFields);
 
     // Define diary template types that bookers should NOT see in Templates page
-    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
+    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation', 'secondary_confirmation'];
 
-    // Special case: If requesting active booking_confirmation templates, show to ALL users
+    // Special case: If requesting active booking_confirmation or secondary_confirmation templates, show to ALL users
     // This allows all users to see booking templates in the calendar modal
-    const isRequestingBookingConfirmations = type === 'booking_confirmation' && isActive === 'true';
+    const isRequestingBookingConfirmations = (type === 'booking_confirmation' || type === 'secondary_confirmation') && isActive === 'true';
 
     if (isRequestingBookingConfirmations) {
       // All users can see active booking_confirmation templates (don't filter by user_id)
@@ -240,8 +240,8 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ message: 'Name and type are required' });
     }
 
-    // Only admins can create booking_confirmation, reschedule, or cancellation templates
-    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
+    // Only admins can create booking_confirmation, reschedule, cancellation, or secondary_confirmation templates
+    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation', 'secondary_confirmation'];
     if (diaryTemplateTypes.includes(type) && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Only administrators can create booking/diary templates' });
     }
@@ -366,8 +366,8 @@ router.put('/:id', auth, async (req, res) => {
       return res.status(500).json({ message: 'Server error' });
     }
 
-    // Only admins can edit booking_confirmation, reschedule, or cancellation templates
-    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
+    // Only admins can edit booking_confirmation, reschedule, cancellation, or secondary_confirmation templates
+    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation', 'secondary_confirmation'];
     const isEditingDiaryTemplate = diaryTemplateTypes.includes(existingTemplate.type) ||
                                    (type && diaryTemplateTypes.includes(type));
 
@@ -502,8 +502,8 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(500).json({ message: 'Server error' });
     }
 
-    // Only admins can delete booking_confirmation, reschedule, or cancellation templates
-    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation'];
+    // Only admins can delete booking_confirmation, reschedule, cancellation, or secondary_confirmation templates
+    const diaryTemplateTypes = ['booking_confirmation', 'reschedule', 'cancellation', 'secondary_confirmation'];
     if (diaryTemplateTypes.includes(existingTemplate.type) && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Only administrators can delete booking/diary templates' });
     }

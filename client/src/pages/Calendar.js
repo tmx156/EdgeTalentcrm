@@ -2,16 +2,16 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   FiCalendar, FiClock, FiMapPin, FiUser, FiX, FiPhone, FiMail,
   FiFileText, FiActivity, FiCheckCircle,
-  FiExternalLink, FiCheck, FiSettings, FiEdit, FiMessageSquare,
+  FiExternalLink, FiCheck, FiSettings, FiEdit, FiEdit2, FiMessageSquare,
   FiChevronDown, FiChevronUp, FiChevronLeft, FiChevronRight, FiSearch, FiDownload, FiSend,
-  FiImage, FiUpload, FiCamera
+  FiImage, FiUpload, FiCamera, FiRefreshCw, FiTrash2
 } from 'react-icons/fi';
 import { LazyLoadImage } from 'react-lazy-load-image-component';
 import 'react-lazy-load-image-component/src/effects/blur.css';
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import SaleModal from '../components/SaleModal';
 import PackageSelectionModal from '../components/PackageSelectionModal';
 import InvoiceModal from '../components/InvoiceModal';
@@ -29,12 +29,126 @@ import MonthlySlotCalendar from '../components/MonthlySlotCalendar';
 const Calendar = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [events, setEvents] = useState([]);
+  const [eventsUpdateKey, setEventsUpdateKey] = useState(0); // Force SlotCalendar re-render on status change
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showAllMessages, setShowAllMessages] = useState(false);
+  const [showNotes, setShowNotes] = useState(false); // Collapsible notes section (default collapsed)
+  const [showRecentActivity, setShowRecentActivity] = useState(false); // Collapsible recent activity section (default collapsed)
+  const [showMessageHistory, setShowMessageHistory] = useState(false); // Collapsible message history section (default collapsed)
   // Toggle to expand additional quick status actions
   const [showMoreStatuses, setShowMoreStatuses] = useState(false);
+  // Review modal state
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewDate, setReviewDate] = useState('');
+  const [reviewTime, setReviewTime] = useState('');
+  const [reviewAvailableSlots, setReviewAvailableSlots] = useState([]);
+  const [reviewSlotsLoading, setReviewSlotsLoading] = useState(false);
+
+  // Model stats editing state
+  const [editingStats, setEditingStats] = useState(false);
+  const [savingStats, setSavingStats] = useState(false);
+  const [statsForm, setStatsForm] = useState({
+    date_of_birth: '',
+    height_inches: '',
+    waist_inches: '',
+    hips_inches: '',
+    eye_color: '',
+    hair_color: '',
+    hair_length: ''
+  });
+
+  // All possible time slots (excluding 13:00 lunch break)
+  const ALL_TIME_SLOTS = [
+    { time: '10:00', label: '10:00 AM' },
+    { time: '10:30', label: '10:30 AM' },
+    { time: '11:00', label: '11:00 AM' },
+    { time: '11:30', label: '11:30 AM' },
+    { time: '12:00', label: '12:00 PM' },
+    { time: '12:30', label: '12:30 PM' },
+    { time: '13:30', label: '1:30 PM' },
+    { time: '14:00', label: '2:00 PM' },
+    { time: '14:30', label: '2:30 PM' },
+    { time: '15:00', label: '3:00 PM' },
+    { time: '15:30', label: '3:30 PM' },
+    { time: '16:00', label: '4:00 PM' },
+    { time: '16:30', label: '4:30 PM' },
+  ];
+
+  // Calculate available slots when review date changes
+  const calculateAvailableReviewSlots = useCallback(async (selectedDateStr) => {
+    if (!selectedDateStr) {
+      setReviewAvailableSlots([]);
+      return;
+    }
+
+    setReviewSlotsLoading(true);
+
+    try {
+      // Fetch blocked slots for the selected date
+      const blockedResponse = await axios.get('/api/blocked-slots', {
+        params: {
+          start_date: selectedDateStr,
+          end_date: selectedDateStr
+        }
+      });
+      const dateBlockedSlots = blockedResponse.data || [];
+
+      // Get existing bookings for the selected date from events state
+      const selectedDate = new Date(selectedDateStr);
+      const bookedSlots = events.filter(event => {
+        if (!event.date_booked) return false;
+        const eventDate = new Date(event.date_booked);
+        return eventDate.toISOString().split('T')[0] === selectedDateStr;
+      });
+
+      // Calculate available slots
+      const available = [];
+
+      ALL_TIME_SLOTS.forEach(slot => {
+        // Check slot 1 availability
+        const slot1Blocked = dateBlockedSlots.some(b =>
+          (!b.time_slot || b.time_slot === slot.time) &&
+          (!b.slot_number || parseInt(b.slot_number) === 1)
+        );
+        const slot1Booked = bookedSlots.some(e =>
+          e.time_booked === slot.time && parseInt(e.booking_slot) === 1
+        );
+
+        // Check slot 2 availability
+        const slot2Blocked = dateBlockedSlots.some(b =>
+          (!b.time_slot || b.time_slot === slot.time) &&
+          (!b.slot_number || parseInt(b.slot_number) === 2)
+        );
+        const slot2Booked = bookedSlots.some(e =>
+          e.time_booked === slot.time && parseInt(e.booking_slot) === 2
+        );
+
+        // If either slot is available, add to available list
+        if (!slot1Blocked && !slot1Booked) {
+          available.push({ time: slot.time, slot: 1, label: `${slot.label} - Slot 1` });
+        }
+        if (!slot2Blocked && !slot2Booked) {
+          available.push({ time: slot.time, slot: 2, label: `${slot.label} - Slot 2` });
+        }
+      });
+
+      setReviewAvailableSlots(available);
+    } catch (error) {
+      console.error('Error fetching available slots:', error);
+      // Fallback to all slots if there's an error
+      const fallback = [];
+      ALL_TIME_SLOTS.forEach(slot => {
+        fallback.push({ time: slot.time, slot: 1, label: `${slot.label} - Slot 1` });
+        fallback.push({ time: slot.time, slot: 2, label: `${slot.label} - Slot 2` });
+      });
+      setReviewAvailableSlots(fallback);
+    } finally {
+      setReviewSlotsLoading(false);
+    }
+  }, [events]);
   
   // PERFORMANCE: Cache for loaded date ranges - Track which date ranges have been loaded
   // Use ref instead of state to prevent fetchEvents from being recreated
@@ -49,7 +163,9 @@ const Calendar = () => {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const calendarRef = useRef(null);
   const bookingAlertShownRef = useRef(new Set()); // Track which booking leads have already shown the alert
+  const isInitialLoadRef = useRef(true); // Track if this is initial page load to suppress blocked day alerts
   const lastFetchTimeRef = useRef(0); // Use ref for lastFetchTime to prevent recreation
+  const fetchEventsRef = useRef(null); // Ref to fetchEvents function for use in callbacks
   const { socket, subscribeToCalendarUpdates, subscribeToLeadUpdates, isConnected, emitCalendarUpdate } = useSocket();
   const [leadForm, setLeadForm] = useState({
     _id: '',
@@ -83,6 +199,12 @@ const Calendar = () => {
   const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [bookingTemplates, setBookingTemplates] = useState([]);
 
+  // Secondary confirmation template state (only shown for direct calendar clicks)
+  const [secondaryTemplateId, setSecondaryTemplateId] = useState(null);
+  const [secondaryTemplates, setSecondaryTemplates] = useState([]);
+  const [isDirectCalendarClick, setIsDirectCalendarClick] = useState(false);
+  const [templateMode, setTemplateMode] = useState('primary'); // 'primary' or 'secondary'
+
   // Get currently selected template's settings
   const selectedTemplate = useMemo(() => {
     if (!selectedTemplateId || !bookingTemplates.length) return null;
@@ -95,8 +217,27 @@ const Calendar = () => {
   const [updatingNotes, setUpdatingNotes] = useState(false);
   const [isBookingInProgress, setIsBookingInProgress] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentView, setCurrentView] = useState('monthly'); // 'daily', 'weekly', or 'monthly' for slot calendar
-  const [currentDate, setCurrentDate] = useState(getCurrentUKTime());
+  const [currentView, setCurrentView] = useState(() => {
+    // Persist calendar view across page refreshes
+    const savedView = localStorage.getItem('calendarView');
+    return savedView || 'monthly';
+  }); // 'daily', 'weekly', or 'monthly' for slot calendar
+  const [currentDate, setCurrentDate] = useState(() => {
+    // Restore saved date if available, otherwise use current UK time
+    const savedDate = localStorage.getItem('calendarDate');
+    if (savedDate) {
+      try {
+        const parsed = new Date(savedDate);
+        // Validate the date is reasonable (not too old or in the future)
+        if (!isNaN(parsed.getTime())) {
+          return parsed;
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    return getCurrentUKTime();
+  });
   const [selectedSlot, setSelectedSlot] = useState(1); // Track selected slot for booking
   const [selectedTime, setSelectedTime] = useState(''); // Track selected time for booking
   const [blockedSlots, setBlockedSlots] = useState([]); // Track blocked slots for calendar display
@@ -136,59 +277,88 @@ const Calendar = () => {
   const [dragActive, setDragActive] = useState(false);
   const uploadInputRef = useRef(null);
 
+  // Photo folder organization
+  const [selectedUploadFolder, setSelectedUploadFolder] = useState(null);
+  const [galleryFolderFilter, setGalleryFolderFilter] = useState('all');
+
+  // Photo folder options
+  const PHOTO_FOLDERS = [
+    { id: 'headshots', label: 'Headshots', icon: '👤' },
+    { id: 'zcard', label: 'Z-Card', icon: '📇' },
+    { id: 'best-pics', label: 'Best Pics', icon: '⭐' }
+  ];
+
   // Memoize fetchEvents to prevent unnecessary re-renders
   const [isFetching, setIsFetching] = useState(false);
   const [lastFetchTime, setLastFetchTime] = useState(0);
   const fetchTimeoutRef = useRef(null);
-  
-  const getEventColor = useCallback((status, hasSale, isConfirmed = false) => {
+
+  // Helper function to close event modal and clear URL param
+  const closeEventModal = useCallback(() => {
+    setShowEventModal(false);
+    setSearchParams({}, { replace: true });
+    // Refresh calendar data when modal closes to ensure colors are up to date
+    setTimeout(() => {
+      if (fetchEventsRef.current) {
+        fetchEventsRef.current(true);
+      }
+    }, 100);
+  }, [setSearchParams]);
+
+  const getEventColor = useCallback((status, hasSale, isConfirmed = false, isDoubleConfirmed = false) => {
     // Special case: If lead has a sale and status is 'Attended', show as blue (Complete)
     if (hasSale && status?.toLowerCase() === 'attended') {
-      return '#3b82f6'; // blue-500 for complete status
+      return '#2563eb'; // bright blue for complete status
     }
-    
-    if (hasSale) return '#2563eb'; // professional blue for leads with a sale
+
+    if (hasSale) return '#2563eb'; // bright blue for leads with a sale
+
+    // VIBRANT STATUS COLORS
     switch (status?.toLowerCase()) {
       case 'new':
-        return '#ea580c'; // professional orange
+        return '#f97316'; // vibrant orange
       case 'unconfirmed':
-        return '#f97316'; // orange-500 to match quick status button
+        return '#fb923c'; // bright orange for unconfirmed
+      case 'double confirmed':
+        return '#15803d'; // vivid dark green for double confirmed
       case 'confirmed':
-        return '#10b981'; // emerald-500 to match quick status button
+        return '#22c55e'; // bright green for confirmed
       case 'unassigned':
         return '#6b7280'; // gray for unassigned booked leads
       case 'booked':
-        return '#1e40af'; // professional blue for booked leads
+        return '#3b82f6'; // bright blue for booked leads
       case 'arrived':
-        return '#e06666'; // red to match quick status button
+        return '#2563eb'; // vivid blue for arrived
       case 'left':
-        return '#000000'; // black to match quick status button
+        return '#1f2937'; // dark gray/black for left
       case 'on show':
-        return '#d97706'; // professional amber
+        return '#f59e0b'; // bright amber
       case 'no sale':
-        return '#dc2626'; // red-600 to match quick status button
+        return '#b91c1c'; // vivid dark red for no sale
       case 'attended':
-        return '#3b82f6'; // blue-500 for attended status
+        return '#2563eb'; // bright blue for attended status
       case 'complete':
-        return '#3b82f6'; // blue-500 for complete status
+        return '#2563eb'; // bright blue for complete status
       case 'cancelled':
-        return '#f43f5e'; // rose-500 to match quick status button
+        return '#f43f5e'; // bright rose for cancelled
       case 'no show':
-        return '#f59e0b'; // amber-500 to match quick status button
+        return '#ef4444'; // bright red for no show
+      case 'review':
+        return '#8b5cf6'; // vivid purple for review
       case 'assigned':
-        return '#7c3aed'; // professional purple
+        return '#8b5cf6'; // vivid purple
       case 'contacted':
-        return '#0891b2'; // professional cyan
+        return '#06b6d4'; // bright cyan
       case 'interested':
-        return '#059669'; // professional green
+        return '#10b981'; // bright emerald
       case 'not interested':
-        return '#dc2626'; // professional red
+        return '#ef4444'; // bright red
       case 'callback':
-        return '#7c3aed'; // professional purple
+        return '#8b5cf6'; // vivid purple
       case 'rescheduled':
-        return '#ea580c'; // professional orange
+        return '#f97316'; // vibrant orange
       case 'reschedule':
-        return '#ea580c'; // professional orange
+        return '#f97316'; // vibrant orange
       default:
         return '#6b7280'; // gray for unknown statuses
     }
@@ -430,6 +600,14 @@ const Calendar = () => {
             displayStatus = lead.status;
           }
           
+          // Determine if double confirmed
+          const isDoubleConfirmed = lead.is_double_confirmed || false;
+
+          // Update display status if double confirmed
+          if (isDoubleConfirmed && displayStatus === 'Confirmed') {
+            displayStatus = 'Double Confirmed';
+          }
+
           // PERFORMANCE: Simplified title construction
           const event = {
             id: lead.id,
@@ -437,8 +615,8 @@ const Calendar = () => {
             start: startDate.toISOString(),
             end: endDate.toISOString(),
             allDay: false,
-            backgroundColor: getEventColor(displayStatus, lead.hasSale, lead.is_confirmed),
-            borderColor: getEventColor(displayStatus, lead.hasSale, lead.is_confirmed),
+            backgroundColor: getEventColor(displayStatus, lead.hasSale, lead.is_confirmed, isDoubleConfirmed),
+            borderColor: getEventColor(displayStatus, lead.hasSale, lead.is_confirmed, isDoubleConfirmed),
             // Add flat fields for slot calendar components
             name: lead.name,
             phone: lead.phone,
@@ -447,6 +625,7 @@ const Calendar = () => {
             time_booked: lead.time_booked,
             booking_slot: lead.booking_slot,
             is_confirmed: lead.is_confirmed,
+            is_double_confirmed: isDoubleConfirmed,
             booking_status: lead.booking_status,
             has_sale: lead.hasSale,
             extendedProps: {
@@ -458,7 +637,8 @@ const Calendar = () => {
               status: lead.status,
               displayStatus: displayStatus, // Store what status to display
               booker: lead.booker?.name || lead.booker_name || 'N/A',
-              isConfirmed: lead.is_confirmed || false
+              isConfirmed: lead.is_confirmed || false,
+              isDoubleConfirmed: isDoubleConfirmed
             }
           };
           
@@ -593,6 +773,51 @@ const Calendar = () => {
     fetchTemplates();
   }, []);
 
+  // Fetch secondary confirmation templates
+  useEffect(() => {
+    const fetchSecondaryTemplates = async () => {
+      try {
+        const response = await axios.get('/api/templates?type=secondary_confirmation&isActive=true', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+        setSecondaryTemplates(response.data || []);
+      } catch (error) {
+        console.error('Error fetching secondary templates:', error);
+        setSecondaryTemplates([]);
+      }
+    };
+    fetchSecondaryTemplates();
+  }, []);
+
+  // Track if we've already opened modal from current URL eventId (prevents double-open on close)
+  const modalOpenedFromUrlRef = useRef(false);
+
+  // Handle URL query params for modal state (enables browser back button to return to modal)
+  useEffect(() => {
+    const eventId = searchParams.get('eventId');
+
+    // Reset ref when eventId is removed from URL
+    if (!eventId) {
+      modalOpenedFromUrlRef.current = false;
+      return;
+    }
+
+    // Only open modal from URL if we haven't already opened it for this eventId
+    if (eventId && events.length > 0 && !modalOpenedFromUrlRef.current) {
+      const event = events.find(e => e.id === eventId);
+      if (event) {
+        setSelectedEvent(event);
+        setShowEventModal(true);
+        modalOpenedFromUrlRef.current = true;
+      } else {
+        // Event not found, clean up the URL
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [searchParams, events, setSearchParams]);
+
   // Use ref to track if initial fetch has been done to prevent loops
   const initialFetchDoneRef = useRef(false);
   
@@ -611,6 +836,8 @@ const Calendar = () => {
     // Check if there's lead data from the leads page
     const bookingLead = localStorage.getItem('bookingLead');
     if (bookingLead) {
+      // Coming from Leads page - don't show secondary template dropdown
+      setIsDirectCalendarClick(false);
       try {
         const leadData = JSON.parse(bookingLead);
         const leadId = leadData.id;
@@ -692,17 +919,31 @@ const Calendar = () => {
         // Full day block: date matches AND no time_slot AND no slot_number
         return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
       });
-      
+
       if (isDayBlocked) {
-        alert('This day is blocked and cannot be viewed');
+        // On initial load, silently switch to monthly without alert
+        // This handles the case where user refreshed while daily view was saved but day is now blocked
+        if (!isInitialLoadRef.current) {
+          alert('This day is blocked and cannot be viewed');
+        }
         setCurrentView('monthly'); // Switch back to monthly view
       }
     }
+    // Mark initial load as complete after first check
+    if (isInitialLoadRef.current && blockedSlots.length > 0) {
+      isInitialLoadRef.current = false;
+    }
   }, [currentView, currentDate, blockedSlots]);
 
+  // Persist calendar view and date to localStorage when they change
+  useEffect(() => {
+    localStorage.setItem('calendarView', currentView);
+    // Also save the current date so daily/weekly views restore to the right date
+    localStorage.setItem('calendarDate', currentDate.toISOString());
+  }, [currentView, currentDate]);
+
   // Consolidated real-time updates with proper debouncing
-  // Use ref to store fetchEvents to avoid dependency issues
-  const fetchEventsRef = useRef(fetchEvents);
+  // Update ref to store fetchEvents to avoid dependency issues
   useEffect(() => {
     fetchEventsRef.current = fetchEvents;
   }, [fetchEvents]);
@@ -773,12 +1014,12 @@ const Calendar = () => {
           // Handle cancellation - remove event
           const cancelledLead = update.data.lead;
           if (cancelledLead) {
-            setEvents(prevEvents => prevEvents.filter(event => 
+            setEvents(prevEvents => prevEvents.filter(event =>
               event.id !== cancelledLead.id && event.extendedProps?.lead?.id !== cancelledLead.id
             ));
             setSelectedEvent(prev => {
               if (prev && (prev.id === cancelledLead.id || prev.extendedProps?.lead?.id === cancelledLead.id)) {
-                setShowEventModal(false);
+                closeEventModal();
                 return null;
               }
               return prev;
@@ -846,7 +1087,7 @@ const Calendar = () => {
         clearTimeout(refreshTimeout);
       }
     };
-  }, [subscribeToCalendarUpdates, subscribeToLeadUpdates]); // Removed fetchEvents - using ref instead
+  }, [subscribeToCalendarUpdates, subscribeToLeadUpdates, closeEventModal]); // Removed fetchEvents - using ref instead
 
   // Create a debounced fetch function that can be used throughout the component
   const debouncedFetchEvents = useCallback(() => {
@@ -952,7 +1193,7 @@ const Calendar = () => {
   }, [socket, selectedEvent]);
 
   // Fetch photos for a lead with pagination (optimized for modals)
-  const fetchLeadPhotos = useCallback(async (leadId, reset = true, cursor = null) => {
+  const fetchLeadPhotos = useCallback(async (leadId, reset = true, cursor = null, folderPath = null) => {
     if (!leadId) {
       setLeadPhotos([]);
       setTotalPhotoCount(0);
@@ -971,19 +1212,29 @@ const Calendar = () => {
     }
 
     try {
+      // Build params object - only include folderPath if filtering by specific folder
+      const photosParams = {
+        leadId,
+        limit: 20, // Smaller initial load for faster modal opening
+        cursor: cursor || undefined,
+        fields: 'minimal' // Only fetch needed fields
+      };
+
+      // Only add folderPath filter if not 'all'
+      if (folderPath && folderPath !== 'all') {
+        photosParams.folderPath = folderPath;
+      }
+
+      const countParams = { leadId };
+      if (folderPath && folderPath !== 'all') {
+        countParams.folderPath = folderPath;
+      }
+
       // Fetch photos and total count in parallel
       const [photosResponse, countResponse] = await Promise.all([
-        // Limit to 20 photos initially for modal (faster load, can load more)
-        axios.get('/api/photos', {
-          params: {
-            leadId,
-            limit: 20, // Smaller initial load for faster modal opening
-            cursor: cursor || undefined,
-            fields: 'minimal' // Only fetch needed fields
-          }
-        }),
+        axios.get('/api/photos', { params: photosParams }),
         // Only fetch count on initial load (reset=true)
-        reset ? axios.get('/api/photos/count', { params: { leadId } }) : Promise.resolve(null)
+        reset ? axios.get('/api/photos/count', { params: countParams }) : Promise.resolve(null)
       ]);
 
       if (photosResponse.data.success) {
@@ -1018,15 +1269,19 @@ const Calendar = () => {
   // Load more photos for modal
   const loadMorePhotos = useCallback(() => {
     if (selectedEvent.extendedProps?.lead?.id && hasMorePhotos && !loadingMorePhotos && nextCursor) {
-      fetchLeadPhotos(selectedEvent.extendedProps.lead.id, false, nextCursor);
+      fetchLeadPhotos(selectedEvent.extendedProps.lead.id, false, nextCursor, galleryFolderFilter);
     }
-  }, [selectedEvent, hasMorePhotos, loadingMorePhotos, nextCursor, fetchLeadPhotos]);
+  }, [selectedEvent, hasMorePhotos, loadingMorePhotos, nextCursor, fetchLeadPhotos, galleryFolderFilter]);
 
   // Handle photo upload for photographers
   const handlePhotoUpload = async (files) => {
     if (!files || files.length === 0) return;
     if (!selectedEvent?.extendedProps?.lead?.id) {
       alert('No lead selected for photo upload');
+      return;
+    }
+    if (!selectedUploadFolder) {
+      alert('Please select a folder first');
       return;
     }
 
@@ -1055,6 +1310,7 @@ const Calendar = () => {
         const formData = new FormData();
         formData.append('photo', file);
         formData.append('leadId', leadId);
+        formData.append('folderPath', selectedUploadFolder);
 
         // Don't set Content-Type - let axios set it with boundary
         await axios.post('/api/photos/upload', formData);
@@ -1073,9 +1329,10 @@ const Calendar = () => {
     setUploadProgress(0);
     setUploadDetails({ current: 0, total: 0, currentFileName: '' });
     setShowUploadPanel(false);
+    setSelectedUploadFolder(null); // Reset folder selection for next upload
 
-    // Refresh photos (reset pagination)
-    fetchLeadPhotos(leadId, true);
+    // Refresh photos (reset pagination) with current filter
+    fetchLeadPhotos(leadId, true, null, galleryFolderFilter);
 
     // Show result notification
     if (failedCount > 0) {
@@ -1105,20 +1362,56 @@ const Calendar = () => {
     }
   };
 
+  // Delete photo handler
+  const handleDeletePhoto = async (photoId, e) => {
+    e.stopPropagation(); // Prevent opening lightbox when clicking delete
+
+    if (!window.confirm('Are you sure you want to delete this photo? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const response = await axios.delete(`/api/photos/${photoId}`);
+
+      if (response.data.success) {
+        // Remove photo from local state
+        setLeadPhotos(prev => prev.filter(p => p.id !== photoId));
+        setTotalPhotoCount(prev => Math.max(0, prev - 1));
+      } else {
+        alert('Failed to delete photo: ' + (response.data.message || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error deleting photo:', error);
+      alert('Error deleting photo: ' + (error.response?.data?.message || error.message));
+    }
+  };
+
   // Fetch photos when event modal opens (reset pagination)
   useEffect(() => {
     if (showEventModal && selectedEvent?.extendedProps?.lead?.id) {
-      // Reset pagination state when modal opens
+      // Reset pagination and folder filter state when modal opens
       setHasMorePhotos(false);
       setNextCursor(null);
-      fetchLeadPhotos(selectedEvent.extendedProps.lead.id, true);
+      setGalleryFolderFilter('all'); // Reset to show all photos
+      setSelectedUploadFolder(null); // Reset upload folder selection
+      fetchLeadPhotos(selectedEvent.extendedProps.lead.id, true, null, 'all');
     } else {
       setLeadPhotos([]);
       setTotalPhotoCount(0);
       setHasMorePhotos(false);
       setNextCursor(null);
+      setGalleryFolderFilter('all');
     }
   }, [showEventModal, selectedEvent, fetchLeadPhotos]);
+
+  // Re-fetch photos when folder filter changes
+  useEffect(() => {
+    if (showEventModal && selectedEvent?.extendedProps?.lead?.id) {
+      setHasMorePhotos(false);
+      setNextCursor(null);
+      fetchLeadPhotos(selectedEvent.extendedProps.lead.id, true, null, galleryFolderFilter);
+    }
+  }, [galleryFolderFilter]); // Only trigger on filter change, not on other deps
 
   const checkForHighlighting = (eventsToCheck) => {
     // Check if there's a booking to highlight from Daily Diary
@@ -1323,7 +1616,13 @@ const Calendar = () => {
         templateId: selectedTemplateId
       });
 
-      const response = await axios.post('/api/leads', { ...createData, sendEmail, sendSms, templateId: selectedTemplateId });
+      const response = await axios.post('/api/leads', {
+        ...createData,
+        sendEmail,
+        sendSms,
+        templateId: selectedTemplateId,
+        secondaryTemplateId: isDirectCalendarClick ? secondaryTemplateId : null
+      });
 
       console.log('✅ Booking API response:', response.data);
 
@@ -1481,7 +1780,9 @@ const Calendar = () => {
     });
     setShowLeadFormModal(false);
     setIsBookingInProgress(false);
-    
+    setSecondaryTemplateId(null);
+    setIsDirectCalendarClick(false);
+
     // Refresh calendar events to show the updated booking
     setTimeout(() => {
       fetchEvents();
@@ -1591,6 +1892,58 @@ const Calendar = () => {
     }
   };
 
+  const handleSendSecondaryTemplate = async () => {
+    if (!selectedEvent || !selectedEvent.extendedProps?.lead) {
+      alert('No lead data available for this event.');
+      return;
+    }
+
+    if (!secondaryTemplateId) {
+      alert('Please select a template first.');
+      return;
+    }
+
+    const leadId = selectedEvent.extendedProps.lead.id || selectedEvent.id;
+    const leadName = selectedEvent.extendedProps.lead.name || selectedEvent.title.split(' - ')[0];
+
+    // Get the template name for the success message
+    const selectedTemplateName = secondaryTemplates.find(t => t._id === secondaryTemplateId)?.name || 'Template';
+
+    if (!leadId) {
+      alert('Unable to identify lead ID.');
+      return;
+    }
+
+    // Confirm action
+    if (!window.confirm(`Send "${selectedTemplateName}" to ${leadName}?`)) {
+      return;
+    }
+
+    try {
+      const response = await axios.post(`/api/leads/${leadId}/resend-welcome-pack`, {
+        templateId: secondaryTemplateId
+      });
+
+      if (response.data.success) {
+        const channels = [];
+        if (response.data.emailSent) channels.push('Email');
+        if (response.data.smsSent) channels.push('SMS');
+
+        alert(`✅ "${selectedTemplateName}" sent successfully via ${channels.join(' and ')}!`);
+
+        // Refresh events to update booking history
+        setTimeout(() => {
+          fetchEvents();
+        }, 1000);
+      } else {
+        alert(`❌ Failed to send template: ${response.data.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error sending template:', error);
+      alert(`❌ Error sending template: ${error.response?.data?.message || error.message || 'Unknown error'}`);
+    }
+  };
+
   const handleEventStatusChange = async (newStatus) => {
     if (!selectedEvent || !selectedEvent.extendedProps?.lead) {
       alert('No lead data available for this event.');
@@ -1671,11 +2024,20 @@ const Calendar = () => {
         is_confirmed: null,
         booking_status: null
       };
+    } else if (newStatus === 'Double Confirmed') {
+      updateData = {
+        ...updateData,
+        status: 'Booked',
+        is_confirmed: 1,
+        is_double_confirmed: 1,
+        booking_status: null
+      };
     } else if (newStatus === 'Confirmed') {
       updateData = {
         ...updateData,
         status: 'Booked',
         is_confirmed: 1,
+        is_double_confirmed: 0,
         booking_status: null
       };
     } else if (newStatus === 'Unconfirmed') {
@@ -1683,14 +2045,15 @@ const Calendar = () => {
         ...updateData,
         status: 'Booked',
         is_confirmed: 0,
+        is_double_confirmed: 0,
         booking_status: null
       };
-    } else if (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') {
+    } else if (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale' || newStatus === 'Review') {
       updateData = {
         ...updateData,
         status: 'Booked',
         booking_status: newStatus,
-        is_confirmed: newStatus === 'Reschedule' ? 0 : null
+        is_confirmed: newStatus === 'Reschedule' ? 0 : (newStatus === 'Review' ? updateData.is_confirmed : null)
       };
     } else {
       updateData = {
@@ -1704,8 +2067,8 @@ const Calendar = () => {
     if (newStatus === 'Cancelled') {
       // Remove the event from calendar immediately
       setEvents(prevEvents => prevEvents.filter(event => event.id !== selectedEvent.id));
-      setShowEventModal(false);
-      
+      closeEventModal();
+
       // Emit real-time update IMMEDIATELY
       emitCalendarUpdate({
         type: 'status_changed',
@@ -1717,51 +2080,72 @@ const Calendar = () => {
       });
     } else {
       // Create updated event for optimistic update
-      const eventTitle = newStatus === 'Confirmed'
-        ? `${leadName} - Booked (Confirmed)`
-        : newStatus === 'Unconfirmed'
-          ? `${leadName} - Booked (Unconfirmed)`
-          : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale')
-            ? `${leadName} - ${newStatus}`
-            : `${leadName} - ${newStatus}`;
-      
+      const eventTitle = newStatus === 'Double Confirmed'
+        ? `${leadName} - Booked (Double Confirmed)`
+        : newStatus === 'Confirmed'
+          ? `${leadName} - Booked (Confirmed)`
+          : newStatus === 'Unconfirmed'
+            ? `${leadName} - Booked (Unconfirmed)`
+            : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale' || newStatus === 'Review')
+              ? `${leadName} - ${newStatus}`
+              : `${leadName} - ${newStatus}`;
+
       // Create optimistic lead update
       const optimisticLead = {
         ...selectedEvent.extendedProps.lead,
         ...updateData
       };
 
+      // Determine new flat properties for SlotCalendar
+      const newIsConfirmed = (newStatus === 'Confirmed' || newStatus === 'Double Confirmed') ? 1 : (newStatus === 'Unconfirmed' ? 0 : selectedEvent.is_confirmed);
+      const newIsDoubleConfirmed = newStatus === 'Double Confirmed' ? 1 : 0;
+      const newBookingStatus = (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale' || newStatus === 'Review') ? newStatus : null;
+
       const updatedEvent = {
         ...selectedEvent,
         title: eventTitle,
         backgroundColor: getEventColor(
-          newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
+          newStatus,
           optimisticLead.hasSale,
-          newStatus === 'Confirmed'
+          newStatus === 'Confirmed' || newStatus === 'Double Confirmed',
+          newStatus === 'Double Confirmed'
         ),
         borderColor: getEventColor(
-          newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Unconfirmed' : newStatus),
+          newStatus,
           optimisticLead.hasSale,
-          newStatus === 'Confirmed'
+          newStatus === 'Confirmed' || newStatus === 'Double Confirmed',
+          newStatus === 'Double Confirmed'
         ),
+        // FLAT PROPERTIES for SlotCalendar and MonthlySlotCalendar color updates
+        is_confirmed: newIsConfirmed,
+        is_double_confirmed: newIsDoubleConfirmed,
+        booking_status: newBookingStatus,
+        has_sale: optimisticLead.has_sale || selectedEvent.has_sale || false,
+        name: optimisticLead.name || selectedEvent.name,
+        time_booked: optimisticLead.time_booked || selectedEvent.time_booked,
+        date_booked: optimisticLead.date_booked || selectedEvent.date_booked,
+        booking_slot: optimisticLead.booking_slot || selectedEvent.booking_slot,
         extendedProps: {
           ...selectedEvent.extendedProps,
-          status: (newStatus === 'Confirmed' || newStatus === 'Unconfirmed' || newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? 'Booked' : newStatus,
+          status: (newStatus === 'Double Confirmed' || newStatus === 'Confirmed' || newStatus === 'Unconfirmed' || newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale' || newStatus === 'Review') ? 'Booked' : newStatus,
           displayStatus: newStatus,
-          isConfirmed: newStatus === 'Confirmed' ? true : (newStatus === 'Unconfirmed' ? false : (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? (newStatus === 'Reschedule' ? 0 : null) : selectedEvent.extendedProps?.isConfirmed || false),
-          bookingStatus: (newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? newStatus : undefined,
+          isConfirmed: (newStatus === 'Confirmed' || newStatus === 'Double Confirmed') ? true : (newStatus === 'Unconfirmed' ? false : selectedEvent.extendedProps?.isConfirmed || false),
+          isDoubleConfirmed: newStatus === 'Double Confirmed',
+          bookingStatus: newBookingStatus,
           lead: optimisticLead
         }
       };
 
       // Update UI immediately (optimistic update)
       setEvents(prevEvents => {
-        const newEvents = prevEvents.map(event => 
+        const newEvents = prevEvents.map(event =>
           event.id === selectedEvent.id ? updatedEvent : event
         );
         return newEvents;
       });
       setSelectedEvent(updatedEvent);
+      // Force SlotCalendar to re-render with new colors
+      setEventsUpdateKey(prev => prev + 1);
       
       // Emit real-time update IMMEDIATELY (before API call)
       emitCalendarUpdate({
@@ -1816,41 +2200,17 @@ const Calendar = () => {
             };
             
             setEvents(prevEvents => {
-              const newEvents = prevEvents.map(event => 
+              const newEvents = prevEvents.map(event =>
                 event.id === selectedEvent.id ? finalEvent : event
               );
               return newEvents;
             });
             setSelectedEvent(finalEvent);
+            setEventsUpdateKey(prev => prev + 1); // Force calendar re-render with server data
           }
 
           // Emit diary update for synchronization
-          try {
-            if (newStatus === 'Confirmed' || oldStatus === 'Confirmed' ||
-                newStatus === 'Booked' || oldStatus === 'Booked' || 
-                newStatus === 'Attended' || oldStatus === 'Attended' ||
-                newStatus === 'Complete' || oldStatus === 'Complete' ||
-                newStatus === 'Cancelled' || oldStatus === 'Cancelled' ||
-                newStatus === 'No Show' || oldStatus === 'No Show' ||
-                newStatus === 'Unconfirmed' || oldStatus === 'Unconfirmed' ||
-                newStatus === 'Reschedule' || oldStatus === 'Reschedule' ||
-                newStatus === 'Arrived' || oldStatus === 'Arrived' ||
-                newStatus === 'Left' || oldStatus === 'Left' ||
-                newStatus === 'On Show' || oldStatus === 'On Show' ||
-                newStatus === 'No Sale' || oldStatus === 'No Sale') {
-              
-              await axios.post('/api/stats/diary-update', {
-                leadId: selectedEvent.id,
-                leadName: leadName,
-                oldStatus: oldStatus,
-                newStatus: newStatus === 'Cancelled' ? 'Cancelled' : (newStatus === 'Confirmed' ? 'Booked' : (newStatus === 'Unconfirmed' ? 'Booked' : newStatus)),
-                dateBooked: selectedEvent.start,
-                timestamp: new Date().toISOString()
-              });
-            }
-          } catch (diaryError) {
-            console.warn('Diary update failed:', diaryError);
-          }
+          // Diary stats tracking removed - endpoint not implemented
           
           // Real-time update already emitted above, just sync with server response
           // Background refresh to ensure sync (but don't override optimistic update)
@@ -1864,6 +2224,7 @@ const Calendar = () => {
         // ROLLBACK: Revert optimistic update on error
         setEvents(previousEvents);
         setSelectedEvent(previousEvent);
+        setEventsUpdateKey(prev => prev + 1); // Force calendar re-render with reverted data
         
         // More detailed error reporting
         let errorMessage = 'Failed to update status. Changes have been reverted. Please try again.';
@@ -1906,12 +2267,12 @@ const Calendar = () => {
       
       if (response.data.success || response.data.lead) {
         const leadName = selectedEvent.extendedProps.lead.name || selectedEvent.title.split(' - ')[0];
-        
+
         // Remove the event from calendar completely
         setEvents(prevEvents => prevEvents.filter(event => event.id !== selectedEvent.id));
-        setShowEventModal(false);
+        closeEventModal();
         setShowRejectModal(false);
-        
+
         alert(`❌ Successfully rejected ${leadName}. The lead has been moved to "Rejected" status.`);
         
         // Force a delayed refresh to ensure server sync
@@ -1957,7 +2318,7 @@ const Calendar = () => {
     });
 
     // Close the event modal and open the booking form
-    setShowEventModal(false);
+    closeEventModal();
     setSendEmail(true);
     setSendSms(true);
 
@@ -2030,6 +2391,7 @@ const Calendar = () => {
   const handleEditNotes = () => {
     const currentNotes = selectedEvent.extendedProps?.lead?.notes || '';
     setNotesText(currentNotes);
+    setShowNotes(true); // Expand notes section when editing
     setEditingNotes(true);
   };
 
@@ -2103,6 +2465,94 @@ const Calendar = () => {
   const handleCancelNotes = () => {
     setEditingNotes(false);
     setNotesText('');
+  };
+
+  // Populate stats form when selectedEvent changes
+  useEffect(() => {
+    if (selectedEvent?.extendedProps?.lead) {
+      const lead = selectedEvent.extendedProps.lead;
+      setStatsForm({
+        date_of_birth: lead.date_of_birth ? lead.date_of_birth.split('T')[0] : '',
+        height_inches: lead.height_inches || '',
+        waist_inches: lead.waist_inches || '',
+        hips_inches: lead.hips_inches || '',
+        eye_color: lead.eye_color || '',
+        hair_color: lead.hair_color || '',
+        hair_length: lead.hair_length || ''
+      });
+      setEditingStats(false); // Reset to display mode when switching events
+    }
+  }, [selectedEvent]);
+
+  // Handle saving model stats
+  const handleSaveStats = async () => {
+    if (!selectedEvent?.id) return;
+
+    setSavingStats(true);
+    try {
+      const response = await axios.put(`/api/leads/${selectedEvent.id}`, {
+        date_of_birth: statsForm.date_of_birth || null,
+        height_inches: statsForm.height_inches ? parseInt(statsForm.height_inches) : null,
+        waist_inches: statsForm.waist_inches ? parseInt(statsForm.waist_inches) : null,
+        hips_inches: statsForm.hips_inches ? parseInt(statsForm.hips_inches) : null,
+        eye_color: statsForm.eye_color || null,
+        hair_color: statsForm.hair_color || null,
+        hair_length: statsForm.hair_length || null
+      });
+
+      if (response.data.success || response.data.lead) {
+        // Update the event with new stats
+        const updatedLead = response.data.lead || response.data;
+        setEvents(prevEvents =>
+          prevEvents.map(event =>
+            event.id === selectedEvent.id
+              ? {
+                  ...event,
+                  extendedProps: {
+                    ...event.extendedProps,
+                    lead: {
+                      ...event.extendedProps.lead,
+                      date_of_birth: statsForm.date_of_birth,
+                      height_inches: statsForm.height_inches,
+                      waist_inches: statsForm.waist_inches,
+                      hips_inches: statsForm.hips_inches,
+                      eye_color: statsForm.eye_color,
+                      hair_color: statsForm.hair_color,
+                      hair_length: statsForm.hair_length
+                    }
+                  }
+                }
+              : event
+          )
+        );
+
+        // Update selectedEvent as well
+        setSelectedEvent(prev => prev ? ({
+          ...prev,
+          extendedProps: {
+            ...prev.extendedProps,
+            lead: {
+              ...prev.extendedProps.lead,
+              date_of_birth: statsForm.date_of_birth,
+              height_inches: statsForm.height_inches,
+              waist_inches: statsForm.waist_inches,
+              hips_inches: statsForm.hips_inches,
+              eye_color: statsForm.eye_color,
+              hair_color: statsForm.hair_color,
+              hair_length: statsForm.hair_length
+            }
+          }
+        }) : null);
+
+        setEditingStats(false);
+        alert('Model stats saved successfully!');
+      }
+    } catch (error) {
+      console.error('Error saving stats:', error);
+      alert('Failed to save stats. Please try again.');
+    } finally {
+      setSavingStats(false);
+    }
   };
 
   const getBookingPreview = () => {
@@ -2481,6 +2931,7 @@ const Calendar = () => {
       <div className="mobile-card overflow-x-auto">
         {currentView === 'monthly' ? (
           <MonthlySlotCalendar
+            key={`monthly-calendar-${eventsUpdateKey}`}
             currentDate={currentDate}
             blockedSlots={blockedSlots}
             events={events.filter(event => {
@@ -2527,6 +2978,10 @@ const Calendar = () => {
               if (fullEvent) {
                 setSelectedEvent(fullEvent);
                 setShowEventModal(true);
+                // Mark as opened so useEffect doesn't re-trigger
+                modalOpenedFromUrlRef.current = true;
+                // Update URL so browser back button returns to this modal
+                setSearchParams({ eventId: event.id }, { replace: true });
               } else {
                 console.error('Could not find full event data for:', event.id);
               }
@@ -2534,6 +2989,7 @@ const Calendar = () => {
           />
         ) : currentView === 'daily' ? (
           <SlotCalendar
+            key={`slot-calendar-${eventsUpdateKey}`}
             selectedDate={currentDate}
             blockedSlots={blockedSlots}
             events={events.filter(event => {
@@ -2584,6 +3040,8 @@ const Calendar = () => {
                 booking_slot: slot,
                 date_booked: currentDate.toISOString().split('T')[0]
               });
+              // Set flag for secondary template visibility - true if NOT coming from Leads page
+              setIsDirectCalendarClick(!leadForm._id);
               setShowLeadFormModal(true);
             }}
             onEventClick={(event) => {
@@ -2593,6 +3051,10 @@ const Calendar = () => {
               if (fullEvent) {
                 setSelectedEvent(fullEvent);
                 setShowEventModal(true);
+                // Mark as opened so useEffect doesn't re-trigger
+                modalOpenedFromUrlRef.current = true;
+                // Update URL so browser back button returns to this modal
+                setSearchParams({ eventId: event.id }, { replace: true });
               } else {
                 console.error('Could not find full event data for:', event.id);
               }
@@ -2652,6 +3114,8 @@ const Calendar = () => {
                   booking_slot: slot,
                   date_booked: day.toISOString().split('T')[0]
                 });
+                // Set flag for secondary template visibility - true if NOT coming from Leads page
+                setIsDirectCalendarClick(!leadForm._id);
                 setShowLeadFormModal(true);
               } else {
                 // Clicked on day header - check if day is blocked before switching to daily view
@@ -2679,6 +3143,10 @@ const Calendar = () => {
               if (fullEvent) {
                 setSelectedEvent(fullEvent);
                 setShowEventModal(true);
+                // Mark as opened so useEffect doesn't re-trigger
+                modalOpenedFromUrlRef.current = true;
+                // Update URL so browser back button returns to this modal
+                setSearchParams({ eventId: event.id }, { replace: true });
               } else {
                 console.error('Could not find full event data for:', event.id);
               }
@@ -2885,6 +3353,7 @@ const Calendar = () => {
                       )}
                     </div>
                   )}
+
                 </div>
 
                 <div className="bg-gray-50 rounded-lg p-4 space-y-4">
@@ -3149,7 +3618,7 @@ const Calendar = () => {
                       <FiChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
                     </button>
                     <button
-                      onClick={() => setShowEventModal(false)}
+                      onClick={closeEventModal}
                       className="p-1.5 sm:p-2 rounded-full bg-white/20 backdrop-blur-sm text-white hover:text-gray-900 hover:bg-white/40 transition-all duration-200 shadow-lg"
                       title="Close"
                     >
@@ -3255,6 +3724,196 @@ const Calendar = () => {
                         </div>
                       </div>
                     )}
+
+                    {/* Model Stats Section - L'Oreal Style */}
+                    <div className="mt-4 bg-gradient-to-br from-slate-50 via-gray-50 to-zinc-100 rounded-xl p-4 border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                        <h5 className="text-xs font-bold text-gray-700 uppercase tracking-widest flex items-center">
+                          <span className="w-6 h-6 rounded-full bg-gradient-to-r from-gray-800 to-gray-600 flex items-center justify-center mr-2">
+                            <FiUser className="h-3 w-3 text-white" />
+                          </span>
+                          Model Stats
+                        </h5>
+                        <button
+                          onClick={() => setEditingStats(!editingStats)}
+                          className="text-xs text-gray-500 hover:text-gray-700 transition-colors flex items-center gap-1"
+                        >
+                          <FiEdit2 className="h-3 w-3" />
+                          {editingStats ? 'Cancel' : 'Edit'}
+                        </button>
+                      </div>
+
+                      {editingStats ? (
+                        /* Edit Mode */
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Date of Birth</label>
+                              <input
+                                type="date"
+                                value={statsForm.date_of_birth || ''}
+                                onChange={(e) => setStatsForm({...statsForm, date_of_birth: e.target.value})}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-all"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Height (inches)</label>
+                              <input
+                                type="number"
+                                value={statsForm.height_inches || ''}
+                                onChange={(e) => setStatsForm({...statsForm, height_inches: e.target.value})}
+                                placeholder="e.g. 65"
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-all"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Waist (inches)</label>
+                              <input
+                                type="number"
+                                value={statsForm.waist_inches || ''}
+                                onChange={(e) => setStatsForm({...statsForm, waist_inches: e.target.value})}
+                                placeholder="e.g. 28"
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-all"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Hips (inches)</label>
+                              <input
+                                type="number"
+                                value={statsForm.hips_inches || ''}
+                                onChange={(e) => setStatsForm({...statsForm, hips_inches: e.target.value})}
+                                placeholder="e.g. 36"
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-all"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Eye Color</label>
+                              <select
+                                value={statsForm.eye_color || ''}
+                                onChange={(e) => setStatsForm({...statsForm, eye_color: e.target.value})}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-all"
+                              >
+                                <option value="">Select...</option>
+                                <option value="Brown">Brown</option>
+                                <option value="Blue">Blue</option>
+                                <option value="Green">Green</option>
+                                <option value="Hazel">Hazel</option>
+                                <option value="Grey">Grey</option>
+                                <option value="Amber">Amber</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Hair Color</label>
+                              <select
+                                value={statsForm.hair_color || ''}
+                                onChange={(e) => setStatsForm({...statsForm, hair_color: e.target.value})}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-all"
+                              >
+                                <option value="">Select...</option>
+                                <option value="Black">Black</option>
+                                <option value="Brown">Brown</option>
+                                <option value="Blonde">Blonde</option>
+                                <option value="Red">Red</option>
+                                <option value="Auburn">Auburn</option>
+                                <option value="Grey">Grey</option>
+                                <option value="White">White</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Hair Length</label>
+                              <select
+                                value={statsForm.hair_length || ''}
+                                onChange={(e) => setStatsForm({...statsForm, hair_length: e.target.value})}
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-all"
+                              >
+                                <option value="">Select...</option>
+                                <option value="Bald">Bald</option>
+                                <option value="Buzz">Buzz</option>
+                                <option value="Short">Short</option>
+                                <option value="Medium">Medium</option>
+                                <option value="Long">Long</option>
+                                <option value="Very Long">Very Long</option>
+                              </select>
+                            </div>
+                          </div>
+                          <button
+                            onClick={handleSaveStats}
+                            disabled={savingStats}
+                            className="w-full mt-2 px-4 py-2 bg-gradient-to-r from-gray-800 to-gray-700 text-white text-sm font-medium rounded-lg hover:from-gray-700 hover:to-gray-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            {savingStats ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <FiCheck className="h-4 w-4" />
+                                Save Stats
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        /* Display Mode */
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-xs text-gray-500 uppercase tracking-wide">DOB</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {selectedEvent.extendedProps?.lead?.date_of_birth
+                                ? new Date(selectedEvent.extendedProps.lead.date_of_birth).toLocaleDateString('en-GB')
+                                : '—'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-xs text-gray-500 uppercase tracking-wide">Height</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {selectedEvent.extendedProps?.lead?.height_inches
+                                ? `${selectedEvent.extendedProps.lead.height_inches}"`
+                                : '—'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-xs text-gray-500 uppercase tracking-wide">Waist</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {selectedEvent.extendedProps?.lead?.waist_inches
+                                ? `${selectedEvent.extendedProps.lead.waist_inches}"`
+                                : '—'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-xs text-gray-500 uppercase tracking-wide">Hips</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {selectedEvent.extendedProps?.lead?.hips_inches
+                                ? `${selectedEvent.extendedProps.lead.hips_inches}"`
+                                : '—'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-xs text-gray-500 uppercase tracking-wide">Eyes</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {selectedEvent.extendedProps?.lead?.eye_color || '—'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-xs text-gray-500 uppercase tracking-wide">Hair</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {selectedEvent.extendedProps?.lead?.hair_color || '—'}
+                            </span>
+                          </div>
+                          <div className="col-span-2 flex justify-between items-center py-1.5">
+                            <span className="text-xs text-gray-500 uppercase tracking-wide">Hair Length</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {selectedEvent.extendedProps?.lead?.hair_length || '—'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -3290,61 +3949,118 @@ const Calendar = () => {
                       </div>
                       <p className="text-xs text-gray-500 mt-2">These settings apply when you reschedule from this modal.</p>
 
-                      {/* Template Selector for Reschedule */}
+                      {/* Dynamic Template Selector */}
                       {(sendEmail || sendSms) && (
                         <div className="mt-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Select Template
-                          </label>
-                          {bookingTemplates.length > 0 ? (
-                            <>
-                              <select
-                                value={selectedTemplateId || ''}
-                                onChange={(e) => setSelectedTemplateId(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                          {/* Toggle Button */}
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="block text-sm font-medium text-gray-700">
+                              {templateMode === 'primary' ? 'Booking Confirmation' : 'Secondary Confirmation'}
+                            </label>
+                            {secondaryTemplates && secondaryTemplates.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setTemplateMode(templateMode === 'primary' ? 'secondary' : 'primary')}
+                                className={`flex items-center space-x-2 px-3 py-1.5 text-sm font-semibold rounded-lg shadow-sm transition-all duration-200 ${
+                                  templateMode === 'primary'
+                                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600'
+                                    : 'bg-gradient-to-r from-indigo-500 to-blue-500 text-white hover:from-indigo-600 hover:to-blue-600'
+                                }`}
                               >
-                                {bookingTemplates.map((template) => (
-                                  <option key={template._id} value={template._id}>
-                                    {template.name} {template.emailAccount === 'secondary' ? '(Diary@edgetalent.co.uk)' : '(Primary)'}
-                                  </option>
-                                ))}
-                              </select>
-                              {sendEmail && !templateSupportsEmail && (
-                                <p className="text-xs text-amber-600 mt-1">
-                                  ⚠️ This template has email disabled - email will not be sent
-                                </p>
-                              )}
-                              {sendSms && !templateSupportsSms && (
-                                <p className="text-xs text-amber-600 mt-1">
-                                  ⚠️ This template has SMS disabled - SMS will not be sent
-                                </p>
-                              )}
-                              <p className="text-xs text-gray-500 mt-1">
-                                Emails sent via Gmail API
-                              </p>
-                            </>
+                                <FiRefreshCw className="h-4 w-4" />
+                                <span>Switch to {templateMode === 'primary' ? 'Confirm' : 'Primary'}</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Template Dropdown - Changes based on mode */}
+                          {templateMode === 'primary' ? (
+                            bookingTemplates.length > 0 ? (
+                              <>
+                                <select
+                                  value={selectedTemplateId || ''}
+                                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                                >
+                                  {bookingTemplates.map((template) => (
+                                    <option key={template._id} value={template._id}>
+                                      {template.name} {template.emailAccount === 'secondary' ? '(Diary)' : '(Primary)'}
+                                    </option>
+                                  ))}
+                                </select>
+                                {sendEmail && !templateSupportsEmail && (
+                                  <p className="text-xs text-amber-600 mt-1">
+                                    ⚠️ This template has email disabled
+                                  </p>
+                                )}
+                                {sendSms && !templateSupportsSms && (
+                                  <p className="text-xs text-amber-600 mt-1">
+                                    ⚠️ This template has SMS disabled
+                                  </p>
+                                )}
+                              </>
+                            ) : (
+                              <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-2">
+                                ⚠️ No active booking templates found
+                              </div>
+                            )
                           ) : (
-                            <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-2">
-                              ⚠️ No active booking templates found
-                            </div>
+                            <select
+                              value={secondaryTemplateId || ''}
+                              onChange={(e) => setSecondaryTemplateId(e.target.value || null)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                            >
+                              <option value="">None - No secondary email</option>
+                              {secondaryTemplates.map((template) => (
+                                <option key={template._id} value={template._id}>
+                                  {template.name}
+                                </option>
+                              ))}
+                            </select>
                           )}
+                          <p className="text-xs text-gray-500 mt-1">
+                            {templateMode === 'primary' ? 'Main booking confirmation' : 'Optional additional email'}
+                          </p>
                         </div>
                       )}
 
-                      {/* Resend Welcome Pack Button */}
+                      {/* Send Button - Changes based on mode */}
                       {selectedEvent.extendedProps?.lead?.date_booked && (
                         <div className="mt-3 pt-3 border-t border-gray-200">
-                          <button
-                            onClick={handleResendWelcomePack}
-                            className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg"
-                            title="Resend welcome pack (booking confirmation email and SMS)"
-                          >
-                            <FiSend className="h-4 w-4" />
-                            <span className="text-sm font-medium">Resend Welcome Pack</span>
-                          </button>
-                          <p className="text-xs text-gray-500 mt-1 text-center">
-                            Sends booking confirmation via email and SMS
-                          </p>
+                          {templateMode === 'primary' ? (
+                            <>
+                              <button
+                                onClick={handleResendWelcomePack}
+                                className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 shadow-md hover:shadow-lg"
+                                title="Resend welcome pack (booking confirmation email and SMS)"
+                              >
+                                <FiSend className="h-4 w-4" />
+                                <span className="text-sm font-medium">Resend Welcome Pack</span>
+                              </button>
+                              <p className="text-xs text-gray-500 mt-1 text-center">
+                                Sends booking confirmation via email and SMS
+                              </p>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                onClick={handleSendSecondaryTemplate}
+                                disabled={!secondaryTemplateId}
+                                className={`w-full flex items-center justify-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg ${
+                                  secondaryTemplateId
+                                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600'
+                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                }`}
+                                title="Send selected template"
+                              >
+                                <FiSend className="h-4 w-4" />
+                                <span className="text-sm font-medium">Send</span>
+                              </button>
+                              <p className="text-xs text-gray-500 mt-1 text-center">
+                                {secondaryTemplateId ? 'Send selected template to customer' : 'Select a template above'}
+                              </p>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3363,6 +4079,7 @@ const Calendar = () => {
                         </div>
                       </div>
                     )}
+
                     {/* Quick Status Actions */}
                     <div className="bg-white border border-gray-100 rounded-lg p-3">
                       <h5 className="text-sm font-bold text-gray-900 mb-2 flex items-center">
@@ -3371,14 +4088,17 @@ const Calendar = () => {
                       </h5>
                       {(() => {
                         const isBooked = selectedEvent.extendedProps?.status === 'Booked';
-                        const isConfirmed = !!selectedEvent.extendedProps?.isConfirmed;
-                        
+                        const isConfirmed = selectedEvent.extendedProps?.isConfirmed;
+                        const isDoubleConfirmed = selectedEvent.extendedProps?.isDoubleConfirmed || selectedEvent.extendedProps?.lead?.is_double_confirmed;
+
                         // Determine current status with better fallback logic
                         let currentDisplayStatus = selectedEvent.extendedProps?.displayStatus || selectedEvent.extendedProps?.bookingStatus;
-                        
+
                         // If no displayStatus/bookingStatus, determine from other props
                         if (!currentDisplayStatus) {
-                          if (isBooked && isConfirmed) {
+                          if (isBooked && isDoubleConfirmed) {
+                            currentDisplayStatus = 'Double Confirmed';
+                          } else if (isBooked && isConfirmed) {
                             currentDisplayStatus = 'Confirmed';
                           } else if (isBooked && isConfirmed === false) {
                             currentDisplayStatus = 'Unconfirmed';
@@ -3388,207 +4108,88 @@ const Calendar = () => {
                             currentDisplayStatus = selectedEvent.extendedProps?.status || 'Unknown';
                           }
                         }
-                        
-                        const isCurrentlyConfirmed = currentDisplayStatus === 'Confirmed';
-                        const isCurrentlyUnconfirmed = currentDisplayStatus === 'Unconfirmed';
-                        const isCurrentlyArrived = currentDisplayStatus === 'Arrived';
-                        const isCurrentlyLeft = currentDisplayStatus === 'Left';
-                        const isCurrentlyNoSale = currentDisplayStatus === 'No Sale';
-                        const isCurrentlyNoShow = currentDisplayStatus === 'No Show';
-                        const isCurrentlyCancelled = currentDisplayStatus === 'Cancelled';
-                        
-                        // Debug log to help identify the issue
-                        console.log('Calendar Status Debug:', {
-                          status: selectedEvent.extendedProps?.status,
-                          isConfirmed: selectedEvent.extendedProps?.isConfirmed,
-                          displayStatus: selectedEvent.extendedProps?.displayStatus,
-                          bookingStatus: selectedEvent.extendedProps?.bookingStatus,
-                          currentDisplayStatus,
-                          isCurrentlyConfirmed,
-                          isCurrentlyUnconfirmed,
-                          isCurrentlyArrived
-                        });
-                        
-                        // Check permissions for button visibility
-                        // const canChangeStatus = user?.role === 'admin' || user?.role === 'viewer' || user?.role === 'booker';
+
+                        // Check permissions for status changes
                         const canChangeConfirmation = user?.role === 'admin' || user?.role === 'viewer' || user?.role === 'booker';
                         const canChangeOtherStatuses = user?.role === 'admin' || user?.role === 'viewer';
-                        const canCancelBooking = user?.role === 'admin' || user?.role === 'viewer' || user?.role === 'booker';
-                        
-                        return (
-                        <>
-                          <div className="grid grid-cols-2 gap-2">
-                            {/* Confirm/Unconfirm buttons - visible to all authorized users */}
-                            {canChangeConfirmation && (
-                              <>
-                                <button
-                                  onClick={() => handleEventStatusChange('Confirmed')}
-                                  disabled={isCurrentlyConfirmed}
-                                  className={`relative overflow-hidden group flex items-center justify-center space-x-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 ${
-                                    isCurrentlyConfirmed
-                                      ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg transform scale-105'
-                                      : 'bg-gradient-to-r from-emerald-400 to-green-500 text-white hover:from-green-500 hover:to-emerald-600 hover:shadow-lg hover:scale-105'
-                                  }`}
-                                >
-                                  <FiCalendar className="h-4 w-4" />
-                                  <span>{isCurrentlyConfirmed ? '✓ Confirmed' : 'Confirm'}</span>
-                                </button>
-                                <button
-                                  onClick={() => handleEventStatusChange('Unconfirmed')}
-                                  disabled={isCurrentlyUnconfirmed}
-                                  className={`relative overflow-hidden group flex items-center justify-center space-x-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 ${
-                                    isCurrentlyUnconfirmed
-                                      ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-lg transform scale-105'
-                                      : 'bg-gradient-to-r from-orange-400 to-amber-400 text-white hover:from-orange-500 hover:to-amber-500 hover:shadow-lg hover:scale-105'
-                                  }`}
-                                >
-                                  <FiClock className="h-4 w-4" />
-                                  <span>{isCurrentlyUnconfirmed ? '✓ Unconfirmed' : 'Unconfirm'}</span>
-                                </button>
-                              </>
-                            )}
-                            
-                            {/* Cancel button - visible to bookers, admins, and viewers */}
-                            {canCancelBooking && (
-                              <button
-                                onClick={() => handleEventStatusChange('Cancelled')}
-                                disabled={isCurrentlyCancelled}
-                                className={`relative overflow-hidden group flex items-center justify-center space-x-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 col-span-2 ${
-                                  isCurrentlyCancelled
-                                    ? 'bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg transform scale-105'
-                                    : 'bg-gradient-to-r from-rose-400 to-rose-500 text-white hover:from-rose-500 hover:to-pink-500 hover:shadow-lg hover:scale-105'
-                                }`}
-                              >
-                                <FiX className="h-4 w-4" />
-                                <span>{isCurrentlyCancelled ? '✓ Cancelled' : 'Cancel'}</span>
-                              </button>
-                            )}
-                            
-                            {/* Other status buttons - only visible to users with appropriate permissions */}
-                            {canChangeOtherStatuses && (
-                              <>
-                                <button
-                                  onClick={() => handleEventStatusChange('Arrived')}
-                                  disabled={isCurrentlyArrived}
-                                  className={`flex items-center justify-center space-x-1 px-3 py-2 rounded-lg text-xs font-medium text-white transition-all duration-300 ${
-                                    isCurrentlyArrived ? 'shadow-lg transform scale-105' : 'hover:shadow-lg hover:scale-105'
-                                  }`}
-                                  style={{ backgroundColor: '#e06666' }}
-                                >
-                                  <FiCheck className="h-4 w-4" />
-                                  <span>{isCurrentlyArrived ? '✓ Arrived' : 'Arrived'}</span>
-                                </button>
-                                <button
-                                  onClick={() => handleEventStatusChange('Left')}
-                                  disabled={isCurrentlyLeft}
-                                  className={`flex items-center justify-center space-x-1 px-3 py-2 rounded-lg text-xs font-medium text-white transition-all duration-300 ${
-                                    isCurrentlyLeft ? 'shadow-lg transform scale-105' : 'hover:shadow-lg hover:scale-105'
-                                  }`}
-                                  style={{ backgroundColor: '#000000' }}
-                                >
-                                  <FiExternalLink className="h-4 w-4" />
-                                  <span>{isCurrentlyLeft ? '✓ Left' : 'Left'}</span>
-                                </button>
-                              </>
-                            )}
-                          </div>
-                          {/* Expandable more statuses */}
-                          {canChangeOtherStatuses && (
-                            <div className="mt-2 flex justify-end">
-                              <button
-                                onClick={() => setShowMoreStatuses(!showMoreStatuses)}
-                                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                              >
-                                {showMoreStatuses ? 'Hide' : 'More'}
-                              </button>
-                            </div>
-                          )}
-                          {showMoreStatuses && canChangeOtherStatuses && (
-                            <div className="grid grid-cols-2 gap-2 mt-2">
-                              <button
-                                onClick={() => handleEventStatusChange('No Sale')}
-                                disabled={isCurrentlyNoSale}
-                                className={`relative overflow-hidden group flex items-center justify-center space-x-1 px-3 py-2 rounded-lg text-xs font-medium text-white transition-all duration-300 ${
-                                  isCurrentlyNoSale 
-                                    ? 'bg-gradient-to-r from-red-700 to-rose-700 shadow-lg transform scale-105' 
-                                    : 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 hover:shadow-lg hover:scale-105'
-                                }`}
-                              >
-                                <FiX className="h-4 w-4" />
-                                <span>{isCurrentlyNoSale ? '✓ No Sale' : 'No Sale'}</span>
-                              </button>
-                              <button
-                                onClick={() => handleEventStatusChange('No Show')}
-                                disabled={isCurrentlyNoShow}
-                                className={`relative overflow-hidden group flex items-center justify-center space-x-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 ${
-                                  isCurrentlyNoShow
-                                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg transform scale-105'
-                                    : 'bg-gradient-to-r from-amber-400 to-amber-500 text-white hover:from-amber-500 hover:to-orange-500 hover:shadow-lg hover:scale-105'
-                                }`}
-                              >
-                                <FiX className="h-4 w-4" />
-                                <span>{isCurrentlyNoShow ? '✓ No Show' : 'No Show'}</span>
-                              </button>
-                              {/* Complete Sale button - Only for admin and viewer */}
-                              <button
-                                onClick={() => {
-                                  if (user?.role === 'viewer' || user?.role === 'admin') {
-                                    const leadId = selectedEvent?.extendedProps?.lead?.id;
-                                    // Load any previously saved selections from localStorage
-                                    const savedKey = `selectedPhotos_${leadId}`;
-                                    const savedSelection = localStorage.getItem(savedKey);
-                                    let initialPhotoIds = [];
-                                    if (savedSelection) {
-                                      try {
-                                        initialPhotoIds = JSON.parse(savedSelection);
-                                      } catch (e) {
-                                        console.warn('Failed to parse saved photo selection:', e);
-                                      }
-                                    }
-                                    // Start with image selection, then package selection
-                                    setSelectedPhotoIds(initialPhotoIds);
-                                    setSelectedPhotos([]);
-                                    setSelectedPackage(null);
-                                    setImageSelectionMode(true);
-                                    setShowPresentationGallery(true);
-                                  }
-                                }}
-                                disabled={selectedEvent.extendedProps?.status === 'Attended' || !(user?.role === 'admin' || user?.role === 'viewer')}
-                                className={`relative overflow-hidden group flex items-center justify-center space-x-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 ${
-                                  selectedEvent.extendedProps?.status === 'Attended'
-                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg transform scale-105'
-                                    : 'bg-gradient-to-r from-emerald-400 to-emerald-500 text-white hover:from-emerald-500 hover:to-teal-500 hover:shadow-lg hover:scale-105'
-                                } ${!(user?.role === 'admin' || user?.role === 'viewer') ? 'hidden' : ''}`}
-                              >
-                                <FiCheckCircle className="h-4 w-4" />
-                                <span>{selectedEvent.extendedProps?.status === 'Attended' ? '✓ Complete' : (selectedSale ? 'Edit Sale' : 'Complete')}</span>
-                              </button>
 
-                              {/* Quick Sale button (legacy) - small button */}
-                              {!(selectedEvent.extendedProps?.status === 'Attended') && (user?.role === 'admin' || user?.role === 'viewer') && (
-                                <button
-                                  onClick={() => setShowSaleModal(true)}
-                                  className="flex items-center justify-center space-x-1 px-2 py-1 rounded text-xs font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-all"
-                                  title="Quick sale without package selection"
+                        // Status options with VIBRANT colors
+                        const statusOptions = [
+                          { value: 'Unconfirmed', label: 'Unconfirmed', color: '#fb923c', permission: canChangeConfirmation },
+                          { value: 'Confirmed', label: 'Confirmed ✓', color: '#22c55e', permission: canChangeConfirmation },
+                          { value: 'Double Confirmed', label: 'Double Confirmed ✓✓', color: '#15803d', permission: canChangeConfirmation },
+                          { value: 'Arrived', label: 'Arrived', color: '#2563eb', permission: canChangeOtherStatuses },
+                          { value: 'Left', label: 'Left', color: '#1f2937', permission: canChangeOtherStatuses },
+                          { value: 'No Show', label: 'No Show', color: '#ef4444', permission: canChangeOtherStatuses },
+                          { value: 'No Sale', label: 'No Sale', color: '#b91c1c', permission: canChangeOtherStatuses },
+                          { value: 'Review', label: 'Review', color: '#8b5cf6', permission: canChangeOtherStatuses },
+                          { value: 'Cancelled', label: 'Cancelled', color: '#f43f5e', permission: canChangeConfirmation },
+                        ];
+
+                        // Get current status color
+                        const getCurrentStatusColor = () => {
+                          const option = statusOptions.find(opt => opt.value === currentDisplayStatus);
+                          return option?.color || '#6b7280';
+                        };
+
+                        const handleStatusDropdownChange = (e) => {
+                          const newStatus = e.target.value;
+                          if (newStatus === 'Review') {
+                            // Open review date/time picker modal
+                            setShowReviewModal(true);
+                          } else {
+                            handleEventStatusChange(newStatus);
+                          }
+                        };
+
+                        return (
+                        <div className="space-y-3">
+                          {/* Status Dropdown */}
+                          <div className="relative">
+                            <select
+                              value={currentDisplayStatus}
+                              onChange={handleStatusDropdownChange}
+                              className="w-full px-4 py-3 rounded-lg border-2 border-gray-200 bg-white text-sm font-semibold appearance-none cursor-pointer hover:border-gray-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all"
+                              style={{
+                                paddingLeft: '40px',
+                                borderLeftWidth: '4px',
+                                borderLeftColor: getCurrentStatusColor()
+                              }}
+                            >
+                              {statusOptions.filter(opt => opt.permission).map(option => (
+                                <option
+                                  key={option.value}
+                                  value={option.value}
+                                  style={{ color: option.color }}
                                 >
-                                  <span>Quick $</span>
-                                </button>
-                              )}
-                              
-                              {/* Reject Lead button - Only for booker and admin */}
-                              <button
-                                onClick={() => handleRejectLead()}
-                                disabled={!(user?.role === 'admin' || user?.role === 'booker')}
-                                className={`relative overflow-hidden group flex items-center justify-center space-x-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-300 ${
-                                  'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 hover:shadow-lg hover:scale-105 text-white'
-                                } ${!(user?.role === 'admin' || user?.role === 'booker') ? 'hidden' : ''}`}
-                              >
-                                <FiX className="h-4 w-4" />
-                                <span>Reject Lead</span>
-                              </button>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            {/* Color indicator dot - LARGER for visibility */}
+                            <div
+                              className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 rounded-full shadow-sm border-2 border-white"
+                              style={{ backgroundColor: getCurrentStatusColor() }}
+                            ></div>
+                            {/* Dropdown arrow */}
+                            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                              <FiChevronDown className="h-5 w-5 text-gray-400" />
                             </div>
-                          )}
-                        </>
+                          </div>
+
+                          {/* Status Color Legend - LARGER dots */}
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            {statusOptions.slice(0, 6).map(option => (
+                              <div key={option.value} className="flex items-center space-x-1.5">
+                                <div
+                                  className="w-3 h-3 rounded-full flex-shrink-0 shadow-sm"
+                                  style={{ backgroundColor: option.color }}
+                                ></div>
+                                <span className="text-gray-700 font-medium truncate">{option.value.replace(' Confirmed', '')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                         );
                       })()}
                     </div>
@@ -3944,11 +4545,26 @@ const Calendar = () => {
                         <FiFileText className="h-4 w-4 text-white" />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Notes</p>
+                        <div 
+                          className="flex items-center justify-between mb-1 cursor-pointer hover:bg-gray-100 -mx-2 px-2 py-1 rounded transition-colors"
+                          onClick={() => !editingNotes && setShowNotes(!showNotes)}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Notes</p>
+                            {!editingNotes && (
+                              showNotes ? (
+                                <FiChevronUp className="h-4 w-4 text-gray-600" />
+                              ) : (
+                                <FiChevronDown className="h-4 w-4 text-gray-600" />
+                              )
+                            )}
+                          </div>
                           {!editingNotes && (
                             <button
-                              onClick={handleEditNotes}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditNotes();
+                              }}
                               className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center space-x-1 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
                             >
                               <FiEdit className="h-3 w-3" />
@@ -3957,70 +4573,74 @@ const Calendar = () => {
                           )}
                         </div>
                         
-                        {editingNotes ? (
-                          <div className="space-y-3">
-                            <div className="relative">
-                              <textarea
-                                value={notesText}
-                                onChange={(e) => setNotesText(e.target.value)}
-                                rows="6"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                                placeholder="Add detailed notes about this lead..."
-                                autoFocus
-                              />
-                              <div className="absolute bottom-2 right-2 text-xs text-gray-400">
-                                {notesText.length} characters
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="text-xs text-gray-500">
-                                All users can edit notes • Changes appear in booking history
-                              </div>
-                              <div className="flex space-x-2">
-                                <button
-                                  onClick={handleSaveNotes}
-                                  disabled={updatingNotes}
-                                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium flex items-center space-x-1"
-                                >
-                                  {updatingNotes ? (
-                                    <>
-                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                                      <span>Saving...</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <FiCheck className="h-3 w-3" />
-                                      <span>Save Notes</span>
-                                    </>
-                                  )}
-                                </button>
-                                <button
-                                  onClick={handleCancelNotes}
-                                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 text-sm font-medium"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            {selectedEvent.extendedProps?.lead?.notes ? (
-                              <div>
-                                <p className="text-base text-gray-900 leading-relaxed whitespace-pre-wrap">
-                                  {selectedEvent.extendedProps.lead.notes}
-                                </p>
-                                <div className="mt-2 text-xs text-gray-500">
-                                  Click "Edit Notes" to modify
+                        {showNotes && (
+                          <>
+                            {editingNotes ? (
+                              <div className="space-y-3">
+                                <div className="relative">
+                                  <textarea
+                                    value={notesText}
+                                    onChange={(e) => setNotesText(e.target.value)}
+                                    rows="6"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none break-words"
+                                    placeholder="Add detailed notes about this lead..."
+                                    autoFocus
+                                  />
+                                  <div className="absolute bottom-2 right-2 text-xs text-gray-400">
+                                    {notesText.length} characters
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <div className="text-xs text-gray-500">
+                                    All users can edit notes • Changes appear in booking history
+                                  </div>
+                                  <div className="flex space-x-2">
+                                    <button
+                                      onClick={handleSaveNotes}
+                                      disabled={updatingNotes}
+                                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium flex items-center space-x-1"
+                                    >
+                                      {updatingNotes ? (
+                                        <>
+                                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                                          <span>Saving...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <FiCheck className="h-3 w-3" />
+                                          <span>Save Notes</span>
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      onClick={handleCancelNotes}
+                                      className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 text-sm font-medium"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             ) : (
-                              <div className="text-center py-4">
-                                <p className="text-base text-gray-500 italic">No notes available</p>
-                                <p className="text-xs text-gray-400 mt-1">Click "Edit Notes" to add notes</p>
+                              <div className="mt-2">
+                                {selectedEvent.extendedProps?.lead?.notes ? (
+                                  <div className="max-h-64 overflow-y-auto">
+                                    <p className="text-base text-gray-900 leading-relaxed whitespace-pre-wrap break-words">
+                                      {selectedEvent.extendedProps.lead.notes}
+                                    </p>
+                                    <div className="mt-2 text-xs text-gray-500">
+                                      Click "Edit Notes" to modify
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-4">
+                                    <p className="text-base text-gray-500 italic">No notes available</p>
+                                    <p className="text-xs text-gray-400 mt-1">Click "Edit Notes" to add notes</p>
+                                  </div>
+                                )}
                               </div>
                             )}
-                          </div>
+                          </>
                         )}
                       </div>
                     </div>
@@ -4040,96 +4660,128 @@ const Calendar = () => {
                   )}
                   {/* Booking History */}
                   {selectedEvent.extendedProps?.lead?.bookingHistory && Array.isArray(selectedEvent.extendedProps.lead.bookingHistory) && (
-                    <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-xl p-4 mt-4 max-h-48 overflow-y-auto">
-                      <h4 className="text-base font-bold text-green-700 mb-2">📋 Recent Activity</h4>
-                      {selectedEvent.extendedProps.lead.bookingHistory
-                        .filter(h => ['NOTES_UPDATED', 'INITIAL_BOOKING', 'RESCHEDULE', 'STATUS_CHANGE'].includes(h.action))
-                        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                        .slice(0, 5)
-                        .map((history, idx) => (
-                          <div key={idx} className="flex items-start space-x-2 mb-2 last:mb-0">
-                            <div className="mt-1">
-                              {history.action === 'NOTES_UPDATED' && <FiFileText className="h-4 w-4 text-blue-500" />}
-                              {history.action === 'INITIAL_BOOKING' && <FiCalendar className="h-4 w-4 text-green-500" />}
-                              {history.action === 'RESCHEDULE' && <FiClock className="h-4 w-4 text-orange-500" />}
-                              {history.action === 'STATUS_CHANGE' && <FiActivity className="h-4 w-4 text-purple-500" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs text-gray-700 font-semibold">
-                                {history.action === 'NOTES_UPDATED' && 'Notes Updated'}
-                                {history.action === 'INITIAL_BOOKING' && 'Appointment Booked'}
-                                {history.action === 'RESCHEDULE' && 'Appointment Rescheduled'}
-                                {history.action === 'STATUS_CHANGE' && 'Status Changed'}
-                                <span className="ml-2 text-gray-400 font-normal">by {history.performedByName}</span>
-                                <span className="ml-2 text-gray-400 font-normal">{new Date(history.timestamp).toLocaleString()}</span>
-                              </div>
-                              
-                              {history.action === 'NOTES_UPDATED' && history.details && (
-                                <div className="text-xs text-gray-600 mt-1">
-                                  <div className="bg-blue-50 p-2 rounded">
-                                    <div className="font-medium text-blue-800">
-                                      {history.details.changeType === 'added' ? 'Notes Added' : 'Notes Modified'}
-                                    </div>
-                                    {history.details.oldNotes && (
-                                      <div className="text-gray-600 mt-1">
-                                        <span className="font-medium">Previous:</span> {history.details.oldNotes.slice(0, 60)}{history.details.oldNotes.length > 60 ? '...' : ''}
+                    <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-xl p-4 mt-4">
+                      <div 
+                        className="flex items-center justify-between mb-2 cursor-pointer hover:bg-green-100/50 -mx-2 px-2 py-1 rounded transition-colors"
+                        onClick={() => setShowRecentActivity(!showRecentActivity)}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <h4 className="text-base font-bold text-green-700">📋 Recent Activity</h4>
+                          {showRecentActivity ? (
+                            <FiChevronUp className="h-4 w-4 text-green-700" />
+                          ) : (
+                            <FiChevronDown className="h-4 w-4 text-green-700" />
+                          )}
+                        </div>
+                      </div>
+                      {showRecentActivity && (
+                        <div className="max-h-48 overflow-y-auto">
+                          {selectedEvent.extendedProps.lead.bookingHistory
+                            .filter(h => ['NOTES_UPDATED', 'INITIAL_BOOKING', 'RESCHEDULE', 'STATUS_CHANGE'].includes(h.action))
+                            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                            .slice(0, 5)
+                            .map((history, idx) => (
+                              <div key={idx} className="flex items-start space-x-2 mb-2 last:mb-0">
+                                <div className="mt-1">
+                                  {history.action === 'NOTES_UPDATED' && <FiFileText className="h-4 w-4 text-blue-500" />}
+                                  {history.action === 'INITIAL_BOOKING' && <FiCalendar className="h-4 w-4 text-green-500" />}
+                                  {history.action === 'RESCHEDULE' && <FiClock className="h-4 w-4 text-orange-500" />}
+                                  {history.action === 'STATUS_CHANGE' && <FiActivity className="h-4 w-4 text-purple-500" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs text-gray-700 font-semibold">
+                                    {history.action === 'NOTES_UPDATED' && 'Notes Updated'}
+                                    {history.action === 'INITIAL_BOOKING' && 'Appointment Booked'}
+                                    {history.action === 'RESCHEDULE' && 'Appointment Rescheduled'}
+                                    {history.action === 'STATUS_CHANGE' && 'Status Changed'}
+                                    <span className="ml-2 text-gray-400 font-normal">by {history.performedByName}</span>
+                                    <span className="ml-2 text-gray-400 font-normal">{new Date(history.timestamp).toLocaleString()}</span>
+                                  </div>
+                                  
+                                  {history.action === 'NOTES_UPDATED' && history.details && (
+                                    <div className="text-xs text-gray-600 mt-1">
+                                      <div className="bg-blue-50 p-2 rounded">
+                                        <div className="font-medium text-blue-800">
+                                          {history.details.changeType === 'added' ? 'Notes Added' : 'Notes Modified'}
+                                        </div>
+                                        {history.details.oldNotes && (
+                                          <div className="text-gray-600 mt-1">
+                                            <span className="font-medium">Previous:</span> {history.details.oldNotes.slice(0, 60)}{history.details.oldNotes.length > 60 ? '...' : ''}
+                                          </div>
+                                        )}
+                                        <div className="text-gray-800 mt-1">
+                                          <span className="font-medium">New:</span> {history.details.newNotes.slice(0, 60)}{history.details.newNotes.length > 60 ? '...' : ''}
+                                        </div>
                                       </div>
-                                    )}
-                                    <div className="text-gray-800 mt-1">
-                                      <span className="font-medium">New:</span> {history.details.newNotes.slice(0, 60)}{history.details.newNotes.length > 60 ? '...' : ''}
                                     </div>
-                                  </div>
+                                  )}
+                                  
+                                  {history.action === 'RESCHEDULE' && history.details && (
+                                    <div className="text-xs text-gray-600 mt-1">
+                                      <div className="bg-orange-50 p-2 rounded">
+                                        <div><span className="font-medium">From:</span> {new Date(history.details.oldDate).toLocaleString()}</div>
+                                        <div><span className="font-medium">To:</span> {new Date(history.details.newDate).toLocaleString()}</div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                              
-                              {history.action === 'RESCHEDULE' && history.details && (
-                                <div className="text-xs text-gray-600 mt-1">
-                                  <div className="bg-orange-50 p-2 rounded">
-                                    <div><span className="font-medium">From:</span> {new Date(history.details.oldDate).toLocaleString()}</div>
-                                    <div><span className="font-medium">To:</span> {new Date(history.details.newDate).toLocaleString()}</div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      {(!selectedEvent.extendedProps.lead.bookingHistory || !Array.isArray(selectedEvent.extendedProps.lead.bookingHistory) || selectedEvent.extendedProps.lead.bookingHistory.filter(h => ['NOTES_UPDATED', 'INITIAL_BOOKING', 'RESCHEDULE', 'STATUS_CHANGE'].includes(h.action)).length === 0) && (
-                        <div className="text-xs text-gray-400 italic">No recent activity</div>
+                              </div>
+                            ))}
+                          {(!selectedEvent.extendedProps.lead.bookingHistory || !Array.isArray(selectedEvent.extendedProps.lead.bookingHistory) || selectedEvent.extendedProps.lead.bookingHistory.filter(h => ['NOTES_UPDATED', 'INITIAL_BOOKING', 'RESCHEDULE', 'STATUS_CHANGE'].includes(h.action)).length === 0) && (
+                            <div className="text-xs text-gray-400 italic">No recent activity</div>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
 
                   {/* Message History */}
                   {selectedEvent.extendedProps?.lead?.bookingHistory && Array.isArray(selectedEvent.extendedProps.lead.bookingHistory) && (
-                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-4 mt-4 max-h-48 overflow-y-auto">
-                      <h4 className="text-base font-bold text-blue-700 mb-2">Message History</h4>
-                      {selectedEvent.extendedProps.lead.bookingHistory
-                        .filter(h => ['EMAIL_SENT','EMAIL_RECEIVED','SMS_SENT','SMS_RECEIVED'].includes(h.action))
-                        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                        .map((history, idx) => (
-                          <div key={idx} className="flex items-start space-x-2 mb-2 last:mb-0">
-                            <div className="mt-1">
-                              {['EMAIL_SENT','EMAIL_RECEIVED'].includes(history.action) && <FiMail className={`h-4 w-4 ${history.action==='EMAIL_SENT'?'text-blue-500':'text-green-600'}`} />}
-                              {['SMS_SENT','SMS_RECEIVED'].includes(history.action) && <FiMessageSquare className={`h-4 w-4 ${history.action==='SMS_SENT'?'text-blue-400':'text-green-400'}`} />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-xs text-gray-700 font-semibold">
-                                {history.action==='EMAIL_SENT' && 'Email Sent'}
-                                {history.action==='EMAIL_RECEIVED' && 'Email Received'}
-                                {history.action==='SMS_SENT' && 'Text Sent'}
-                                {history.action==='SMS_RECEIVED' && 'Text Received'}
-                                <span className="ml-2 text-gray-400 font-normal">{new Date(history.timestamp).toLocaleString()}</span>
+                    <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-4 mt-4">
+                      <div 
+                        className="flex items-center justify-between mb-2 cursor-pointer hover:bg-blue-100/50 -mx-2 px-2 py-1 rounded transition-colors"
+                        onClick={() => setShowMessageHistory(!showMessageHistory)}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <h4 className="text-base font-bold text-blue-700">Message History</h4>
+                          {showMessageHistory ? (
+                            <FiChevronUp className="h-4 w-4 text-blue-700" />
+                          ) : (
+                            <FiChevronDown className="h-4 w-4 text-blue-700" />
+                          )}
+                        </div>
+                      </div>
+                      {showMessageHistory && (
+                        <div className="max-h-48 overflow-y-auto">
+                          {selectedEvent.extendedProps.lead.bookingHistory
+                            .filter(h => ['EMAIL_SENT','EMAIL_RECEIVED','SMS_SENT','SMS_RECEIVED'].includes(h.action))
+                            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                            .map((history, idx) => (
+                              <div key={idx} className="flex items-start space-x-2 mb-2 last:mb-0">
+                                <div className="mt-1">
+                                  {['EMAIL_SENT','EMAIL_RECEIVED'].includes(history.action) && <FiMail className={`h-4 w-4 ${history.action==='EMAIL_SENT'?'text-blue-500':'text-green-600'}`} />}
+                                  {['SMS_SENT','SMS_RECEIVED'].includes(history.action) && <FiMessageSquare className={`h-4 w-4 ${history.action==='SMS_SENT'?'text-blue-400':'text-green-400'}`} />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs text-gray-700 font-semibold">
+                                    {history.action==='EMAIL_SENT' && 'Email Sent'}
+                                    {history.action==='EMAIL_RECEIVED' && 'Email Received'}
+                                    {history.action==='SMS_SENT' && 'Text Sent'}
+                                    {history.action==='SMS_RECEIVED' && 'Text Received'}
+                                    <span className="ml-2 text-gray-400 font-normal">{new Date(history.timestamp).toLocaleString()}</span>
+                                  </div>
+                                  {history.details?.subject && (
+                                    <div className="text-xs text-gray-500 truncate"><b>Subject:</b> {history.details.subject}</div>
+                                  )}
+                                  <div className="text-xs text-gray-600 truncate"><b>Message:</b> {history.details?.body?.slice(0, 80)}{history.details?.body?.length > 80 ? '...' : ''}</div>
+                                  <div className="text-[10px] text-gray-400">{history.details?.direction==='sent'?'To':'From'}: {history.performedByName}</div>
+                                </div>
                               </div>
-                              {history.details?.subject && (
-                                <div className="text-xs text-gray-500 truncate"><b>Subject:</b> {history.details.subject}</div>
-                              )}
-                              <div className="text-xs text-gray-600 truncate"><b>Message:</b> {history.details?.body?.slice(0, 80)}{history.details?.body?.length > 80 ? '...' : ''}</div>
-                              <div className="text-[10px] text-gray-400">{history.details?.direction==='sent'?'To':'From'}: {history.performedByName}</div>
-                            </div>
-                          </div>
-                        ))}
-                      {(!selectedEvent.extendedProps.lead.bookingHistory || !Array.isArray(selectedEvent.extendedProps.lead.bookingHistory) || selectedEvent.extendedProps.lead.bookingHistory.filter(h => ['EMAIL_SENT','EMAIL_RECEIVED','SMS_SENT','SMS_RECEIVED'].includes(h.action)).length === 0) && (
-                        <div className="text-xs text-gray-400 italic">No messages yet</div>
+                            ))}
+                          {(!selectedEvent.extendedProps.lead.bookingHistory || !Array.isArray(selectedEvent.extendedProps.lead.bookingHistory) || selectedEvent.extendedProps.lead.bookingHistory.filter(h => ['EMAIL_SENT','EMAIL_RECEIVED','SMS_SENT','SMS_RECEIVED'].includes(h.action)).length === 0) && (
+                            <div className="text-xs text-gray-400 italic">No messages yet</div>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}
@@ -4168,96 +4820,137 @@ const Calendar = () => {
                   {/* Upload Panel - for photographers */}
                   {showUploadPanel && (user?.role === 'photographer' || user?.role === 'admin') && (
                     <div className="mb-4">
-                      <div
-                        onDragEnter={handleDrag}
-                        onDragLeave={handleDrag}
-                        onDragOver={handleDrag}
-                        onDrop={handleDrop}
-                        className={`border-2 border-dashed rounded-lg p-6 text-center transition-all ${
-                          dragActive
-                            ? 'border-indigo-500 bg-indigo-50'
-                            : 'border-gray-300 bg-gray-50 hover:border-indigo-400'
-                        }`}
-                      >
-                        {uploading ? (
-                          <div className="space-y-3 py-2">
-                            {/* Upload icon with pulse */}
-                            <div className="relative mx-auto w-12 h-12">
-                              <FiCamera className="h-12 w-12 text-indigo-600" />
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-                              </div>
-                            </div>
-
-                            {/* File count */}
-                            <div className="text-center">
-                              <p className="text-lg font-semibold text-indigo-700">
-                                Uploading {uploadDetails.current} of {uploadDetails.total}
-                              </p>
-                              {uploadDetails.currentFileName && (
-                                <p className="text-xs text-gray-500 mt-1 font-mono">
-                                  {uploadDetails.currentFileName}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* Progress bar */}
-                            <div className="w-full">
-                              <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                <span>{uploadProgress}% complete</span>
-                                <span>{uploadDetails.total - uploadDetails.current} remaining</span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                                <div
-                                  className="h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden"
-                                  style={{
-                                    width: `${uploadProgress}%`,
-                                    background: 'linear-gradient(90deg, #4F46E5, #7C3AED)'
-                                  }}
-                                >
-                                  {/* Animated stripes */}
-                                  <div
-                                    className="absolute inset-0 opacity-30"
-                                    style={{
-                                      backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent)',
-                                      backgroundSize: '1rem 1rem',
-                                      animation: 'progress-stripes 1s linear infinite'
-                                    }}
-                                  ></div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <p className="text-xs text-gray-400 text-center">
-                              Please don't close this window
-                            </p>
+                      {/* Folder Selection - show first if no folder selected */}
+                      {!selectedUploadFolder && !uploading ? (
+                        <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-lg p-4">
+                          <h5 className="text-sm font-semibold text-gray-700 text-center mb-3">
+                            Select Folder for Photos
+                          </h5>
+                          <div className="grid grid-cols-2 gap-2">
+                            {PHOTO_FOLDERS.map((folder) => (
+                              <button
+                                key={folder.id}
+                                onClick={() => setSelectedUploadFolder(folder.id)}
+                                className="flex items-center justify-center space-x-2 px-3 py-3 bg-white border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-all text-sm font-medium text-gray-700 hover:text-indigo-700"
+                              >
+                                <span className="text-lg">{folder.icon}</span>
+                                <span>{folder.label}</span>
+                              </button>
+                            ))}
                           </div>
-                        ) : (
-                          <>
-                            <FiUpload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                            <p className="text-sm text-gray-600 mb-1">
-                              Drag & drop photos here
-                            </p>
-                            <p className="text-xs text-gray-500 mb-3">
-                              or click to select files
-                            </p>
-                            <input
-                              type="file"
-                              ref={uploadInputRef}
-                              multiple
-                              accept="image/*,video/*"
-                              onChange={(e) => handlePhotoUpload(e.target.files)}
-                              className="hidden"
-                            />
-                            <button
-                              onClick={() => uploadInputRef.current?.click()}
-                              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-                            >
-                              Select Photos
-                            </button>
-                          </>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        /* Upload zone - show after folder is selected */
+                        <div>
+                          {/* Selected folder indicator */}
+                          {selectedUploadFolder && !uploading && (
+                            <div className="flex items-center justify-between mb-2 px-2">
+                              <span className="text-sm text-gray-600">
+                                Uploading to: <span className="font-semibold text-indigo-700">
+                                  {PHOTO_FOLDERS.find(f => f.id === selectedUploadFolder)?.icon}{' '}
+                                  {PHOTO_FOLDERS.find(f => f.id === selectedUploadFolder)?.label}
+                                </span>
+                              </span>
+                              <button
+                                onClick={() => setSelectedUploadFolder(null)}
+                                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                              >
+                                Change
+                              </button>
+                            </div>
+                          )}
+                          <div
+                            onDragEnter={handleDrag}
+                            onDragLeave={handleDrag}
+                            onDragOver={handleDrag}
+                            onDrop={handleDrop}
+                            className={`border-2 border-dashed rounded-lg p-6 text-center transition-all ${
+                              dragActive
+                                ? 'border-indigo-500 bg-indigo-50'
+                                : 'border-gray-300 bg-gray-50 hover:border-indigo-400'
+                            }`}
+                          >
+                            {uploading ? (
+                              <div className="space-y-3 py-2">
+                                {/* Upload icon with pulse */}
+                                <div className="relative mx-auto w-12 h-12">
+                                  <FiCamera className="h-12 w-12 text-indigo-600" />
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                                  </div>
+                                </div>
+
+                                {/* File count */}
+                                <div className="text-center">
+                                  <p className="text-lg font-semibold text-indigo-700">
+                                    Uploading {uploadDetails.current} of {uploadDetails.total}
+                                  </p>
+                                  {uploadDetails.currentFileName && (
+                                    <p className="text-xs text-gray-500 mt-1 font-mono">
+                                      {uploadDetails.currentFileName}
+                                    </p>
+                                  )}
+                                </div>
+
+                                {/* Progress bar */}
+                                <div className="w-full">
+                                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                    <span>{uploadProgress}% complete</span>
+                                    <span>{uploadDetails.total - uploadDetails.current} remaining</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full transition-all duration-300 ease-out relative overflow-hidden"
+                                      style={{
+                                        width: `${uploadProgress}%`,
+                                        background: 'linear-gradient(90deg, #4F46E5, #7C3AED)'
+                                      }}
+                                    >
+                                      {/* Animated stripes */}
+                                      <div
+                                        className="absolute inset-0 opacity-30"
+                                        style={{
+                                          backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent)',
+                                          backgroundSize: '1rem 1rem',
+                                          animation: 'progress-stripes 1s linear infinite'
+                                        }}
+                                      ></div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <p className="text-xs text-gray-400 text-center">
+                                  Please don't close this window
+                                </p>
+                              </div>
+                            ) : (
+                              <>
+                                <FiUpload className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+                                <p className="text-sm text-gray-600 mb-1">
+                                  Drag & drop photos here
+                                </p>
+                                <p className="text-xs text-gray-500 mb-3">
+                                  or click to select files
+                                </p>
+                                <input
+                                  type="file"
+                                  ref={uploadInputRef}
+                                  multiple
+                                  accept="image/*,video/*"
+                                  onChange={(e) => handlePhotoUpload(e.target.files)}
+                                  className="hidden"
+                                />
+                                <button
+                                  onClick={() => uploadInputRef.current?.click()}
+                                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+                                >
+                                  Select Photos
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -4267,61 +4960,111 @@ const Calendar = () => {
                       <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div>
                       <p className="text-gray-500 text-sm">Loading photos...</p>
                     </div>
-                  ) : leadPhotos.length > 0 ? (
-                    <>
-                      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                        {leadPhotos.map((photo) => {
-                          const imageUrl = photo.cloudinary_secure_url || photo.cloudinary_url;
-
-                          return (
-                            <div
-                              key={photo.id}
-                              className="relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-400 transition-all bg-gray-100"
-                              style={{ aspectRatio: '1' }}
-                              onClick={() => setLightboxImage(imageUrl)}
-                            >
-                              {/* Progressive loading with OptimizedImage (same as Photographer page) */}
-                              <OptimizedImage
-                                src={imageUrl}
-                                alt={photo.description || 'Client photo'}
-                                size="thumb" // Small thumbnails for grid (100x100)
-                                className="w-full h-full object-cover"
-                                useBlur={true} // Enable blur placeholder
-                                threshold={100} // Start loading 100px before viewport
-                                onError={(e) => {
-                                  // Safely handle error
-                                  if (e && e.target && e.target.style) {
-                                    e.target.style.opacity = '0.3';
-                                  }
-                                }}
-                              />
-                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center z-10 pointer-events-none">
-                                <FiImage className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {/* Load More button for pagination */}
-                      {hasMorePhotos && (
-                        <div className="mt-3 text-center">
+                  ) : totalPhotoCount > 0 || galleryFolderFilter !== 'all' ? (
+                    <div className="flex gap-3">
+                      {/* Folder Filter Sidebar */}
+                      <div className="w-20 flex-shrink-0 space-y-1">
+                        <button
+                          onClick={() => setGalleryFolderFilter('all')}
+                          className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium transition-all text-left ${
+                            galleryFolderFilter === 'all'
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          Full Shoot
+                        </button>
+                        {PHOTO_FOLDERS.map((folder) => (
                           <button
-                            onClick={loadMorePhotos}
-                            disabled={loadingMorePhotos}
-                            className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                            key={folder.id}
+                            onClick={() => setGalleryFolderFilter(folder.id)}
+                            className={`w-full px-2 py-1.5 rounded-lg text-xs font-medium transition-all text-left ${
+                              galleryFolderFilter === folder.id
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
                           >
-                            {loadingMorePhotos ? (
-                              <>
-                                <div className="animate-spin h-4 w-4 border-2 border-indigo-500 border-t-transparent rounded-full inline-block mr-2"></div>
-                                Loading...
-                              </>
-                            ) : (
-                              `Load More Photos (${leadPhotos.length} loaded)`
-                            )}
+                            <span className="mr-1">{folder.icon}</span>
+                            <span className="truncate">{folder.label}</span>
                           </button>
-                        </div>
-                      )}
-                    </>
+                        ))}
+                      </div>
+
+                      {/* Photo Grid Content */}
+                      <div className="flex-1 min-w-0">
+                        {leadPhotos.length > 0 ? (
+                          <>
+                            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                              {leadPhotos.map((photo) => {
+                                const imageUrl = photo.cloudinary_secure_url || photo.cloudinary_url;
+
+                                return (
+                                  <div
+                                    key={photo.id}
+                                    className="relative group cursor-pointer rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-400 transition-all bg-gray-100"
+                                    style={{ aspectRatio: '1' }}
+                                    onClick={() => setLightboxImage(imageUrl)}
+                                  >
+                                    {/* Progressive loading with OptimizedImage (same as Photographer page) */}
+                                    <OptimizedImage
+                                      src={imageUrl}
+                                      alt={photo.description || 'Client photo'}
+                                      size="thumb" // Small thumbnails for grid (100x100)
+                                      className="w-full h-full object-cover"
+                                      useBlur={true} // Enable blur placeholder
+                                      threshold={100} // Start loading 100px before viewport
+                                      onError={(e) => {
+                                        // Safely handle error
+                                        if (e && e.target && e.target.style) {
+                                          e.target.style.opacity = '0.3';
+                                        }
+                                      }}
+                                    />
+                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center z-10 pointer-events-none">
+                                      <FiImage className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </div>
+                                    {/* Delete button - only for admin and photographer */}
+                                    {(user?.role === 'admin' || user?.role === 'photographer') && (
+                                      <button
+                                        onClick={(e) => handleDeletePhoto(photo.id, e)}
+                                        className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-600 shadow-lg"
+                                        title="Delete photo"
+                                      >
+                                        <FiTrash2 className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {/* Load More button for pagination */}
+                            {hasMorePhotos && (
+                              <div className="mt-3 text-center">
+                                <button
+                                  onClick={loadMorePhotos}
+                                  disabled={loadingMorePhotos}
+                                  className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {loadingMorePhotos ? (
+                                    <>
+                                      <div className="animate-spin h-4 w-4 border-2 border-indigo-500 border-t-transparent rounded-full inline-block mr-2"></div>
+                                      Loading...
+                                    </>
+                                  ) : (
+                                    `Load More Photos (${leadPhotos.length} loaded)`
+                                  )}
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="bg-gray-100 rounded-lg p-4 text-center">
+                            <FiImage className="h-6 w-6 mx-auto text-gray-300 mb-2" />
+                            <p className="text-gray-500 text-sm">No photos in this folder</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   ) : (
                     <div className="bg-gray-50 rounded-lg p-4 text-center">
                       <FiImage className="h-8 w-8 mx-auto text-gray-300 mb-2" />
@@ -4426,12 +5169,145 @@ const Calendar = () => {
           existingSale={selectedSale}
           onSaveSuccess={() => {
             setShowSaleModal(false);
-            setShowEventModal(false);
+            closeEventModal();
             alert(selectedSale ? 'Sale updated successfully!' : 'Sale recorded successfully!');
             handleEventStatusChange('Attended');
             debouncedFetchEvents(); // Use debounced fetch to prevent race conditions
           }}
         />
+      )}
+
+      {/* Review Modal - Schedule a review appointment */}
+      {showReviewModal && selectedEvent && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-500 to-indigo-600 px-6 py-4">
+              <h3 className="text-lg font-bold text-white flex items-center">
+                <FiCalendar className="h-5 w-5 mr-2" />
+                Schedule Review Appointment
+              </h3>
+              <p className="text-purple-100 text-sm mt-1">
+                Keep the original slot and schedule a review date
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                <p className="text-sm text-gray-600">
+                  <span className="font-semibold text-gray-800">Original Booking:</span>{' '}
+                  {selectedEvent.extendedProps?.lead?.date_booked
+                    ? new Date(selectedEvent.extendedProps.lead.date_booked).toLocaleDateString('en-GB', {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short'
+                      })
+                    : 'N/A'}{' '}
+                  at {selectedEvent.extendedProps?.lead?.time_booked || 'N/A'}
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Review Date
+                </label>
+                <input
+                  type="date"
+                  value={reviewDate}
+                  onChange={(e) => {
+                    const newDate = e.target.value;
+                    setReviewDate(newDate);
+                    setReviewTime(''); // Reset time when date changes
+                    if (newDate) {
+                      calculateAvailableReviewSlots(newDate);
+                    } else {
+                      setReviewAvailableSlots([]);
+                    }
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Review Time {reviewSlotsLoading && <span className="text-purple-500">(Loading...)</span>}
+                </label>
+                <select
+                  value={reviewTime}
+                  onChange={(e) => setReviewTime(e.target.value)}
+                  disabled={!reviewDate || reviewSlotsLoading}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                >
+                  <option value="">
+                    {!reviewDate
+                      ? 'Select a date first'
+                      : reviewSlotsLoading
+                        ? 'Loading available slots...'
+                        : reviewAvailableSlots.length === 0
+                          ? 'No available slots'
+                          : 'Select an available time'}
+                  </option>
+                  {reviewAvailableSlots.map((slot, idx) => (
+                    <option key={`${slot.time}-${slot.slot}-${idx}`} value={`${slot.time}|${slot.slot}`}>
+                      {slot.label} {slot.slot === 1 ? '(Slot 1)' : '(Slot 2)'}
+                    </option>
+                  ))}
+                </select>
+                {reviewDate && !reviewSlotsLoading && reviewAvailableSlots.length === 0 && (
+                  <p className="text-sm text-red-500 mt-1">No available slots on this date. Please select another date.</p>
+                )}
+                {reviewDate && !reviewSlotsLoading && reviewAvailableSlots.length > 0 && (
+                  <p className="text-sm text-green-600 mt-1">{reviewAvailableSlots.length} slot(s) available</p>
+                )}
+              </div>
+            </div>
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowReviewModal(false);
+                  setReviewDate('');
+                  setReviewTime('');
+                  setReviewAvailableSlots([]);
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!reviewDate || !reviewTime) {
+                    alert('Please select both a date and time for the review.');
+                    return;
+                  }
+                  try {
+                    const leadId = selectedEvent.extendedProps?.lead?.id;
+                    // Parse time and slot from the combined value
+                    const [time, slot] = reviewTime.split('|');
+                    // Update lead with review date/time and set status to Review
+                    await axios.put(`/api/leads/${leadId}`, {
+                      ...selectedEvent.extendedProps.lead,
+                      review_date: reviewDate,
+                      review_time: time,
+                      review_slot: parseInt(slot),
+                      booking_status: 'Review'
+                    });
+                    // Close modal and update UI
+                    setShowReviewModal(false);
+                    setReviewDate('');
+                    setReviewTime('');
+                    setReviewAvailableSlots([]);
+                    handleEventStatusChange('Review');
+                    alert(`Review scheduled for ${new Date(reviewDate).toLocaleDateString('en-GB')} at ${time} (Slot ${slot})`);
+                  } catch (error) {
+                    console.error('Error scheduling review:', error);
+                    alert('Failed to schedule review. Please try again.');
+                  }
+                }}
+                disabled={!reviewDate || !reviewTime || reviewSlotsLoading}
+                className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-purple-500 to-indigo-600 rounded-lg hover:from-purple-600 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Schedule Review
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Package Selection Modal (New Complete Flow) */}
@@ -4533,7 +5409,7 @@ const Calendar = () => {
           onComplete={(completedInvoice) => {
             setCurrentInvoice(completedInvoice);
             setShowInvoiceModal(false);
-            setShowEventModal(false);
+            closeEventModal();
             alert('Sale completed successfully!');
             handleEventStatusChange('Attended');
             debouncedFetchEvents();

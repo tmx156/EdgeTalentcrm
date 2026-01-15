@@ -56,6 +56,7 @@ const PHOTO_LIST_FIELDS = `
   cloudinary_secure_url,
   lead_id,
   photographer_id,
+  folder_path,
   description,
   media_type,
   resource_type,
@@ -290,8 +291,8 @@ router.get('/', auth, async (req, res) => {
     const validLeadId = isValidUUID(leadId) ? leadId : null;
     const validPhotographerId = isValidUUID(photographerId) ? photographerId : null;
 
-    // Build cache key
-    const cacheKey = `photos:${validLeadId || 'all'}:${validPhotographerId || 'all'}:${cursor || 'start'}:${pageLimit}`;
+    // Build cache key (include folderPath to prevent wrong folder results being cached)
+    const cacheKey = `photos:${validLeadId || 'all'}:${validPhotographerId || 'all'}:${folderPath || 'all'}:${cursor || 'start'}:${pageLimit}`;
 
     // Check cache first (for read-heavy workloads)
     const cached = photoCache.get(cacheKey);
@@ -380,14 +381,14 @@ router.get('/', auth, async (req, res) => {
  */
 router.get('/count', auth, async (req, res) => {
   try {
-    const { leadId, photographerId } = req.query;
+    const { leadId, photographerId, folderPath } = req.query;
 
     const isValidUUID = (val) => val && val !== 'undefined' && val !== 'null' && val !== '';
     const validLeadId = isValidUUID(leadId) ? leadId : null;
     const validPhotographerId = isValidUUID(photographerId) ? photographerId : null;
 
     // Check cache
-    const cacheKey = `count:${validLeadId || 'all'}:${validPhotographerId || 'all'}`;
+    const cacheKey = `count:${validLeadId || 'all'}:${validPhotographerId || 'all'}:${folderPath || 'all'}`;
     const cached = photoCache.get(cacheKey);
     if (cached !== null) {
       return res.json(cached);
@@ -403,6 +404,9 @@ router.get('/count', auth, async (req, res) => {
     }
     if (validPhotographerId) {
       query = query.eq('photographer_id', validPhotographerId);
+    }
+    if (folderPath) {
+      query = query.eq('folder_path', folderPath);
     }
 
     // Photographers can only count their own photos when browsing

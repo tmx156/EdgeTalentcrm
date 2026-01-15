@@ -44,6 +44,11 @@ const SendContractModal = ({
   const [showResumePrompt, setShowResumePrompt] = useState(false);
   const [savedStateData, setSavedStateData] = useState(null);
 
+  // Postcode lookup state
+  const [postcodeLoading, setPostcodeLoading] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [showAddressDropdown, setShowAddressDropdown] = useState(false);
+
   // Current step: 'edit' | 'review' | 'send'
   const [step, setStep] = useState('edit');
 
@@ -318,6 +323,68 @@ const SendContractModal = ({
       vatAmount,
       total
     }));
+  };
+
+  // Lookup addresses from postcode using OS Places API
+  const lookupPostcode = async (postcode) => {
+    if (!postcode || postcode.length < 5) return;
+
+    // Clean up postcode - remove extra spaces, uppercase
+    const cleanPostcode = postcode.trim().toUpperCase().replace(/\s+/g, '');
+
+    // Basic UK postcode validation pattern
+    const postcodePattern = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
+    if (!postcodePattern.test(cleanPostcode)) return;
+
+    setPostcodeLoading(true);
+    setAddressSuggestions([]);
+    setShowAddressDropdown(false);
+
+    try {
+      const apiKey = process.env.REACT_APP_OS_PLACES_API_KEY || '7to0aV9GAv9myWT4xaYjvZh3AXGQa8NB';
+      const response = await fetch(
+        `https://api.os.uk/search/places/v1/postcode?postcode=${encodeURIComponent(cleanPostcode)}&key=${apiKey}`
+      );
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        // Extract addresses from results
+        const addresses = data.results.map(result => {
+          const dpa = result.DPA;
+          // Build readable address
+          const parts = [];
+          if (dpa.BUILDING_NUMBER) parts.push(dpa.BUILDING_NUMBER);
+          if (dpa.BUILDING_NAME) parts.push(dpa.BUILDING_NAME);
+          if (dpa.THOROUGHFARE_NAME) parts.push(dpa.THOROUGHFARE_NAME);
+          if (dpa.POST_TOWN) parts.push(dpa.POST_TOWN);
+          if (dpa.POSTCODE) parts.push(dpa.POSTCODE);
+
+          return {
+            display: parts.join(', '),
+            full: dpa.ADDRESS,
+            buildingNumber: dpa.BUILDING_NUMBER || '',
+            buildingName: dpa.BUILDING_NAME || '',
+            street: dpa.THOROUGHFARE_NAME || '',
+            town: dpa.POST_TOWN || '',
+            postcode: dpa.POSTCODE || ''
+          };
+        });
+
+        setAddressSuggestions(addresses);
+        setShowAddressDropdown(true);
+      }
+    } catch (err) {
+      console.error('Postcode lookup failed:', err);
+    } finally {
+      setPostcodeLoading(false);
+    }
+  };
+
+  // Handle address selection from dropdown
+  const selectAddress = (address) => {
+    updateField('address', address.full || address.display);
+    setShowAddressDropdown(false);
+    setAddressSuggestions([]);
   };
 
   // Create contract with edited details
@@ -764,22 +831,55 @@ const SendContractModal = ({
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Postcode</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={contractDetails.postcode}
+                        onChange={(e) => updateField('postcode', e.target.value)}
+                        onBlur={(e) => lookupPostcode(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="e.g. SW1A 1AA"
+                      />
+                      {postcodeLoading && (
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                          <Loader className="w-4 h-4 animate-spin text-blue-500" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Select Address</label>
+                    <div className="relative">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const selected = addressSuggestions.find(a => a.full === e.target.value || a.display === e.target.value);
+                          if (selected) selectAddress(selected);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        disabled={addressSuggestions.length === 0}
+                      >
+                        <option value="">
+                          {addressSuggestions.length === 0 ? 'Enter postcode first' : `Select from ${addressSuggestions.length} addresses`}
+                        </option>
+                        {addressSuggestions.map((addr, idx) => (
+                          <option key={idx} value={addr.full || addr.display}>
+                            {addr.display}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Address</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Full Address</label>
                     <input
                       type="text"
                       value={contractDetails.address}
                       onChange={(e) => updateField('address', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Postcode</label>
-                    <input
-                      type="text"
-                      value={contractDetails.postcode}
-                      onChange={(e) => updateField('postcode', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Select address from dropdown above"
                     />
                   </div>
                   <div>

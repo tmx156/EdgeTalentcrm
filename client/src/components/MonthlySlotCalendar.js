@@ -1,6 +1,34 @@
 import React, { useMemo } from 'react';
 import { FiCheckCircle, FiClock } from 'react-icons/fi';
 
+// Get status color for a booking (matches SlotCalendar colors)
+const getStatusColor = (event) => {
+  // PRIORITY ORDER: Sale > Booking Status > Confirmation Status
+  if (event.has_sale) return 'bg-blue-300'; // Sale made
+
+  // Check booking_status FIRST (these override confirmation status)
+  if (event.booking_status === 'Arrived') return 'bg-blue-400'; // Arrived - VIVID BLUE
+  if (event.booking_status === 'Left') return 'bg-gray-400'; // Left - gray
+  if (event.booking_status === 'No Show') return 'bg-red-400'; // No Show - BRIGHT RED
+  if (event.booking_status === 'No Sale') return 'bg-red-300'; // No Sale - red
+  if (event.booking_status === 'Review') return 'bg-purple-400'; // Review - purple
+  if (event.booking_status === 'Reschedule') return 'bg-yellow-400'; // Reschedule - yellow
+
+  // Then check confirmation status
+  if (event.is_double_confirmed == 1) return 'bg-green-500'; // Double Confirmed - VIVID DARK GREEN
+  if (event.is_confirmed == 1) return 'bg-green-400'; // Confirmed - BRIGHT GREEN
+
+  return 'bg-orange-300'; // Unconfirmed - orange
+};
+
+// Get text color based on background
+const getTextColor = (event) => {
+  const bgColor = getStatusColor(event);
+  // Use white text for darker backgrounds
+  if (bgColor.includes('500') || bgColor.includes('400')) return 'text-white';
+  return 'text-gray-800';
+};
+
 const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClick, onEventClick }) => {
   // PERFORMANCE: Index events by date once per render instead of filtering repeatedly
   const eventsByDate = useMemo(() => {
@@ -95,22 +123,30 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
       {/* Header */}
       <div className="mb-4">
         <h2 className="text-2xl font-bold text-gray-800 mb-2">{monthName}</h2>
-        <div className="flex flex-wrap gap-4 text-xs">
+        <div className="flex flex-wrap gap-3 text-xs">
           <div className="flex items-center">
-            <div className="w-3 h-3 bg-blue-500 rounded mr-2"></div>
-            <span>Slot 1</span>
+            <div className="w-3 h-3 bg-orange-300 rounded mr-1"></div>
+            <span>Unconfirmed</span>
           </div>
           <div className="flex items-center">
-            <div className="w-3 h-3 bg-purple-500 rounded mr-2"></div>
-            <span>Slot 2</span>
-          </div>
-          <div className="flex items-center">
-            <FiCheckCircle className="w-3 h-3 text-green-600 mr-2" />
+            <div className="w-3 h-3 bg-green-400 rounded mr-1"></div>
             <span>Confirmed</span>
           </div>
           <div className="flex items-center">
-            <FiClock className="w-3 h-3 text-orange-500 mr-2" />
-            <span>Unconfirmed</span>
+            <div className="w-3 h-3 bg-green-500 rounded mr-1"></div>
+            <span>Double ✓✓</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-blue-400 rounded mr-1"></div>
+            <span>Arrived</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-red-400 rounded mr-1"></div>
+            <span>No Show</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 bg-purple-400 rounded mr-1"></div>
+            <span>Review</span>
           </div>
         </div>
       </div>
@@ -198,22 +234,23 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
                       </div>
                     )}
 
-                    {/* Show first few booking names */}
+                    {/* Show first few booking names with status colors */}
                     <div className="mt-1 space-y-0.5">
-                      {[...slot1, ...slot2].slice(0, 2).map((event, idx) => (
+                      {[...slot1, ...slot2].slice(0, 3).map((event, idx) => (
                         <div
                           key={event.id}
-                          className="text-xs truncate text-gray-700 hover:text-blue-600"
+                          className={`text-xs truncate px-1.5 py-0.5 rounded cursor-pointer transition-all hover:opacity-80 ${getStatusColor(event)} ${getTextColor(event)}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             onEventClick(event);
                           }}
+                          title={`${event.name} - ${event.booking_status || (event.is_double_confirmed == 1 ? 'Double Confirmed' : event.is_confirmed == 1 ? 'Confirmed' : 'Unconfirmed')}`}
                         >
-                          {event.name}
+                          {event.time_booked ? `${event.time_booked.slice(0,5)} ` : ''}{event.name?.split(' ')[0]}
                         </div>
                       ))}
-                      {total > 2 && (
-                        <div className="text-xs text-gray-500">+{total - 2} more</div>
+                      {total > 3 && (
+                        <div className="text-xs text-gray-500 font-medium">+{total - 3} more</div>
                       )}
                     </div>
                   </div>

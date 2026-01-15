@@ -375,7 +375,7 @@ router.get('/', auth, async (req, res) => {
     // so we don't use range() initially - we'll paginate after filtering
     let dataQuery = supabase
       .from('leads')
-      .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, has_sale, created_at, assigned_at, booked_at, custom_fields', { count: 'exact' })
+      .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, is_double_confirmed, booking_status, has_sale, created_at, assigned_at, booked_at, custom_fields, review_date, review_time, review_slot', { count: 'exact' })
       .order('created_at', { ascending: false });
     
     // Only apply range for non-call_status filters (standard status filters)
@@ -479,22 +479,111 @@ router.get('/', auth, async (req, res) => {
       console.log(`📅 Created date filter applied: ${created_at_start} to ${created_at_end}`);
     }
 
+    // Helper function to get call_status from custom_fields
+    const getCallStatus = (lead) => {
+      // First check call_status column directly
+      if (lead.call_status) {
+        return lead.call_status;
+      }
+      try {
+        if (lead.custom_fields) {
+          const customFields = typeof lead.custom_fields === 'string'
+            ? JSON.parse(lead.custom_fields)
+            : lead.custom_fields;
+          return customFields?.call_status || null;
+        }
+      } catch (e) {
+        return null;
+      }
+      return null;
+    };
+
     // Execute queries
     let leads, leadsError, totalCount;
-    try {
-      const result = await dataQuery;
-      leads = result.data;
-      leadsError = result.error;
-      totalCount = result.count;
-    } catch (queryError) {
-      console.error('Supabase query execution error:', {
-        message: queryError.message,
-        search: search || 'none',
-        page: pageInt,
-        from,
-        to
-      });
-      throw queryError;
+
+    // For call_status filtering, we need to fetch ALL leads using pagination
+    // to bypass Supabase's default 1000 row limit
+    if (isCallStatusFilter) {
+      console.log(`📊 Using pagination to fetch all leads for call_status filtering...`);
+      leads = [];
+      let paginationFrom = 0;
+      const paginationBatchSize = 1000;
+
+      while (true) {
+        // Clone the query and apply range for this batch
+        const batchQuery = supabase
+          .from('leads')
+          .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, is_double_confirmed, booking_status, has_sale, created_at, assigned_at, booked_at, custom_fields, call_status, review_date, review_time, review_slot')
+          .order('created_at', { ascending: false })
+          .neq('postcode', 'ZZGHOST')
+          .range(paginationFrom, paginationFrom + paginationBatchSize - 1);
+
+        // Apply role-based filters
+        if (req.user.role === 'photographer') {
+          batchQuery.in('status', ['Booked', 'Attended', 'Sale']);
+        } else if (req.user.role !== 'admin' && req.user.role !== 'viewer') {
+          batchQuery.eq('booker_id', req.user.id).neq('status', 'Rejected');
+        }
+
+        // Apply booker filter if provided
+        if (booker) {
+          batchQuery.eq('booker_id', booker);
+        }
+
+        // Apply search filter
+        if (search && String(search).trim().length > 0) {
+          const term = String(search).trim();
+          const escapedTerm = term.replace(/[%_\\]/g, '\\$&');
+          const like = `%${escapedTerm}%`;
+          const orExpr = [
+            `name.ilike.${like}`,
+            `phone.ilike.${like}`,
+            `email.ilike.${like}`,
+            `postcode.ilike.${like}`
+          ].join(',');
+          batchQuery.or(orExpr);
+        }
+
+        // Apply date filters
+        if (assigned_at_start && assigned_at_end) {
+          batchQuery.gte('assigned_at', assigned_at_start).lte('assigned_at', assigned_at_end);
+        } else if (created_at_start && created_at_end) {
+          batchQuery.gte('created_at', created_at_start).lte('created_at', created_at_end);
+        }
+
+        const { data: batch, error: batchError } = await batchQuery;
+
+        if (batchError) {
+          leadsError = batchError;
+          break;
+        }
+
+        if (!batch || batch.length === 0) break;
+        leads = leads.concat(batch);
+        paginationFrom += paginationBatchSize;
+
+        if (batch.length < paginationBatchSize) break; // Last batch
+      }
+
+      console.log(`📊 Fetched ${leads.length} total leads using pagination`);
+      totalCount = leads.length;
+    } else {
+      // Standard query execution for non-call_status filters
+      try {
+        const result = await dataQuery;
+        leads = result.data;
+        leadsError = result.error;
+        totalCount = result.count;
+      } catch (queryError) {
+        console.error('Supabase query execution error:', {
+          message: queryError.message,
+          search: search || 'none',
+          page: pageInt,
+          from,
+          to
+        });
+        throw queryError;
+      }
     }
 
     if (leadsError) {
@@ -508,21 +597,6 @@ router.get('/', auth, async (req, res) => {
       });
       throw leadsError;
     }
-
-    // Helper function to get call_status from custom_fields
-    const getCallStatus = (lead) => {
-      try {
-        if (lead.custom_fields) {
-          const customFields = typeof lead.custom_fields === 'string' 
-            ? JSON.parse(lead.custom_fields) 
-            : lead.custom_fields;
-          return customFields?.call_status || null;
-        }
-      } catch (e) {
-        return null;
-      }
-      return null;
-    };
 
     // For call_status filtering (applies to all users), filter the results in JavaScript
     let filteredLeads = leads || [];
@@ -539,7 +613,7 @@ router.get('/', auth, async (req, res) => {
         return hasMatchingCallStatus && !hasProgressed;
       });
       console.log(`📊 Filtered ${allFilteredLeadsForCount.length} leads by call_status: ${callStatusValue} (excluded progressed leads)`);
-      
+
       // Apply pagination to filtered results
       filteredLeads = allFilteredLeadsForCount.slice(from, to + 1);
       console.log(`📄 Paginated to ${filteredLeads.length} leads (page ${pageInt}, showing ${from} to ${Math.min(to, allFilteredLeadsForCount.length - 1)} of ${allFilteredLeadsForCount.length})`);
@@ -691,8 +765,9 @@ router.get('/calendar', auth, async (req, res) => {
       .from('leads')
       .select(`
         id, name, phone, email, status, date_booked, booker_id,
-        is_confirmed, booking_status, has_sale, time_booked, booking_slot,
-        created_at, postcode, notes, image_url
+        is_confirmed, is_double_confirmed, booking_status, has_sale, time_booked, booking_slot,
+        created_at, postcode, notes, image_url, review_date, review_time, review_slot,
+        date_of_birth, height_inches, waist_inches, hips_inches, eye_color, hair_color, hair_length
       `)
       .or('date_booked.not.is.null,status.eq.Booked')
       .is('deleted_at', null) // Ensure we don't fetch deleted leads
@@ -1429,7 +1504,7 @@ router.post('/', auth, async (req, res) => {
       if (existingLeads && existingLeads.length > 0) {
         // Update the existing lead
         // Remove fields that don't exist in Supabase schema
-        const { isReschedule, sendEmail, sendSms, rescheduleReason, templateId, ...cleanBodyData } = bodyWithoutId;
+        const { isReschedule, sendEmail, sendSms, rescheduleReason, templateId, secondaryTemplateId, ...cleanBodyData } = bodyWithoutId;
 
         // Build update data explicitly to avoid including invalid fields
         const updateData = {
@@ -1517,6 +1592,25 @@ router.post('/', auth, async (req, res) => {
             ).catch(e => {
               console.error('⚠️ Booking history entry failed (non-critical):', e.message);
             });
+
+            // Send secondary confirmation if template provided (non-blocking)
+            if (bodyWithoutId.secondaryTemplateId && bodyWithoutId.sendEmail) {
+              console.log(`📧 Sending secondary confirmation for lead ${_id}`);
+              withTimeout(
+                MessagingService.sendBookingConfirmation(
+                  _id,
+                  req.user.id,
+                  updateData.date_booked,
+                  { sendEmail: true, sendSms: false, templateId: bodyWithoutId.secondaryTemplateId }
+                ),
+                30000,
+                'Secondary confirmation'
+              ).then(() => {
+                console.log(`✅ Secondary confirmation sent for lead ${_id}`);
+              }).catch((err) => {
+                console.error(`❌ Secondary confirmation failed for lead ${_id}:`, err.message);
+              });
+            }
           }).catch((error) => {
             console.error(`❌ Booking confirmation failed for lead ${_id}:`, error.message);
 
@@ -1559,7 +1653,7 @@ router.post('/', auth, async (req, res) => {
     }
     
     // Remove fields that don't exist in Supabase schema
-    const { isReschedule, sendEmail, sendSms, rescheduleReason, templateId, ...cleanFilteredBody } = filteredBody;
+    const { isReschedule, sendEmail, sendSms, rescheduleReason, templateId, secondaryTemplateId, ...cleanFilteredBody } = filteredBody;
     const finalBody = cleanFilteredBody;
 
     console.log('📊 Server: Creating lead with data:', {
@@ -1686,6 +1780,25 @@ router.post('/', auth, async (req, res) => {
               ).catch(e => {
                 console.error('⚠️ Booking history entry failed (non-critical):', e.message);
               });
+
+              // Send secondary confirmation if template provided (non-blocking)
+              if (secondaryTemplateId && sendEmail) {
+                console.log(`📧 Sending secondary confirmation for lead ${existingLead.id}`);
+                withTimeout(
+                  MessagingService.sendBookingConfirmation(
+                    existingLead.id,
+                    req.user.id,
+                    finalBody.date_booked,
+                    { sendEmail: true, sendSms: false, templateId: secondaryTemplateId }
+                  ),
+                  30000,
+                  'Secondary confirmation'
+                ).then(() => {
+                  console.log(`✅ Secondary confirmation sent for lead ${existingLead.id}`);
+                }).catch((err) => {
+                  console.error(`❌ Secondary confirmation failed for lead ${existingLead.id}:`, err.message);
+                });
+              }
             }).catch((error) => {
               console.error(`❌ Booking confirmation failed (duplicate-update path) for lead ${existingLead.id}:`, error.message);
 
@@ -1892,7 +2005,7 @@ router.post('/', auth, async (req, res) => {
 
     // Trigger booking confirmation (email/SMS) for newly created booked leads (NON-BLOCKING)
     if (leadData.status === 'Booked' && leadData.date_booked) {
-      const { sendEmail, sendSms, templateId } = filteredBody || {};
+      const { sendEmail, sendSms, templateId, secondaryTemplateId } = filteredBody || {};
       if (sendEmail || sendSms) {
         console.log(`📧 Triggering non-blocking booking confirmation for new lead ${lead.id}`);
 
@@ -1951,6 +2064,25 @@ router.post('/', auth, async (req, res) => {
           ).catch(e => {
             console.error('⚠️ Booking history entry failed (non-critical):', e.message);
           });
+
+          // Send secondary confirmation if template provided (non-blocking)
+          if (secondaryTemplateId && sendEmail) {
+            console.log(`📧 Sending secondary confirmation for new lead ${lead.id}`);
+            withTimeout(
+              MessagingService.sendBookingConfirmation(
+                lead.id,
+                leadData.booker,
+                leadData.date_booked,
+                { sendEmail: true, sendSms: false, templateId: secondaryTemplateId }
+              ),
+              30000,
+              'Secondary confirmation'
+            ).then(() => {
+              console.log(`✅ Secondary confirmation sent for new lead ${lead.id}`);
+            }).catch((err) => {
+              console.error(`❌ Secondary confirmation failed for new lead ${lead.id}:`, err.message);
+            });
+          }
         }).catch((error) => {
           console.error(`❌ Booking confirmation failed for new lead ${lead.id}:`, error.message);
 
@@ -2030,7 +2162,10 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       leadId: req.params.id,
       newStatus: req.body.status,
       userId: req.user.id,
-      userRole: req.user.role
+      userRole: req.user.role,
+      is_double_confirmed: req.body.is_double_confirmed,
+      is_confirmed: req.body.is_confirmed,
+      booking_status: req.body.booking_status
     });
     
     // Normalize incoming fields from various clients (camelCase vs snake_case)
@@ -2170,6 +2305,10 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
                     key === 'timeBooked' ? 'time_booked' :
                     key === 'bookingSlot' ? 'booking_slot' :
                     key === 'isConfirmed' ? 'is_confirmed' :
+                    key === 'isDoubleConfirmed' ? 'is_double_confirmed' :
+                    key === 'reviewDate' ? 'review_date' :
+                    key === 'reviewTime' ? 'review_time' :
+                    key === 'reviewSlot' ? 'review_slot' :
                     key === 'hasSale' ? 'has_sale' :
                     key === 'bookingStatus' ? 'booking_status' :
                     key === 'everBooked' ? 'ever_booked' :
@@ -2260,12 +2399,23 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       }
     }
 
+    // Debug: Log what's in validUpdateData and filteredUpdateFields
+    console.log('🔍 Debug is_double_confirmed flow:', {
+      in_reqBody: req.body.is_double_confirmed,
+      in_validUpdateData: validUpdateData.is_double_confirmed,
+      in_updateFields: updateFields.is_double_confirmed,
+      in_filteredUpdateFields: filteredUpdateFields.is_double_confirmed
+    });
+
     // Update the lead using Supabase
     if (Object.keys(filteredUpdateFields).length > 0) {
       // Convert boolean values to integers for Supabase
       const supabaseUpdateFields = { ...filteredUpdateFields };
       if (supabaseUpdateFields.is_confirmed !== undefined) {
         supabaseUpdateFields.is_confirmed = supabaseUpdateFields.is_confirmed ? 1 : 0;
+      }
+      if (supabaseUpdateFields.is_double_confirmed !== undefined) {
+        supabaseUpdateFields.is_double_confirmed = supabaseUpdateFields.is_double_confirmed ? 1 : 0;
       }
       
       // ✅ SCOREBOARD FIX: Set booked_at timestamp when status changes to 'Booked'
@@ -2301,7 +2451,10 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
         leadId: req.params.id,
         oldStatus: lead.status,
         newStatus: supabaseUpdateFields.status,
-        fieldsToUpdate: Object.keys(supabaseUpdateFields)
+        fieldsToUpdate: Object.keys(supabaseUpdateFields),
+        is_double_confirmed: supabaseUpdateFields.is_double_confirmed,
+        is_confirmed: supabaseUpdateFields.is_confirmed,
+        booking_status: supabaseUpdateFields.booking_status
       });
       
       const updateResult = await dbManager.update('leads', supabaseUpdateFields, { id: req.params.id });
@@ -2317,7 +2470,9 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
       
       console.log('✅ Status update successful:', {
         leadId: req.params.id,
-        newStatus: updateResult[0]?.status
+        newStatus: updateResult[0]?.status,
+        is_double_confirmed_returned: updateResult[0]?.is_double_confirmed,
+        is_confirmed_returned: updateResult[0]?.is_confirmed
       });
     }
     
@@ -2646,6 +2801,12 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
         console.log(`📅 Diary update emitted: ${updatedLead.name} - ${oldStatus} → ${req.body.status}`);
       }
     }
+    console.log('📤 Returning updated lead:', {
+      leadId: updatedLead.id,
+      is_double_confirmed: updatedLead.is_double_confirmed,
+      is_confirmed: updatedLead.is_confirmed,
+      booking_status: updatedLead.booking_status
+    });
     res.json({
       message: 'Lead updated successfully',
       lead: updatedLead
@@ -5307,20 +5468,20 @@ router.post('/:id/resend-welcome-pack', auth, async (req, res) => {
     // Get template if provided, otherwise use first active booking confirmation template
     let template = null;
     if (templateId) {
+      // When templateId is provided, accept any template type (booking_confirmation or secondary_confirmation)
       const { data: templateData, error: templateError } = await supabase
         .from('templates')
         .select('*')
         .eq('id', templateId)
-        .eq('type', 'booking_confirmation')
         .eq('is_active', true)
         .single();
-      
+
       if (!templateError && templateData) {
         template = templateData;
       }
     }
 
-    // If no template provided or found, get first active booking confirmation template
+    // If no template provided or found, get first active booking confirmation template as fallback
     if (!template) {
       const { data: templates, error: templatesError } = await supabase
         .from('templates')
@@ -5329,14 +5490,14 @@ router.post('/:id/resend-welcome-pack', auth, async (req, res) => {
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1);
-      
+
       if (!templatesError && templates && templates.length > 0) {
         template = templates[0];
       }
     }
 
     if (!template) {
-      return res.status(404).json({ message: 'No active booking confirmation template found' });
+      return res.status(404).json({ message: 'No active template found' });
     }
 
     // Send booking confirmation (welcome pack) with both email and SMS

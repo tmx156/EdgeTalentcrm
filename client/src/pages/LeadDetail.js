@@ -1898,7 +1898,7 @@ const LeadDetail = () => {
                         rows="6"
                         value={formData.notes || ''}
                         onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none break-words"
                         placeholder="Add detailed notes about this lead..."
                         autoFocus
                       />
@@ -1938,9 +1938,11 @@ const LeadDetail = () => {
                   <div>
                     {lead.notes ? (
                       <div>
-                        <p className="text-gray-900 whitespace-pre-wrap leading-relaxed">
-                          {lead.notes}
-                        </p>
+                        <div className="max-h-96 overflow-y-auto">
+                          <p className="text-gray-900 whitespace-pre-wrap leading-relaxed break-words">
+                            {lead.notes}
+                          </p>
+                        </div>
                         <div className="mt-2 text-xs text-gray-500">
                           Click "Edit Notes" to modify
                         </div>

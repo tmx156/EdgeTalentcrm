@@ -136,26 +136,45 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
     return eventsBySlot.get(key) || null;
   };
 
-  // Get status indicator
+  // Get status indicator - LARGER AND MORE VISIBLE
+  // PRIORITY: Booking Status > Confirmation Status
   const getStatusIndicator = (event) => {
     if (!event) return null;
-    
-    if (event.is_confirmed) {
-      return <FiCheckCircle className="inline-block w-4 h-4 text-green-600 mr-1" />;
-    }
-    
+
+    // Check booking_status FIRST (these override confirmation status)
     if (event.booking_status === 'Arrived') {
-      return <span className="inline-block w-2 h-2 rounded-full bg-red-500 mr-2"></span>;
+      return <span className="inline-block w-3 h-3 rounded-full mr-2 shadow-sm" style={{ backgroundColor: '#2563eb' }}></span>;
     }
-    
+
     if (event.booking_status === 'Left') {
-      return <span className="inline-block w-2 h-2 rounded-full bg-black mr-2"></span>;
+      return <span className="inline-block w-3 h-3 rounded-full mr-2 shadow-sm" style={{ backgroundColor: '#1f2937' }}></span>;
     }
-    
-    return <FiClock className="inline-block w-4 h-4 text-orange-500 mr-1" />;
+
+    if (event.booking_status === 'No Show') {
+      return <span className="inline-block w-3 h-3 rounded-full mr-2 shadow-sm" style={{ backgroundColor: '#ef4444' }}></span>;
+    }
+
+    if (event.booking_status === 'No Sale') {
+      return <span className="inline-block w-3 h-3 rounded-full mr-2 shadow-sm" style={{ backgroundColor: '#b91c1c' }}></span>;
+    }
+
+    if (event.booking_status === 'Review') {
+      return <span className="inline-block w-3 h-3 rounded-full mr-2 shadow-sm" style={{ backgroundColor: '#8b5cf6' }}></span>;
+    }
+
+    // Then check confirmation status (use == 1 for explicit check)
+    if (event.is_double_confirmed == 1) {
+      return <span className="inline-block text-green-700 font-black text-sm mr-1">✓✓</span>;
+    }
+
+    if (event.is_confirmed == 1) {
+      return <FiCheckCircle className="inline-block w-5 h-5 text-green-500 mr-1" />;
+    }
+
+    return <FiClock className="inline-block w-5 h-5 text-orange-400 mr-1" />;
   };
 
-  // Get cell background based on booking status and blocked state
+  // Get cell background based on booking status and blocked state - VIBRANT COLORS
   const getCellBackground = (slotConfig, event, time, slotNumber) => {
     // Check if slot is blocked first - blocked slots are always grey
     if (isSlotBlocked(time, slotNumber)) {
@@ -167,13 +186,21 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
 
     if (!event) return slotColor;
 
-    // Booked slots get a slightly darker shade
-    if (event.has_sale) return 'bg-blue-200'; // Sale made
-    if (event.is_confirmed) return 'bg-green-50'; // Confirmed
-    if (event.booking_status === 'Arrived') return 'bg-red-50'; // Arrived
-    if (event.booking_status === 'Left') return 'bg-gray-100'; // Left
+    // PRIORITY ORDER: Sale > Booking Status > Confirmation Status
+    if (event.has_sale) return 'bg-blue-300'; // Sale made - brighter blue
 
-    return 'bg-orange-50'; // Unconfirmed
+    // Check booking_status FIRST (these override confirmation status)
+    if (event.booking_status === 'Arrived') return 'bg-blue-300'; // Arrived - VIVID BLUE
+    if (event.booking_status === 'Left') return 'bg-gray-400'; // Left - darker gray
+    if (event.booking_status === 'No Show') return 'bg-red-300'; // No Show - BRIGHT RED
+    if (event.booking_status === 'No Sale') return 'bg-red-200'; // No Sale - red
+    if (event.booking_status === 'Review') return 'bg-purple-300'; // Review - VIVID PURPLE
+
+    // Then check confirmation status (use == 1 for explicit check)
+    if (event.is_double_confirmed == 1) return 'bg-green-400'; // Double Confirmed - VIVID DARK GREEN
+    if (event.is_confirmed == 1) return 'bg-green-300'; // Confirmed - BRIGHT GREEN
+
+    return 'bg-orange-200'; // Unconfirmed - brighter orange
   };
 
   return (
@@ -207,13 +234,36 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
             <div className="w-4 h-4 bg-gray-50 border border-gray-300 rounded mr-2"></div>
             <span>Unavailable</span>
           </div>
+        </div>
+        {/* Status Legend - VIBRANT COLORS */}
+        <div className="flex flex-wrap gap-3 text-xs mt-2 pt-2 border-t border-gray-200">
           <div className="flex items-center">
-            <FiCheckCircle className="w-4 h-4 text-green-600 mr-2" />
-            <span>Confirmed</span>
+            <div className="w-3 h-3 rounded-full mr-1 shadow-sm" style={{ backgroundColor: '#fb923c' }}></div>
+            <span className="font-medium">Unconfirmed</span>
           </div>
           <div className="flex items-center">
-            <FiClock className="w-4 h-4 text-orange-500 mr-2" />
-            <span>Unconfirmed</span>
+            <div className="w-3 h-3 rounded-full mr-1 shadow-sm" style={{ backgroundColor: '#22c55e' }}></div>
+            <span className="font-medium">Confirmed</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded-full mr-1 shadow-sm" style={{ backgroundColor: '#15803d' }}></div>
+            <span className="font-medium">Double Confirmed</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded-full mr-1 shadow-sm" style={{ backgroundColor: '#2563eb' }}></div>
+            <span className="font-medium">Arrived</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded-full mr-1 shadow-sm" style={{ backgroundColor: '#1f2937' }}></div>
+            <span className="font-medium">Left</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded-full mr-1 shadow-sm" style={{ backgroundColor: '#ef4444' }}></div>
+            <span className="font-medium">No Show</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded-full mr-1 shadow-sm" style={{ backgroundColor: '#8b5cf6' }}></div>
+            <span className="font-medium">Review</span>
           </div>
         </div>
       </div>
