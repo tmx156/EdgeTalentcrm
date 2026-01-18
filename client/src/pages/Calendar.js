@@ -268,6 +268,7 @@ const Calendar = () => {
   const [hasMorePhotos, setHasMorePhotos] = useState(false);
   const [nextCursor, setNextCursor] = useState(null);
   const [loadingMorePhotos, setLoadingMorePhotos] = useState(false);
+  const currentPhotoFetchLeadIdRef = useRef(null); // Track current fetch to prevent race conditions
 
   // Photographer upload state
   const [showUploadPanel, setShowUploadPanel] = useState(false);
@@ -297,6 +298,11 @@ const Calendar = () => {
   const closeEventModal = useCallback(() => {
     setShowEventModal(false);
     setSearchParams({}, { replace: true });
+    // Reset photo-related state to prevent cross-lead data mixing
+    setSelectedPhotoIds([]);
+    setSelectedPhotos([]);
+    setLeadPhotos([]);
+    setTotalPhotoCount(0);
     // Refresh calendar data when modal closes to ensure colors are up to date
     setTimeout(() => {
       if (fetchEventsRef.current) {
@@ -1205,6 +1211,9 @@ const Calendar = () => {
       return;
     }
 
+    // Track which lead we're fetching for (prevents race conditions)
+    currentPhotoFetchLeadIdRef.current = leadId;
+
     if (reset) {
       setLoadingPhotos(true);
     } else {
@@ -1237,6 +1246,12 @@ const Calendar = () => {
         reset ? axios.get('/api/photos/count', { params: countParams }) : Promise.resolve(null)
       ]);
 
+      // Check if this response is still relevant (prevents race conditions)
+      if (currentPhotoFetchLeadIdRef.current !== leadId) {
+        console.log('📸 Ignoring stale photo response for lead:', leadId);
+        return;
+      }
+
       if (photosResponse.data.success) {
         const newPhotos = photosResponse.data.photos || [];
 
@@ -1256,13 +1271,17 @@ const Calendar = () => {
       }
     } catch (error) {
       console.error('Error fetching photos:', error);
-      if (reset) {
+      // Only update state if this is still the current fetch
+      if (currentPhotoFetchLeadIdRef.current === leadId && reset) {
         setLeadPhotos([]);
         setTotalPhotoCount(0);
       }
     } finally {
-      setLoadingPhotos(false);
-      setLoadingMorePhotos(false);
+      // Only update loading state if this is still the current fetch
+      if (currentPhotoFetchLeadIdRef.current === leadId) {
+        setLoadingPhotos(false);
+        setLoadingMorePhotos(false);
+      }
     }
   }, [user?.role]);
 

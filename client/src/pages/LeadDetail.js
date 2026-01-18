@@ -537,6 +537,10 @@ const LeadDetail = () => {
     if (id && lastFetchedIdRef.current !== id) {
       console.log('📥 LeadDetail: Fetching initial data for lead:', id);
       lastFetchedIdRef.current = id;
+      // Reset photo-related state to prevent cross-lead data mixing
+      setSelectedPhotoIds([]);
+      setSelectedPhotos([]);
+      setLeadPhotos([]);
       fetchLead();
       fetchTemplates();
       fetchSale();

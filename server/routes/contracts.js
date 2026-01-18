@@ -818,13 +818,15 @@ router.post('/sign/:token', async (req, res) => {
 
     if (selectedPhotoIds.length > 0) {
       try {
+        // Validate photos belong to this lead to prevent cross-lead data mixing
         const { data: photos, error: photosError } = await supabase
           .from('photos')
           .select('id, cloudinary_secure_url, cloudinary_url, filename')
-          .in('id', selectedPhotoIds);
+          .in('id', selectedPhotoIds)
+          .eq('lead_id', contract.lead_id);
 
         if (!photosError && photos && photos.length > 0) {
-          console.log(`Downloading ${photos.length} photos for delivery...`);
+          console.log(`Downloading ${photos.length} photos for delivery (verified for lead ${contract.lead_id})...`);
 
           for (const photo of photos) {
             try {
@@ -1641,13 +1643,15 @@ router.post('/:contractId/resend-delivery', auth, async (req, res) => {
     let photoCount = 0;
 
     if (selectedPhotoIds.length > 0) {
-      // Fetch photos from database
+      // Fetch photos from database - validate they belong to this lead
       const { data: photos } = await supabase
         .from('photos')
         .select('id, filename, cloudinary_url, cloudinary_secure_url')
-        .in('id', selectedPhotoIds);
+        .in('id', selectedPhotoIds)
+        .eq('lead_id', contract.lead_id);
 
       if (photos && photos.length > 0) {
+        console.log(`📸 Found ${photos.length} photos for lead ${contract.lead_id}`);
         for (const photo of photos) {
           try {
             const imageUrl = photo.cloudinary_secure_url || photo.cloudinary_url;

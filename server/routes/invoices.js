@@ -368,19 +368,32 @@ router.post('/', auth, async (req, res) => {
       return res.status(500).json({ message: 'Failed to create invoice', error: createError.message });
     }
 
-    // If photo IDs provided, create selected_images records
+    // If photo IDs provided, validate they belong to this lead and create selected_images records
     if (selectedPhotoIds && Array.isArray(selectedPhotoIds) && selectedPhotoIds.length > 0) {
-      const selectedImageRecords = selectedPhotoIds.map(photoId => ({
-        invoice_id: invoice.id,
-        lead_id: leadId,
-        photo_id: photoId,
-        selection_type: 'manual',
-        delivery_status: 'pending'
-      }));
+      // Validate photos belong to this lead to prevent cross-lead data mixing
+      const { data: validPhotos } = await supabase
+        .from('photos')
+        .select('id')
+        .in('id', selectedPhotoIds)
+        .eq('lead_id', leadId);
 
-      await supabase
-        .from('selected_images')
-        .insert(selectedImageRecords);
+      const validPhotoIds = validPhotos?.map(p => p.id) || [];
+
+      if (validPhotoIds.length > 0) {
+        const selectedImageRecords = validPhotoIds.map(photoId => ({
+          invoice_id: invoice.id,
+          lead_id: leadId,
+          photo_id: photoId,
+          selection_type: 'manual',
+          delivery_status: 'pending'
+        }));
+
+        await supabase
+          .from('selected_images')
+          .insert(selectedImageRecords);
+
+        console.log(`Created ${selectedImageRecords.length} selected_images records (verified for lead ${leadId})`);
+      }
     }
 
     console.log(`Invoice ${invoiceNumber} created for lead ${lead.name}`);

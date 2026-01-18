@@ -53,6 +53,8 @@ const ImageGalleryModal = ({
 
   useEffect(() => {
     if (isOpen && leadId) {
+      // Reset selection state when modal opens with a new lead
+      setSelectAll(false);
       fetchPhotos();
     }
   }, [isOpen, leadId, fetchPhotos]);

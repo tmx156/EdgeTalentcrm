@@ -606,14 +606,16 @@ router.get('/:saleId/details', auth, async (req, res) => {
       }
     }
 
-    // Get selected photos if we have IDs
+    // Get selected photos if we have IDs - validate they belong to this lead
     let selectedPhotos = [];
-    if (selectedPhotoIds.length > 0) {
+    if (selectedPhotoIds.length > 0 && sale.lead_id) {
       const photos = await dbManager.query('photos', {
         select: 'id, filename, cloudinary_url, cloudinary_secure_url, description',
-        in: { id: selectedPhotoIds }
+        in: { id: selectedPhotoIds },
+        eq: { lead_id: sale.lead_id }
       });
       selectedPhotos = photos || [];
+      console.log(`Retrieved ${selectedPhotos.length} photos (verified for lead ${sale.lead_id})`);
     }
 
     res.json({

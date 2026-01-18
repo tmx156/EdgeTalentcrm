@@ -68,6 +68,7 @@ const PresentationGallery = ({
   const autoPlayRef = useRef(null);
   const galleryContainerRef = useRef(null);
   const transitionTimeoutRef = useRef(null);
+  const currentFetchLeadIdRef = useRef(null); // Track current fetch to prevent race conditions
 
   // Reset state when modal opens
   useEffect(() => {
@@ -104,6 +105,9 @@ const PresentationGallery = ({
     const fetchAllPhotos = async () => {
       if (!isOpen || !leadId) return;
 
+      // Track which lead we're fetching for (prevents race conditions)
+      currentFetchLeadIdRef.current = leadId;
+
       setIsLoadingPhotos(true);
       try {
         // Fetch ALL photos (limit 500 is server max)
@@ -115,6 +119,12 @@ const PresentationGallery = ({
           }
         });
 
+        // Check if this response is still relevant (prevents race conditions)
+        if (currentFetchLeadIdRef.current !== leadId) {
+          console.log('📸 Gallery: Ignoring stale photo response for lead:', leadId);
+          return;
+        }
+
         if (response.data.success && response.data.photos) {
           const fetchedPhotos = response.data.photos;
           console.log(`📸 Gallery: Fetched ${fetchedPhotos.length} photos for lead ${leadId}`);
@@ -124,7 +134,9 @@ const PresentationGallery = ({
         console.error('Error fetching all photos for gallery:', error);
         // Keep using initialPhotos if fetch fails
       } finally {
-        setIsLoadingPhotos(false);
+        if (currentFetchLeadIdRef.current === leadId) {
+          setIsLoadingPhotos(false);
+        }
       }
     };
 
