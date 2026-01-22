@@ -519,6 +519,12 @@ class EmailAccountService {
     try {
       // Priority 1: Direct email account ID passed
       if (emailAccountId) {
+        // Check if it's an env var account
+        if (emailAccountId === 'primary' || emailAccountId === 'secondary') {
+          console.log(`📧 Using directly specified env var account: ${emailAccountId}`);
+          return { type: 'env', accountKey: emailAccountId };
+        }
+        // Otherwise it's a database UUID
         const account = await this.getAccountById(emailAccountId);
         if (account && account.is_active) {
           console.log(`📧 Using directly specified email account: ${account.email}`);
