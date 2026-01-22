@@ -758,7 +758,7 @@ class MessagingService {
   }
 
   // Send email
-  // emailAccount can be: 'primary', 'secondary', a UUID string, or a database account object
+  // emailAccount can be: 'primary', 'secondary', 'tertiary', a UUID string, or a database account object
   static async sendEmail(message, emailAccount = 'primary') {
     const messageId = message.id || 'unknown';
     const accountDisplay = typeof emailAccount === 'object' && emailAccount.email
@@ -806,9 +806,9 @@ class MessagingService {
         emailAccount // Pass the email account key
       );
       
-      // If secondary account fails with invalid_grant, try primary account as fallback
-      if (!emailResult.success && emailAccount === 'secondary' && emailResult.isInvalidGrant) {
-        console.log(`⚠️ [MSG-${messageId}] Secondary account token expired, attempting fallback to primary account...`);
+      // If secondary/tertiary account fails with invalid_grant, try primary account as fallback
+      if (!emailResult.success && (emailAccount === 'secondary' || emailAccount === 'tertiary') && emailResult.isInvalidGrant) {
+        console.log(`⚠️ [MSG-${messageId}] ${emailAccount} account token expired, attempting fallback to primary account...`);
         
         try {
           emailResult = await sendActualEmail(

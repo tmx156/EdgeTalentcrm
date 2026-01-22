@@ -161,16 +161,22 @@ async function getGmailClient(accountKeyOrConfig = 'primary') {
           : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
             'https://edgetalentcrm-production.up.railway.app';
         
-        const authEndpoint = accountKey === 'secondary' 
+        const authEndpoint = accountKey === 'secondary'
           ? `${railwayUrl}/api/gmail/auth2`
+          : accountKey === 'tertiary'
+          ? `${railwayUrl}/api/gmail/auth3`
           : `${railwayUrl}/api/gmail/auth`;
-        
-        const tokenVar = accountKey === 'secondary' ? 'GMAIL_REFRESH_TOKEN_2' : 'GMAIL_REFRESH_TOKEN';
-        
+
+        const tokenVar = accountKey === 'secondary'
+          ? 'GMAIL_REFRESH_TOKEN_2'
+          : accountKey === 'tertiary'
+          ? 'GMAIL_REFRESH_TOKEN_3'
+          : 'GMAIL_REFRESH_TOKEN';
+
         const errorMsg = `OAuth token expired or revoked for ${account.email}. ` +
           `Please re-authenticate: ${authEndpoint}. ` +
           `Then update ${tokenVar} in Railway environment variables.`;
-        
+
         console.error(`❌ [${account.displayName}] ${errorMsg}`);
         throw new Error(errorMsg);
       }
@@ -492,19 +498,25 @@ async function sendEmail(to, subject, text, options = {}) {
         : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
           'https://edgetalentcrm-production.up.railway.app';
       
-      const authEndpoint = accountKey === 'secondary' 
+      const authEndpoint = accountKey === 'secondary'
         ? `${railwayUrl}/api/gmail/auth2`
+        : accountKey === 'tertiary'
+        ? `${railwayUrl}/api/gmail/auth3`
         : `${railwayUrl}/api/gmail/auth`;
-      
-      const tokenVar = accountKey === 'secondary' ? 'GMAIL_REFRESH_TOKEN_2' : 'GMAIL_REFRESH_TOKEN';
-      
-      console.error(`❌ [${emailId}] OAuth token expired for ${account.email}`);
+
+      const tokenVar = accountKey === 'secondary'
+        ? 'GMAIL_REFRESH_TOKEN_2'
+        : accountKey === 'tertiary'
+        ? 'GMAIL_REFRESH_TOKEN_3'
+        : 'GMAIL_REFRESH_TOKEN';
+
+      console.error(`❌ [${emailId}] OAuth token expired for ${account?.email || accountKey}`);
       console.error(`❌ [${emailId}] ACTION REQUIRED: Re-authenticate at ${authEndpoint}`);
       console.error(`❌ [${emailId}] Then update ${tokenVar} in Railway environment variables`);
-      
+
       // Note: Automatic fallback to primary account is handled in emailService.js
       // to avoid recursive calls and maintain proper error handling
-      if (accountKey === 'secondary') {
+      if (accountKey === 'secondary' || accountKey === 'tertiary') {
         console.log(`💡 [${emailId}] Fallback to primary account will be attempted by emailService`);
       }
     }
