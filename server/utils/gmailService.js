@@ -13,6 +13,7 @@ const path = require('path');
 console.log('📧 Gmail Service: Initializing Multi-Account Support...');
 console.log('📧 Primary Account (GMAIL_EMAIL):', process.env.GMAIL_EMAIL || 'Not set');
 console.log('📧 Secondary Account (GMAIL_EMAIL_2):', process.env.GMAIL_EMAIL_2 || 'Not set');
+console.log('📧 Tertiary Account (GMAIL_EMAIL_3):', process.env.GMAIL_EMAIL_3 || 'Not set');
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,6 +34,14 @@ const ACCOUNTS = {
     clientSecret: process.env.GMAIL_CLIENT_SECRET_2,
     refreshToken: process.env.GMAIL_REFRESH_TOKEN_2,
     redirectUri: process.env.GMAIL_REDIRECT_URI_2 || 'http://localhost:5000/api/gmail/oauth2callback2',
+    displayName: 'Edge Talent'
+  },
+  tertiary: {
+    email: process.env.GMAIL_EMAIL_3,
+    clientId: process.env.GMAIL_CLIENT_ID_3,
+    clientSecret: process.env.GMAIL_CLIENT_SECRET_3,
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN_3,
+    redirectUri: process.env.GMAIL_REDIRECT_URI_3 || 'http://localhost:5000/api/gmail/oauth2callback3',
     displayName: 'Edge Talent'
   }
 };
