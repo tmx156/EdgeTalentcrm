@@ -622,8 +622,10 @@ router.get('/:id/auth-url', auth, async (req, res) => {
     }
 
     // Use the redirect URI from the account, or construct a default one
+    // Always use https in production (Railway proxy returns http for req.protocol)
+    const protocol = process.env.NODE_ENV === 'production' || req.get('host')?.includes('railway') ? 'https' : req.protocol;
     const redirectUri = account.redirect_uri ||
-      `${req.protocol}://${req.get('host')}/api/email-accounts/oauth-callback`;
+      `${protocol}://${req.get('host')}/api/email-accounts/oauth-callback`;
 
     console.log('🔐 Generating OAuth URL for account:', {
       id: account.id,
@@ -701,8 +703,10 @@ router.get('/:id/auth', auth, async (req, res) => {
     }
 
     // Use the redirect URI from the account, or construct a default one
+    // Always use https in production (Railway proxy returns http for req.protocol)
+    const protocol = process.env.NODE_ENV === 'production' || req.get('host')?.includes('railway') ? 'https' : req.protocol;
     const redirectUri = account.redirect_uri ||
-      `${req.protocol}://${req.get('host')}/api/email-accounts/oauth-callback`;
+      `${protocol}://${req.get('host')}/api/email-accounts/oauth-callback`;
 
     console.log('🔐 Starting OAuth flow for account:', {
       id: account.id,
