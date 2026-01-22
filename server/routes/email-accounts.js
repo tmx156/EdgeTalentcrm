@@ -238,6 +238,20 @@ router.post('/', auth, async (req, res) => {
 
     const { name, email, client_id, client_secret, refresh_token, redirect_uri, display_name, is_default } = req.body;
 
+    console.log('📥 POST /api/email-accounts - Received data:', {
+      name,
+      email,
+      hasClientId: !!client_id,
+      clientIdLength: client_id?.length || 0,
+      hasClientSecret: !!client_secret,
+      clientSecretLength: client_secret?.length || 0,
+      hasRefreshToken: !!refresh_token,
+      refreshTokenLength: refresh_token?.length || 0,
+      redirect_uri,
+      display_name,
+      is_default
+    });
+
     // Validate required fields
     if (!name || !email) {
       return res.status(400).json({ message: 'Name and email are required' });
@@ -282,6 +296,22 @@ router.put('/:id', auth, async (req, res) => {
 
     const { id } = req.params;
     const { name, email, client_id, client_secret, refresh_token, redirect_uri, display_name, is_active, is_default } = req.body;
+
+    console.log(`📥 PUT /api/email-accounts/${id} - Received data:`, {
+      name,
+      email,
+      hasClientId: !!client_id,
+      clientIdLength: client_id?.length || 0,
+      clientIdValue: client_id ? client_id.substring(0, 20) + '...' : 'empty',
+      hasClientSecret: !!client_secret,
+      clientSecretLength: client_secret?.length || 0,
+      hasRefreshToken: !!refresh_token,
+      refreshTokenLength: refresh_token?.length || 0,
+      redirect_uri,
+      display_name,
+      is_active,
+      is_default
+    });
 
     const updatedAccount = await emailAccountService.updateAccount(id, {
       name,
