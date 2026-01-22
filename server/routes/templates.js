@@ -4,6 +4,7 @@ const fs = require('fs');
 const multer = require('multer');
 const { auth } = require('../middleware/auth');
 const MessagingService = require('../utils/messagingService');
+const emailAccountService = require('../utils/emailAccountService');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const supabaseStorage = require('../utils/supabaseStorage');
@@ -166,7 +167,7 @@ router.get('/', auth, async (req, res) => {
       sendSMS: template.send_sms || false,
       isActive: template.is_active || false,
       reminderDays: template.reminder_days || 5,
-      emailAccount: template.email_account || 'primary'
+      emailAccount: template.email_account || null // null = use user's assigned account
     }));
 
     res.json(templatesWithId);
@@ -205,7 +206,7 @@ router.get('/:id', auth, async (req, res) => {
       sendSMS: template.send_sms || false,
       isActive: template.is_active || false,
       reminderDays: template.reminder_days || 5,
-      emailAccount: template.email_account || 'primary'
+      emailAccount: template.email_account || null // null = use user's assigned account
     };
 
     res.json(templateWithId);
@@ -281,7 +282,7 @@ router.post('/', auth, async (req, res) => {
       send_email: sendEmail !== undefined ? sendEmail : true,
       send_sms: sendSMS !== undefined ? sendSMS : false,
       reminder_days: reminderDays || 5,
-      email_account: emailAccount || 'primary', // Default to primary account
+      email_account: emailAccount || null, // null = use user's assigned account
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -321,7 +322,7 @@ router.post('/', auth, async (req, res) => {
       sendSMS: createdTemplate.send_sms,
       isActive: createdTemplate.is_active,
       reminderDays: createdTemplate.reminder_days,
-      emailAccount: createdTemplate.email_account || 'primary'
+      emailAccount: createdTemplate.email_account || null // null = use user's assigned account
     };
 
     res.status(201).json(responseTemplate);
@@ -414,7 +415,8 @@ router.put('/:id', auth, async (req, res) => {
     if (sendEmail !== undefined) updateData.send_email = sendEmail;
     if (sendSMS !== undefined) updateData.send_sms = sendSMS;
     if (reminderDays !== undefined) updateData.reminder_days = reminderDays;
-    if (emailAccount !== undefined) updateData.email_account = emailAccount;
+    // Convert empty string to null for database consistency
+    if (emailAccount !== undefined) updateData.email_account = emailAccount || null;
 
     // Update content field - prioritize SMS body for shorter messages
     if (smsBody !== undefined) {
@@ -462,7 +464,7 @@ router.put('/:id', auth, async (req, res) => {
       sendSMS: updatedTemplate.send_sms,
       isActive: updatedTemplate.is_active,
       reminderDays: updatedTemplate.reminder_days,
-      emailAccount: updatedTemplate.email_account || 'primary'
+      emailAccount: updatedTemplate.email_account || null // null = use user's assigned account
     };
 
     // Handle attachments parsing
@@ -789,7 +791,7 @@ router.post('/:id/test/:leadId', auth, async (req, res) => {
       smsBody: template.sms_body || template.content,
       sendEmail: template.send_email !== false, // Respect template setting
       sendSMS: template.send_sms !== false, // Respect template setting
-      emailAccount: template.email_account || 'primary'
+      emailAccount: template.email_account || null // null = use user's assigned account via resolution
     };
 
     console.log(`📧 Test send settings: sendEmail=${adaptedTemplate.sendEmail}, sendSMS=${adaptedTemplate.sendSMS}, emailAccount=${adaptedTemplate.emailAccount}`);
@@ -802,12 +804,17 @@ router.post('/:id/test/:leadId', auth, async (req, res) => {
       lead.date_booked
     );
 
-    // Create test message record
+    // Create test message record with all required fields
     const messageData = {
       lead_id: lead.id,
-      type: adaptedTemplate.sendEmail && adaptedTemplate.sendSMS ? 'both' : 
+      type: adaptedTemplate.sendEmail && adaptedTemplate.sendSMS ? 'both' :
             adaptedTemplate.sendEmail ? 'email' : 'sms',
       content: processedTemplate.emailBody || processedTemplate.smsBody,
+      subject: processedTemplate.subject,
+      email_body: processedTemplate.emailBody,
+      sms_body: processedTemplate.smsBody,
+      recipient_email: lead.email,
+      recipient_phone: lead.phone,
       status: 'pending'
     };
 
@@ -822,9 +829,28 @@ router.post('/:id/test/:leadId', auth, async (req, res) => {
       return res.status(500).json({ message: 'Error creating test message' });
     }
 
+    // Resolve email account: template > user > default
+    let resolvedEmailAccount = 'primary';
+    try {
+      const resolution = await emailAccountService.resolveEmailAccount({
+        templateId: template.id,
+        userId: req.user?.id
+      });
+      if (resolution.type === 'database' && resolution.account) {
+        resolvedEmailAccount = resolution.account;
+        console.log(`📧 Test send using: ${resolution.account.email} (database)`);
+      } else {
+        resolvedEmailAccount = resolution.accountKey || template.email_account || 'primary';
+        console.log(`📧 Test send using: ${resolvedEmailAccount} (legacy)`);
+      }
+    } catch (resolveErr) {
+      console.error('📧 Error resolving email account:', resolveErr.message);
+      resolvedEmailAccount = template.email_account || 'primary';
+    }
+
     // Send test messages - respect template settings
     if (adaptedTemplate.sendEmail) {
-      await MessagingService.sendEmail(message, adaptedTemplate.emailAccount);
+      await MessagingService.sendEmail(message, resolvedEmailAccount);
     }
     if (adaptedTemplate.sendSMS) {
       await MessagingService.sendSMS(message);

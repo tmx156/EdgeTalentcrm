@@ -11,6 +11,7 @@ const { auth, adminAuth } = require('../middleware/auth');
 const { analyseLeads } = require('../utils/leadAnalysis');
 const MessagingService = require('../utils/messagingService');
 const { sendSMS, sendAppointmentReminder, sendStatusUpdate, sendCustomMessage } = require('../utils/smsService');
+const emailAccountService = require('../utils/emailAccountService');
 const { v4: uuidv4 } = require('uuid'); // Added for UUID generation
 const { generateBookingCode, getBookingUrl } = require('../utils/bookingCodeGenerator');
 
@@ -430,6 +431,13 @@ router.get('/', auth, async (req, res) => {
           // Standard status filter
           dataQuery = dataQuery.eq('status', status);
           countQuery = countQuery.eq('status', status);
+
+          // For "Assigned" status, exclude leads that have a call_status set
+          // This ensures leads move out of Assigned folder when booker sets a call outcome
+          if (status === 'Assigned') {
+            dataQuery = dataQuery.is('call_status', null);
+            countQuery = countQuery.is('call_status', null);
+          }
         }
       }
     }
@@ -5255,8 +5263,23 @@ router.post('/bulk-communication', auth, async (req, res) => {
               channel: 'email',
             };
             
-            console.log(`📧 Sending email to ${lead.email} using account: ${customTemplate.email_account}...`);
-            const emailResult = await MessagingService.sendEmail(message, customTemplate.email_account);
+            // Resolve email account: template > user assignment > default
+            let resolvedEmailAccount = customTemplate.email_account;
+            try {
+              const resolution = await emailAccountService.resolveEmailAccount({
+                templateId: template?.id,
+                userId: req.user?.id
+              });
+              if (resolution.type === 'database' && resolution.account) {
+                resolvedEmailAccount = resolution.account;
+                console.log(`📧 Using resolved email account: ${resolution.account.email}`);
+              }
+            } catch (resolveErr) {
+              console.error('📧 Email account resolution error, using default:', resolveErr.message);
+            }
+
+            console.log(`📧 Sending email to ${lead.email}...`);
+            const emailResult = await MessagingService.sendEmail(message, resolvedEmailAccount);
             emailSent = emailResult;
             
             if (emailResult) {
@@ -5604,9 +5627,28 @@ router.post('/:id/send-email', auth, async (req, res) => {
       created_at: new Date().toISOString(),
       channel: 'email',
     };
-    
+
+    // Resolve email account: template > user > default
+    let resolvedEmailAccount = 'primary';
+    try {
+      const resolution = await emailAccountService.resolveEmailAccount({
+        templateId: template?.id,
+        userId: req.user?.id
+      });
+      if (resolution.type === 'database' && resolution.account) {
+        resolvedEmailAccount = resolution.account;
+        console.log(`📧 Send email using: ${resolution.account.email} (database)`);
+      } else {
+        resolvedEmailAccount = resolution.accountKey || template?.email_account || 'primary';
+        console.log(`📧 Send email using: ${resolvedEmailAccount} (legacy)`);
+      }
+    } catch (resolveErr) {
+      console.error('📧 Error resolving email account:', resolveErr.message);
+      resolvedEmailAccount = template?.email_account || 'primary';
+    }
+
     // Send email using MessagingService
-    const result = await MessagingService.sendEmail(message);
+    const result = await MessagingService.sendEmail(message, resolvedEmailAccount);
     
     // Add EMAIL_SENT to booking history
     await addBookingHistoryEntry(
@@ -6102,6 +6144,25 @@ router.patch('/:id/call-status', auth, async (req, res) => {
 
             await dbManager.insert('messages', messageData);
 
+            // Resolve email account: template > user > default
+            let resolvedEmailAccount = 'primary';
+            try {
+              const resolution = await emailAccountService.resolveEmailAccount({
+                templateId: template.id,
+                userId: req.user?.id
+              });
+              if (resolution.type === 'database' && resolution.account) {
+                resolvedEmailAccount = resolution.account;
+                console.log(`📧 Workflow email using: ${resolution.account.email} (database)`);
+              } else {
+                resolvedEmailAccount = resolution.accountKey || template.email_account || 'primary';
+                console.log(`📧 Workflow email using: ${resolvedEmailAccount} (legacy)`);
+              }
+            } catch (resolveErr) {
+              console.error('📧 Error resolving email account:', resolveErr.message);
+              resolvedEmailAccount = template.email_account || 'primary';
+            }
+
             // Send email using MessagingService
             const emailResult = await MessagingService.sendEmail(
               {
@@ -6109,7 +6170,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
                 recipient_name: lead.name,
                 sent_by_name: req.user.name
               },
-              template.email_account || 'primary'
+              resolvedEmailAccount
             );
 
             workflowResult.emailSent = emailResult.success;
@@ -6163,8 +6224,50 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       // Callback workflow: Create scheduled reminder for "Call back" status
       if (callbackTriggers.includes(callStatus) && callbackTime) {
         try {
-        // Parse callback time (format: HH:MM in UK time)
-        const [hours, minutes] = callbackTime.split(':');
+        // Parse callback time - supports both formats:
+        // New format: YYYY-MM-DDTHH:MM (full datetime with date picker)
+        // Legacy format: HH:MM (time only, auto-determines today/tomorrow)
+        let targetDateStr;
+        let timeStr;
+
+        if (callbackTime.includes('T')) {
+          // New format: YYYY-MM-DDTHH:MM
+          const [datePart, timePart] = callbackTime.split('T');
+          targetDateStr = datePart;
+          timeStr = timePart;
+          console.log(`📞 Parsing new datetime format: date=${targetDateStr}, time=${timeStr}`);
+        } else {
+          // Legacy format: HH:MM only - determine date automatically
+          timeStr = callbackTime;
+          const now = new Date();
+          const ukDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+          const ukTimeStr = now.toLocaleTimeString('en-US', {
+            timeZone: 'Europe/London',
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          // Check if the time has already passed today in UK time
+          const [hours, minutes] = timeStr.split(':');
+          const callbackHour = parseInt(hours, 10);
+          const callbackMinute = parseInt(minutes, 10);
+          const currentUKHour = parseInt(ukTimeStr.split(':')[0], 10);
+          const currentUKMinute = parseInt(ukTimeStr.split(':')[1], 10);
+          const currentUKTimeMinutes = currentUKHour * 60 + currentUKMinute;
+          const callbackTimeMinutes = callbackHour * 60 + callbackMinute;
+
+          targetDateStr = ukDateStr;
+          if (callbackTimeMinutes <= currentUKTimeMinutes) {
+            // Time has passed, schedule for tomorrow
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            targetDateStr = tomorrow.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+          }
+        }
+
+        // Validate time format
+        const [hours, minutes] = timeStr.split(':');
         const callbackHour = parseInt(hours, 10);
         const callbackMinute = parseInt(minutes, 10);
 
@@ -6172,41 +6275,15 @@ router.patch('/:id/call-status', auth, async (req, res) => {
           throw new Error('Invalid callback time format');
         }
 
-        // Use the same CRM time logic as the dashboard
-        // Get current UK date and time (matching dashboard approach)
-        const now = new Date();
-        const ukDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
-        const ukTimeStr = now.toLocaleTimeString('en-US', { 
-          timeZone: 'Europe/London',
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-        
-        // Check if the time has already passed today in UK time
-        const currentUKHour = parseInt(ukTimeStr.split(':')[0], 10);
-        const currentUKMinute = parseInt(ukTimeStr.split(':')[1], 10);
-        const currentUKTimeMinutes = currentUKHour * 60 + currentUKMinute;
-        const callbackTimeMinutes = callbackHour * 60 + callbackMinute;
-        
-        // Determine which date to use (today or tomorrow)
-        let targetDateStr = ukDateStr;
-        if (callbackTimeMinutes <= currentUKTimeMinutes) {
-          // Time has passed, schedule for tomorrow
-          const tomorrow = new Date(now);
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          targetDateStr = tomorrow.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
-        }
-        
-        // Convert UK time to UTC using the same method as dashboard
+        // Convert UK time to UTC
         // Create date string in UK timezone format
-        const ukDateTimeStr = `${targetDateStr}T${callbackTime}:00`;
-        
+        const ukDateTimeStr = `${targetDateStr}T${timeStr}:00`;
+
         // Use the same conversion method as dashboard (matching getDateRange logic)
         const startOfDayUK = new Date(ukDateTimeStr);
         const offsetMinutes = -startOfDayUK.getTimezoneOffset();
         let callbackDateTimeUTC = new Date(startOfDayUK.getTime() + (offsetMinutes * 60000));
-        
+
         // Verify the conversion matches expected UK time
         const verifyUK = callbackDateTimeUTC.toLocaleString('en-US', {
           timeZone: 'Europe/London',
@@ -6214,17 +6291,17 @@ router.patch('/:id/call-status', auth, async (req, res) => {
           minute: '2-digit',
           hour12: false
         });
-        
-        if (verifyUK !== callbackTime) {
+
+        if (verifyUK !== timeStr) {
           // Fine-tune if needed (shouldn't be necessary with proper conversion)
           const verifyParts = verifyUK.split(':');
-          const expectedParts = callbackTime.split(':');
+          const expectedParts = timeStr.split(':');
           const verifyMins = parseInt(verifyParts[0]) * 60 + parseInt(verifyParts[1]);
           const expectedMins = parseInt(expectedParts[0]) * 60 + parseInt(expectedParts[1]);
           const diffMins = expectedMins - verifyMins;
           callbackDateTimeUTC = new Date(callbackDateTimeUTC.getTime() + (diffMins * 60 * 1000));
-          
-          console.log(`📞 Timezone fine-tuning: ${verifyUK} → ${callbackTime} (${diffMins} minutes)`);
+
+          console.log(`📞 Timezone fine-tuning: ${verifyUK} → ${timeStr} (${diffMins} minutes)`);
         }
 
         // Create callback reminder record
@@ -6245,7 +6322,14 @@ router.patch('/:id/call-status', auth, async (req, res) => {
         workflowResult.callbackTime = callbackTime;
         workflowResult.callbackNote = callbackNote;
 
-        console.log(`📞 Callback reminder scheduled for ${callbackTime} UK time (${callbackDateTimeUTC.toISOString()} UTC)`);
+        // Format for logging
+        const displayDate = new Date(callbackDateTimeUTC).toLocaleDateString('en-GB', {
+          timeZone: 'Europe/London',
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric'
+        });
+        console.log(`📞 Callback reminder scheduled for ${displayDate} at ${timeStr} UK time (${callbackDateTimeUTC.toISOString()} UTC) - USER: ${req.user.id} (${req.user.name})`);
         } catch (callbackError) {
           console.error('Error creating callback reminder:', callbackError);
         }
@@ -6264,7 +6348,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
 });
 
 // @route   GET /api/leads/:id/callbacks
-// @desc    Get upcoming callback reminders for a specific lead
+// @desc    Get upcoming callback reminders for a specific lead (user-specific)
 // @access  Private
 router.get('/:id/callbacks', auth, async (req, res) => {
   try {
@@ -6273,10 +6357,12 @@ router.get('/:id/callbacks', auth, async (req, res) => {
     const sevenDaysFromNow = new Date();
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
 
+    // Only show callbacks created by the current user (user-specific)
     const { data: reminders, error } = await supabase
       .from('callback_reminders')
       .select('*')
       .eq('lead_id', leadId)
+      .eq('user_id', req.user.id)
       .in('status', ['pending', 'notified'])
       .gte('callback_time', now.toISOString())
       .lte('callback_time', sevenDaysFromNow.toISOString())
@@ -6300,9 +6386,11 @@ router.get('/:id/callbacks', auth, async (req, res) => {
 router.get('/callback-reminders/upcoming', auth, async (req, res) => {
   try {
     const now = new Date();
-    const futureDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // Next 7 days
+    const futureDate = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000); // Next 90 days (3 months)
 
-    // Get upcoming callback reminders for the current user
+    console.log(`📞 Fetching callbacks for user ${req.user.id} (${req.user.name}) from ${now.toISOString()} to ${futureDate.toISOString()}`);
+
+    // Get upcoming callback reminders for the current user ONLY
     const { data: reminders, error } = await supabase
       .from('callback_reminders')
       .select(`
@@ -6314,28 +6402,61 @@ router.get('/callback-reminders/upcoming', auth, async (req, res) => {
           email
         )
       `)
-      .eq('user_id', req.user.id)
+      .eq('user_id', req.user.id)  // USER-SPECIFIC: Only show this user's callbacks
       .eq('status', 'pending')
       .gte('callback_time', now.toISOString())
       .lte('callback_time', futureDate.toISOString())
       .order('callback_time', { ascending: true })
-      .limit(20);
+      .limit(100);
 
     if (error) {
       console.error('Error fetching callback reminders:', error);
       return res.status(500).json({ message: 'Server error' });
     }
 
+    console.log(`📞 Found ${(reminders || []).length} callbacks for user ${req.user.id} (${req.user.name})`);
+
+    // Debug: Log each reminder's user_id to verify filtering
+    if (reminders && reminders.length > 0) {
+      reminders.forEach(r => {
+        console.log(`📞 Callback ${r.id}: user_id=${r.user_id}, lead=${r.leads?.name}, time=${r.callback_time}`);
+      });
+    }
+
+    // Get today and tomorrow in UK timezone for comparison
+    const todayUK = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    const tomorrowDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const tomorrowUK = tomorrowDate.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+
     // Format reminders for frontend
     const formattedReminders = (reminders || []).map(reminder => {
       const callbackTime = new Date(reminder.callback_time);
-      const callbackTimeUK = callbackTime.toLocaleString('en-GB', {
+
+      // Get the date in UK timezone
+      const callbackDateUK = callbackTime.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+      const callbackTimeOnly = callbackTime.toLocaleString('en-GB', {
         timeZone: 'Europe/London',
         hour: '2-digit',
-        minute: '2-digit',
-        day: '2-digit',
-        month: 'short'
+        minute: '2-digit'
       });
+
+      // Determine the date label
+      let dateLabel;
+      if (callbackDateUK === todayUK) {
+        dateLabel = 'Today';
+      } else if (callbackDateUK === tomorrowUK) {
+        dateLabel = 'Tomorrow';
+      } else {
+        // Show full date for future dates
+        dateLabel = callbackTime.toLocaleDateString('en-GB', {
+          timeZone: 'Europe/London',
+          weekday: 'short',
+          day: '2-digit',
+          month: 'short'
+        });
+      }
+
+      const callbackTimeDisplay = `${dateLabel} at ${callbackTimeOnly}`;
 
       return {
         id: reminder.id,
@@ -6344,15 +6465,27 @@ router.get('/callback-reminders/upcoming', auth, async (req, res) => {
         leadName: reminder.leads?.name || 'Unknown Lead',
         leadPhone: reminder.leads?.phone || '',
         callbackTime: reminder.callback_time,
-        callbackTimeDisplay: callbackTimeUK,
+        callbackTimeDisplay: callbackTimeDisplay,
+        callbackDateLabel: dateLabel,
+        callbackTimeOnly: callbackTimeOnly,
         callbackNote: reminder.callback_note || '',
-        message: `Call back ${reminder.leads?.name || 'lead'} at ${callbackTimeUK}${reminder.callback_note ? ` - ${reminder.callback_note}` : ''}`,
+        message: `Call back ${reminder.leads?.name || 'lead'} - ${callbackTimeDisplay}${reminder.callback_note ? ` - ${reminder.callback_note}` : ''}`,
         timestamp: reminder.callback_time,
-        created_at: reminder.created_at
+        created_at: reminder.created_at,
+        isToday: callbackDateUK === todayUK,
+        isTomorrow: callbackDateUK === tomorrowUK
       };
     });
 
-    res.json({ reminders: formattedReminders });
+    res.json({
+      reminders: formattedReminders,
+      // Debug info - remove after confirming fix
+      _debug: {
+        requestingUserId: req.user.id,
+        requestingUserName: req.user.name,
+        totalFound: formattedReminders.length
+      }
+    });
   } catch (error) {
     console.error('Error fetching upcoming callback reminders:', error);
     res.status(500).json({ message: 'Server error' });

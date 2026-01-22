@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const { auth } = require('../middleware/auth');
 const MessagingService = require('../utils/messagingService');
+const emailAccountService = require('../utils/emailAccountService');
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 
@@ -260,11 +261,29 @@ router.post('/send', auth, async (req, res) => {
       emailBody: template.email_body || template.content,
       smsBody: template.sms_body || template.content,
       sendEmail: template.send_email !== false,
-      sendSMS: template.send_sms !== false,
-      emailAccount: template.email_account || 'primary'
+      sendSMS: template.send_sms !== false
     };
 
-    console.log(`📧 Message send settings: sendEmail=${sendTemplate.sendEmail}, sendSMS=${sendTemplate.sendSMS}, emailAccount=${sendTemplate.emailAccount}`);
+    // Resolve email account: template > user > default
+    let resolvedEmailAccount = 'primary';
+    try {
+      const resolution = await emailAccountService.resolveEmailAccount({
+        templateId: template.id,
+        userId: req.user?.id
+      });
+      if (resolution.type === 'database' && resolution.account) {
+        resolvedEmailAccount = resolution.account;
+        console.log(`📧 Message using: ${resolution.account.email} (database)`);
+      } else {
+        resolvedEmailAccount = resolution.accountKey || template.email_account || 'primary';
+        console.log(`📧 Message using: ${resolvedEmailAccount} (legacy)`);
+      }
+    } catch (resolveErr) {
+      console.error('📧 Error resolving email account:', resolveErr.message);
+      resolvedEmailAccount = template.email_account || 'primary';
+    }
+
+    console.log(`📧 Message send settings: sendEmail=${sendTemplate.sendEmail}, sendSMS=${sendTemplate.sendSMS}`);
 
     try {
       if (sendTemplate.sendEmail && lead.email) {
@@ -272,7 +291,7 @@ router.post('/send', auth, async (req, res) => {
           ...newMessage,
           to: lead.email,
           leadName: lead.name
-        }, sendTemplate.emailAccount);
+        }, resolvedEmailAccount);
       }
       if (sendTemplate.sendSMS && lead.phone) {
         await MessagingService.sendSMS({
@@ -365,18 +384,36 @@ router.post('/:id/resend', auth, async (req, res) => {
         const adaptedTemplate = {
           ...template,
           sendEmail: template.send_email !== false,
-          sendSMS: template.send_sms !== false,
-          emailAccount: template.email_account || 'primary'
+          sendSMS: template.send_sms !== false
         };
 
-        console.log(`📧 Resend settings: sendEmail=${adaptedTemplate.sendEmail}, sendSMS=${adaptedTemplate.sendSMS}, emailAccount=${adaptedTemplate.emailAccount}`);
+        // Resolve email account: template > user > default
+        let resolvedEmailAccount = 'primary';
+        try {
+          const resolution = await emailAccountService.resolveEmailAccount({
+            templateId: template.id,
+            userId: req.user?.id
+          });
+          if (resolution.type === 'database' && resolution.account) {
+            resolvedEmailAccount = resolution.account;
+            console.log(`📧 Resend using: ${resolution.account.email} (database)`);
+          } else {
+            resolvedEmailAccount = resolution.accountKey || template.email_account || 'primary';
+            console.log(`📧 Resend using: ${resolvedEmailAccount} (legacy)`);
+          }
+        } catch (resolveErr) {
+          console.error('📧 Error resolving email account:', resolveErr.message);
+          resolvedEmailAccount = template.email_account || 'primary';
+        }
+
+        console.log(`📧 Resend settings: sendEmail=${adaptedTemplate.sendEmail}, sendSMS=${adaptedTemplate.sendSMS}`);
 
         if (adaptedTemplate.sendEmail && message.leads?.email) {
           await MessagingService.sendEmail({
             ...message,
             to: message.leads.email,
             leadName: message.leads.name
-          }, adaptedTemplate.emailAccount);
+          }, resolvedEmailAccount);
         }
         if (adaptedTemplate.sendSMS && message.leads?.phone) {
           await MessagingService.sendSMS({

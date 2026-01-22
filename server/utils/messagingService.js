@@ -3,6 +3,7 @@ const path = require('path');
 const { sendEmail: sendActualEmail } = require('./emailService');
 const { sendSMS: sendActualSMS } = require('./smsService');
 const { fromZonedTime } = require('date-fns-tz');
+const emailAccountService = require('./emailAccountService');
 
 // Supabase configuration - use singleton client to prevent connection leaks
 const { getSupabaseClient } = require('../config/supabase-client');
@@ -561,10 +562,41 @@ class MessagingService {
       // Track which services were used for notification
       let emailResult = null;
       let smsResult = null;
-      const emailAccount = options.emailAccount || template.email_account || 'primary';
+
+      // Resolve email account using priority: template > user > default
+      let resolvedEmailAccount = 'primary'; // fallback
+      let emailAccountInfo = null;
 
       if (effectiveSendEmail) {
-        emailResult = await this.sendEmail(message, emailAccount);
+        try {
+          // Use priority resolution: options > template > user > default
+          // Always pass template.id - the resolution service will check if template has email_account_id
+          const resolution = await emailAccountService.resolveEmailAccount({
+            emailAccountId: options.emailAccountId,
+            templateId: template?.id || null,
+            userId: userId
+          });
+
+          if (resolution.type === 'database' && resolution.account) {
+            // Pass the database account object directly to sendEmail
+            resolvedEmailAccount = resolution.account;
+            emailAccountInfo = {
+              id: resolution.account.id,
+              email: resolution.account.email,
+              name: resolution.account.name
+            };
+            console.log(`📧 Resolved email account: ${resolution.account.email} (database)`);
+          } else {
+            // Fall back to legacy env var account
+            resolvedEmailAccount = options.emailAccount || template.email_account || resolution.accountKey || 'primary';
+            console.log(`📧 Using legacy email account: ${resolvedEmailAccount}`);
+          }
+        } catch (resolveError) {
+          console.error('📧 Error resolving email account, using fallback:', resolveError.message);
+          resolvedEmailAccount = options.emailAccount || template.email_account || 'primary';
+        }
+
+        emailResult = await this.sendEmail(message, resolvedEmailAccount);
       }
       if (effectiveSendSms) {
         smsResult = await this.sendSMS(message);
@@ -573,7 +605,7 @@ class MessagingService {
       // Return message with metadata about what was sent
       return {
         ...message,
-        emailAccount: effectiveSendEmail ? emailAccount : null,
+        emailAccount: effectiveSendEmail ? (emailAccountInfo || resolvedEmailAccount) : null,
         emailSent: !!emailResult,
         smsSent: !!smsResult,
         smsProvider: 'The SMS Works'
@@ -690,10 +722,29 @@ class MessagingService {
       };
 
       // Send actual messages - respect template settings
-      const emailAccount = template.email_account || 'primary';
+      // Use email account resolution: template > user > default
+      let resolvedEmailAccount = 'primary';
 
       if (template.send_email !== false && lead.email) {
-        await this.sendEmail(message, emailAccount);
+        try {
+          const resolution = await emailAccountService.resolveEmailAccount({
+            templateId: template?.id || null,
+            userId: userId
+          });
+
+          if (resolution.type === 'database' && resolution.account) {
+            resolvedEmailAccount = resolution.account;
+            console.log(`📧 Reminder using email account: ${resolution.account.email} (database)`);
+          } else {
+            resolvedEmailAccount = template.email_account || resolution.accountKey || 'primary';
+            console.log(`📧 Reminder using legacy email account: ${resolvedEmailAccount}`);
+          }
+        } catch (resolveError) {
+          console.error('📧 Error resolving email account for reminder:', resolveError.message);
+          resolvedEmailAccount = template.email_account || 'primary';
+        }
+
+        await this.sendEmail(message, resolvedEmailAccount);
       }
       if (template.send_sms !== false && lead.phone) {
         await this.sendSMS(message);
@@ -707,8 +758,13 @@ class MessagingService {
   }
 
   // Send email
+  // emailAccount can be: 'primary', 'secondary', a UUID string, or a database account object
   static async sendEmail(message, emailAccount = 'primary') {
     const messageId = message.id || 'unknown';
+    const accountDisplay = typeof emailAccount === 'object' && emailAccount.email
+      ? emailAccount.email
+      : emailAccount;
+
     console.log('\n' + '='.repeat(80));
     console.log(`📧 [EMAIL SEND ATTEMPT]`);
     console.log('='.repeat(80));
@@ -716,7 +772,7 @@ class MessagingService {
     console.log(`📧 Lead ID:    ${message.lead_id}`);
     console.log(`📧 To:         ${message.recipient_email}`);
     console.log(`📧 Subject:    ${message.subject}`);
-    console.log(`📧 Email Account: ${emailAccount}`);
+    console.log(`📧 Email Account: ${accountDisplay}`);
     console.log(`📧 Body Length: ${message.email_body ? message.email_body.length : 0} characters`);
 
     // Log attachments information

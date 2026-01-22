@@ -730,6 +730,7 @@ const Layout = ({ children }) => {
     { name: 'My Templates', href: '/bookers-templates', icon: FiMail, bookerOnly: true },
     { name: 'Templates', href: '/templates', icon: FiMail, adminOnly: true },
     { name: 'Contract Editor', href: '/contract-editor', icon: FiFileText, adminOnly: true },
+    { name: 'Email Accounts', href: '/email-accounts', icon: FiMail, adminOnly: true },
     { name: 'Users', href: '/users', icon: FiUser, adminOnly: true },
   ];
 

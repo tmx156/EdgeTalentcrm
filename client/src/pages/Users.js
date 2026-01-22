@@ -8,7 +8,8 @@ const Users = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  
+  const [emailAccounts, setEmailAccounts] = useState([]);
+
   // Create user modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
@@ -16,7 +17,8 @@ const Users = () => {
     name: '',
     email: '',
     password: '',
-    role: 'booker'
+    role: 'booker',
+    assigned_email_account_id: ''
   });
   const [formErrors, setFormErrors] = useState({});
 
@@ -33,8 +35,18 @@ const Users = () => {
   useEffect(() => {
     if (user?.role === 'admin') {
       fetchUsers();
+      fetchEmailAccounts();
     }
   }, [user]);
+
+  const fetchEmailAccounts = async () => {
+    try {
+      const response = await axios.get('/api/email-accounts/dropdown');
+      setEmailAccounts(response.data);
+    } catch (error) {
+      console.error('Error fetching email accounts:', error);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -153,10 +165,11 @@ const Users = () => {
         name: '',
         email: '',
         password: '',
-        role: 'booker'
+        role: 'booker',
+        assigned_email_account_id: ''
       });
       setShowCreateModal(false);
-      
+
       // You could show a success message here
       alert('User created successfully!');
       
@@ -171,12 +184,13 @@ const Users = () => {
 
   const handleCloseModal = () => {
     setShowCreateModal(false);
-          setFormData({
-        name: '',
-        email: '',
-        password: '',
-        role: 'booker'
-      });
+    setFormData({
+      name: '',
+      email: '',
+      password: '',
+      role: 'booker',
+      assigned_email_account_id: ''
+    });
     setFormErrors({});
   };
 
@@ -249,7 +263,8 @@ const Users = () => {
       name: userData.name,
       email: userData.email,
       role: userData.role,
-      password: '' // Add empty password field
+      password: '', // Add empty password field
+      assigned_email_account_id: userData.assigned_email_account_id || ''
     });
     setShowEditModal(true);
   };
@@ -580,14 +595,38 @@ const Users = () => {
                   <option value="admin">Administrator</option>
                 </select>
                 <p className="text-xs text-gray-500 mt-1">
-                  {formData.role === 'admin' 
-                    ? 'Full access to all features and user management' 
+                  {formData.role === 'admin'
+                    ? 'Full access to all features and user management'
                     : formData.role === 'viewer'
                     ? 'Read-only access to view data only'
                     : formData.role === 'photographer'
                     ? 'Access to upload and manage photos for leads'
                     : 'Access to leads management and bookings'
                   }
+                </p>
+              </div>
+
+              {/* Email Account Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <FiMail className="inline h-4 w-4 mr-2" />
+                  Email Account
+                </label>
+                <select
+                  name="assigned_email_account_id"
+                  value={formData.assigned_email_account_id}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">System Default</option>
+                  {emailAccounts.map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} ({account.email}){account.is_default ? ' - Default' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Email account used for sending messages from this user
                 </p>
               </div>
 
@@ -713,6 +752,30 @@ const Users = () => {
                   <option value="photographer">Photographer</option>
                   <option value="admin">Administrator</option>
                 </select>
+              </div>
+
+              {/* Email Account Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <FiMail className="inline h-4 w-4 mr-2" />
+                  Email Account
+                </label>
+                <select
+                  name="assigned_email_account_id"
+                  value={editUserData.assigned_email_account_id || ''}
+                  onChange={(e) => setEditUserData(prev => ({ ...prev, assigned_email_account_id: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">System Default</option>
+                  {emailAccounts.map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} ({account.email}){account.is_default ? ' - Default' : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Email account used for sending messages from this user
+                </p>
               </div>
 
               {/* Action Buttons */}

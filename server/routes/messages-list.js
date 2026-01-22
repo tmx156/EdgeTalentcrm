@@ -1368,15 +1368,34 @@ router.post('/reply', auth, async (req, res) => {
         });
       }
 
-      // Import email service
+      // Import email service and account resolution
       const { sendEmail } = require('../utils/emailService');
+      const emailAccountService = require('../utils/emailAccountService');
 
-      // Send email
+      // Resolve email account for this user
+      let emailAccount = 'primary';
+      try {
+        const resolution = await emailAccountService.resolveEmailAccount({
+          userId: user.id
+        });
+        if (resolution.type === 'database' && resolution.account) {
+          emailAccount = resolution.account;
+          console.log(`📧 Reply using: ${resolution.account.email} (database)`);
+        } else {
+          emailAccount = resolution.accountKey || 'primary';
+          console.log(`📧 Reply using: ${emailAccount} (legacy)`);
+        }
+      } catch (resolveErr) {
+        console.error('📧 Error resolving email account:', resolveErr.message);
+      }
+
+      // Send email with resolved account
       result = await sendEmail(
         leadData.email,
         `Re: ${originalMessage?.subject || 'Your Inquiry'}`,
         reply,
-        reply
+        [], // attachments
+        emailAccount
       );
 
       if (!result.success) {

@@ -3,6 +3,7 @@ const router = express.Router();
 const { auth } = require('../middleware/auth');
 const dbManager = require('../database-connection-manager');
 const MessagingService = require('../utils/messagingService');
+const emailAccountService = require('../utils/emailAccountService');
 
 // Function to send sale receipt via email and SMS
 const sendSaleReceipt = async (sale, lead, customEmail, customPhone, sendEmail = true, sendSMS = true) => {
@@ -57,7 +58,23 @@ const sendSaleReceipt = async (sale, lead, customEmail, customPhone, sendEmail =
 
       const emailResult = await dbManager.insert('messages', emailMessageData);
       if (emailResult && emailResult.length > 0) {
-        await MessagingService.sendEmail(emailResult[0]);
+        // Resolve email account: template > default (no user for system sends)
+        let resolvedEmailAccount = 'primary';
+        try {
+          const resolution = await emailAccountService.resolveEmailAccount({
+            templateId: template.id
+          });
+          if (resolution.type === 'database' && resolution.account) {
+            resolvedEmailAccount = resolution.account;
+            console.log(`📧 Receipt using: ${resolution.account.email} (database)`);
+          } else {
+            resolvedEmailAccount = resolution.accountKey || template.email_account || 'primary';
+          }
+        } catch (resolveErr) {
+          console.error('📧 Error resolving email account:', resolveErr.message);
+        }
+
+        await MessagingService.sendEmail(emailResult[0], resolvedEmailAccount);
         console.log(`📧 Receipt email sent for sale ${sale.id} to ${emailMessageData.recipient_email}`);
       }
     }
@@ -1260,8 +1277,23 @@ router.post('/bulk-communication', auth, async (req, res) => {
               channel: 'email',
             };
             
-            console.log(`📧 Sending email to ${lead.email} using account: ${customTemplate.email_account}...`);
-            const emailResult = await MessagingService.sendEmail(message, customTemplate.email_account);
+            // Resolve email account: template > user assignment > default
+            let resolvedEmailAccount = customTemplate.email_account;
+            try {
+              const resolution = await emailAccountService.resolveEmailAccount({
+                templateId: template?.id,
+                userId: req.user?.id
+              });
+              if (resolution.type === 'database' && resolution.account) {
+                resolvedEmailAccount = resolution.account;
+                console.log(`📧 Using resolved email account: ${resolution.account.email}`);
+              }
+            } catch (resolveErr) {
+              console.error('📧 Email account resolution error, using default:', resolveErr.message);
+            }
+
+            console.log(`📧 Sending email to ${lead.email}...`);
+            const emailResult = await MessagingService.sendEmail(message, resolvedEmailAccount);
             emailSent = emailResult;
             
             if (emailResult) {

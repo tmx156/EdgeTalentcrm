@@ -20,7 +20,7 @@ router.post('/', auth, async (req, res) => {
       return res.status(403).json({ message: 'Unauthorized: Admin access required' });
     }
 
-    const { name, email, password, role = 'booker' } = req.body;
+    const { name, email, password, role = 'booker', assigned_email_account_id } = req.body;
 
     // Validate required fields
     if (!name || !email || !password) {
@@ -73,6 +73,7 @@ router.post('/', auth, async (req, res) => {
         email: email.toLowerCase().trim(),
         password_hash: hashedPassword,
         role: role,
+        assigned_email_account_id: assigned_email_account_id || null,
         leads_assigned: 0,
         bookings_made: 0,
         show_ups: 0,
@@ -80,7 +81,7 @@ router.post('/', auth, async (req, res) => {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
-      .select('id, name, email, role')
+      .select('id, name, email, role, assigned_email_account_id')
       .single();
 
     if (insertError || !userResult) {
@@ -94,6 +95,7 @@ router.post('/', auth, async (req, res) => {
       name: name.trim(),
       email: email.toLowerCase().trim(),
       role: role,
+      assigned_email_account_id: assigned_email_account_id || null,
       leadsAssigned: 0,
       bookingsMade: 0,
       showUps: 0,
@@ -256,7 +258,7 @@ router.put('/:id', auth, async (req, res) => {
     }
 
     const userId = req.params.id;
-    const { name, email, role, password } = req.body;
+    const { name, email, role, password, assigned_email_account_id } = req.body;
 
     // Validate inputs
     if (!name || !email) {
@@ -332,6 +334,11 @@ router.put('/:id', auth, async (req, res) => {
       updated_at: new Date().toISOString()
     };
 
+    // Handle email account assignment (null clears the assignment)
+    if (assigned_email_account_id !== undefined) {
+      updateData.assigned_email_account_id = assigned_email_account_id || null;
+    }
+
     if (hashedPassword) {
       updateData.password_hash = hashedPassword;
     }
@@ -341,7 +348,7 @@ router.put('/:id', auth, async (req, res) => {
       .from('users')
       .update(updateData)
       .eq('id', userId)
-      .select('id, name, email, role');
+      .select('id, name, email, role, assigned_email_account_id');
 
     if (updateError) {
       console.error('Update user error:', updateError);
@@ -360,7 +367,8 @@ router.put('/:id', auth, async (req, res) => {
         id: updatedUser.id,
         name: updatedUser.name,
         email: updatedUser.email,
-        role: updatedUser.role
+        role: updatedUser.role,
+        assigned_email_account_id: updatedUser.assigned_email_account_id
       }
     });
   } catch (error) {

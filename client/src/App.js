@@ -28,6 +28,7 @@ import PublicBooking from './pages/PublicBooking';
 import Photographer from './pages/Photographer';
 import ContractSigning from './pages/ContractSigning';
 import ContractEditor from './pages/ContractEditor';
+import EmailAccounts from './pages/EmailAccounts';
 
 // Create browser history
 const history = createBrowserHistory();
@@ -105,6 +106,7 @@ function App() {
                           <Route path="/salesape" element={<SalesApe />} />
                           <Route path="/blocked-slots" element={<BlockedSlots />} />
                           <Route path="/photographer" element={<Photographer />} />
+                          <Route path="/email-accounts" element={<EmailAccounts />} />
                           <Route path="/" element={<Navigate to="/dashboard" />} />
                         </Routes>
                       </Layout>

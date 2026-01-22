@@ -7,11 +7,15 @@ const path = require('path');
 /**
  * Gmail API Service - Multi-Account Support
  * Supports multiple Gmail accounts via Gmail API
+ * Now supports both environment variables (legacy) and database-stored accounts
  */
 
 console.log('📧 Gmail Service: Initializing Multi-Account Support...');
 console.log('📧 Primary Account (GMAIL_EMAIL):', process.env.GMAIL_EMAIL || 'Not set');
 console.log('📧 Secondary Account (GMAIL_EMAIL_2):', process.env.GMAIL_EMAIL_2 || 'Not set');
+
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Account configurations
 const ACCOUNTS = {
@@ -41,13 +45,80 @@ Object.keys(ACCOUNTS).forEach(key => {
 });
 
 /**
+ * Get authenticated Gmail client from a database account object
+ * @param {Object} dbAccount - Database email account with decrypted credentials
+ * @returns {Promise<Object>} Gmail API client
+ */
+async function getGmailClientFromDbAccount(dbAccount) {
+  try {
+    const { client_id, client_secret, refresh_token, redirect_uri, email, display_name } = dbAccount;
+
+    if (!client_id || !client_secret || !refresh_token) {
+      throw new Error(`Gmail API credentials not configured for database account ${email}`);
+    }
+
+    const oauth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uri);
+    oauth2Client.setCredentials({ refresh_token: refresh_token });
+
+    // Test the token by making a simple API call to verify it's valid
+    const testGmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+    try {
+      await testGmail.users.getProfile({ userId: 'me' });
+      return testGmail;
+    } catch (testError) {
+      // Check if it's an invalid_grant error (token expired/revoked)
+      if (testError.code === 400 && (
+        testError.message?.includes('invalid_grant') ||
+        testError.response?.data?.error === 'invalid_grant' ||
+        testError.message?.includes('Token has been expired or revoked')
+      )) {
+        const errorMsg = `OAuth token expired or revoked for ${email}. ` +
+          `Please update the refresh token in Email Accounts settings.`;
+
+        console.error(`❌ [${display_name || 'DB Account'}] ${errorMsg}`);
+        throw new Error(errorMsg);
+      }
+      // Re-throw other errors
+      throw testError;
+    }
+  } catch (error) {
+    if (error.message?.includes('OAuth token expired or revoked')) {
+      throw error;
+    }
+    throw new Error(`Failed to authenticate Gmail API (database account): ${error.message}`);
+  }
+}
+
+/**
  * Get authenticated Gmail client for a specific account
- * @param {string} accountKey - 'primary' or 'secondary'
+ * @param {string|Object} accountKeyOrConfig - 'primary', 'secondary', UUID string, or database account object
  * @returns {Promise<Object>} Gmail API client
  * @throws {Error} If authentication fails with invalid_grant, includes re-auth instructions
  */
-async function getGmailClient(accountKey = 'primary') {
+async function getGmailClient(accountKeyOrConfig = 'primary') {
   try {
+    // If it's a database account object (has client_id and refresh_token properties)
+    if (typeof accountKeyOrConfig === 'object' && accountKeyOrConfig.client_id) {
+      console.log(`📧 Using database email account: ${accountKeyOrConfig.email}`);
+      return getGmailClientFromDbAccount(accountKeyOrConfig);
+    }
+
+    // If it's a UUID, look up the account from the database
+    if (typeof accountKeyOrConfig === 'string' && UUID_REGEX.test(accountKeyOrConfig)) {
+      console.log(`📧 Looking up email account by UUID: ${accountKeyOrConfig}`);
+      const emailAccountService = require('./emailAccountService');
+      const dbAccount = await emailAccountService.getAccountById(accountKeyOrConfig);
+
+      if (!dbAccount) {
+        throw new Error(`Email account not found with ID: ${accountKeyOrConfig}`);
+      }
+
+      return getGmailClientFromDbAccount(dbAccount);
+    }
+
+    // Legacy: use environment variable account key
+    const accountKey = accountKeyOrConfig;
     const account = ACCOUNTS[accountKey];
 
     if (!account) {
@@ -273,7 +344,7 @@ async function createEmailMessageWithAttachments(to, subject, text, from, fromNa
  * @param {Object} options - Additional options
  * @param {boolean} options.isHtml - Whether the text is HTML
  * @param {string} options.fromName - Sender display name (default: account's display name)
- * @param {string} options.accountKey - Which account to use: 'primary' or 'secondary' (default: 'primary')
+ * @param {string|Object} options.accountKey - Which account to use: 'primary', 'secondary', UUID, or database account object (default: 'primary')
  * @param {Array} options.attachments - Array of attachment objects with {path, filename} or {buffer, filename, contentType}
  * @returns {Promise<{success: boolean, messageId?: string, error?: string}>}
  */
@@ -281,10 +352,49 @@ async function sendEmail(to, subject, text, options = {}) {
   const emailId = Math.random().toString(36).substring(2, 8);
   const { isHtml = false, accountKey = 'primary', fromName, attachments = [] } = options;
 
-  // Get account configuration
-  const account = ACCOUNTS[accountKey];
+  // Determine account configuration (database or env vars)
+  let account;
+  let isDbAccount = false;
+
+  // Check if accountKey is a database account object
+  if (typeof accountKey === 'object' && accountKey.client_id) {
+    account = {
+      email: accountKey.email,
+      displayName: accountKey.display_name || 'Edge Talent',
+      clientId: accountKey.client_id,
+      clientSecret: accountKey.client_secret,
+      refreshToken: accountKey.refresh_token,
+      redirectUri: accountKey.redirect_uri
+    };
+    isDbAccount = true;
+  }
+  // Check if accountKey is a UUID (database lookup)
+  else if (typeof accountKey === 'string' && UUID_REGEX.test(accountKey)) {
+    try {
+      const emailAccountService = require('./emailAccountService');
+      const dbAccount = await emailAccountService.getAccountById(accountKey);
+      if (dbAccount) {
+        account = {
+          email: dbAccount.email,
+          displayName: dbAccount.display_name || 'Edge Talent',
+          clientId: dbAccount.client_id,
+          clientSecret: dbAccount.client_secret,
+          refreshToken: dbAccount.refresh_token,
+          redirectUri: dbAccount.redirect_uri
+        };
+        isDbAccount = true;
+      }
+    } catch (dbError) {
+      console.error(`📧 [${emailId}] Error looking up database account:`, dbError.message);
+    }
+  }
+
+  // Fall back to env var accounts if not a database account
   if (!account) {
-    return { success: false, error: `Invalid account key: ${accountKey}` };
+    account = ACCOUNTS[accountKey];
+    if (!account) {
+      return { success: false, error: `Invalid account key: ${accountKey}` };
+    }
   }
 
   const senderName = fromName || account.displayName;
@@ -307,7 +417,17 @@ async function sendEmail(to, subject, text, options = {}) {
   }
 
   try {
-    const gmail = await getGmailClient(accountKey);
+    // Pass the resolved account to getGmailClient to avoid duplicate database lookups
+    const gmailAccountArg = isDbAccount ? {
+      client_id: account.clientId,
+      client_secret: account.clientSecret,
+      refresh_token: account.refreshToken,
+      redirect_uri: account.redirectUri,
+      email: account.email,
+      display_name: account.displayName
+    } : accountKey;
+
+    const gmail = await getGmailClient(gmailAccountArg);
 
     // Create the email message
     let encodedMessage;
@@ -525,5 +645,7 @@ module.exports = {
   listEmails,
   testConnection,
   getAccountInfo,
+  getGmailClient,
+  getGmailClientFromDbAccount,
   ACCOUNTS
 };

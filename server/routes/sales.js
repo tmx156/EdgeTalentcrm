@@ -6,6 +6,7 @@ const path = require('path');
 const nodemailer = require('nodemailer');
 const { sendCustomMessage } = require('../utils/smsService');
 const { sendEmail, createTransporter } = require('../utils/emailService');
+const emailAccountService = require('../utils/emailAccountService');
 const dbManager = require('../database-connection-manager');
 
 // Import Supabase client for direct operations
@@ -773,36 +774,45 @@ router.post('/:saleId/send-receipt/email', auth, async (req, res) => {
       `;
     }
 
-    // Determine which email account to use based on template setting
-    const accountToUse = emailAccount === 'secondary' ? 'secondary' : 'primary';
-    console.log(`📧 Email account selection:`, {
-      templateEmailAccount: emailAccount,
-      accountToUse,
-      emailAddress: 'hello@edgetalent.co.uk'
-    });
-
-    // Use the emailService which handles multiple accounts correctly
-    const transporter = createTransporter(accountToUse);
-
-    if (!transporter) {
-      console.error(`❌ Failed to create transporter for ${accountToUse} account`);
-      return res.status(500).json({ error: `Email account ${accountToUse} not configured` });
+    // Resolve email account: template > user > default
+    let resolvedEmailAccount = 'primary';
+    try {
+      const resolution = await emailAccountService.resolveEmailAccount({
+        templateId: templateId,
+        userId: req.user?.id
+      });
+      if (resolution.type === 'database' && resolution.account) {
+        resolvedEmailAccount = resolution.account;
+        console.log(`📧 Sales receipt using: ${resolution.account.email} (database)`);
+      } else {
+        resolvedEmailAccount = resolution.accountKey || emailAccount || 'primary';
+        console.log(`📧 Sales receipt using: ${resolvedEmailAccount} (legacy)`);
+      }
+    } catch (resolveErr) {
+      console.error('📧 Error resolving email account:', resolveErr.message);
+      resolvedEmailAccount = emailAccount || 'primary';
     }
-
-    const mailOptions = {
-      to: email || '',
-      subject: emailSubject,
-      html: emailBody
-    };
 
     console.log(`📤 Sending receipt email:`, {
       to: email,
-      from: 'Edge Talent (hello@edgetalent.co.uk)',
       subject: emailSubject?.substring(0, 50) + '...'
     });
 
-    await transporter.sendMail(mailOptions);
-    console.log(`✅ Receipt sent successfully from ${accountToUse.toUpperCase()} account to ${email}`);
+    // Use the sendEmail function which supports database accounts
+    const emailResult = await sendEmail(
+      email,
+      emailSubject,
+      emailBody,
+      [], // no attachments
+      resolvedEmailAccount
+    );
+
+    if (!emailResult.success) {
+      console.error('❌ Failed to send receipt email:', emailResult.error);
+      return res.status(500).json({ error: emailResult.error || 'Failed to send email' });
+    }
+
+    console.log(`✅ Receipt sent successfully to ${email}`);
 
     res.json({ success: true, message: 'Receipt sent successfully' });
   } catch (error) {

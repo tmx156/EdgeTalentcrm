@@ -15,6 +15,7 @@ const { generateContractPDF, buildContractData, getActiveTemplate } = require('.
 const { uploadToS3 } = require('../utils/s3Service');
 const { sendEmail } = require('../utils/emailService');
 const { sendSMS } = require('../utils/smsService');
+const emailAccountService = require('../utils/emailAccountService');
 const archiver = require('archiver');
 
 const router = express.Router();
@@ -508,7 +509,25 @@ router.post('/send/:contractId', auth, async (req, res) => {
 </html>`;
         }
 
-        const emailAccount = template?.email_account || 'primary';
+        // Resolve email account: template > user > default
+        let emailAccount = 'primary';
+        try {
+          const resolution = await emailAccountService.resolveEmailAccount({
+            templateId: template?.id,
+            userId: req.user?.id
+          });
+          if (resolution.type === 'database' && resolution.account) {
+            emailAccount = resolution.account;
+            console.log(`📧 Contract email using: ${resolution.account.email} (database)`);
+          } else {
+            emailAccount = resolution.accountKey || template?.email_account || 'primary';
+            console.log(`📧 Contract email using: ${emailAccount} (legacy)`);
+          }
+        } catch (resolveErr) {
+          console.error('📧 Error resolving email account:', resolveErr.message);
+          emailAccount = template?.email_account || 'primary';
+        }
+
         const emailResult = await sendEmail(
           recipientEmail,
           emailSubject,
@@ -1220,13 +1239,32 @@ router.post('/sign/:token', async (req, res) => {
           photoCount: photoAttachments.length // Actual number of photos (not zip count)
         };
 
+        // Resolve email account: template > default (no user context in public route)
+        let emailAccount = 'primary';
+        try {
+          const resolution = await emailAccountService.resolveEmailAccount({
+            templateId: deliveryTemplate?.id
+            // No userId - this is a public contract signing route
+          });
+          if (resolution.type === 'database' && resolution.account) {
+            emailAccount = resolution.account;
+            console.log(`📧 Delivery email using: ${resolution.account.email} (database)`);
+          } else {
+            emailAccount = resolution.accountKey || deliveryTemplate?.email_account || 'primary';
+            console.log(`📧 Delivery email using: ${emailAccount} (legacy)`);
+          }
+        } catch (resolveErr) {
+          console.error('📧 Error resolving email account:', resolveErr.message);
+          emailAccount = deliveryTemplate?.email_account || 'primary';
+        }
+
         if (attachments.length > 0) {
           const emailResult = await sendEmail(
             customerEmail,
             emailSubject,
             emailHtml,
             attachments,
-            'primary'
+            emailAccount
           );
 
           if (emailResult.success) {
@@ -1243,7 +1281,7 @@ router.post('/sign/:token', async (req, res) => {
             'Your Edge Talent Contract - Signed Successfully',
             emailHtml,
             [],
-            'primary'
+            emailAccount
           );
 
           if (emailResult.success) {
@@ -1802,13 +1840,39 @@ router.post('/:contractId/resend-delivery', auth, async (req, res) => {
 </html>`;
     }
 
+    // Resolve email account: template > user > default
+    let emailAccount = 'primary';
+    try {
+      const { data: deliveryTemplateForResolution } = await supabase
+        .from('templates')
+        .select('id, email_account')
+        .eq('type', 'contract_delivery')
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+
+      const resolution = await emailAccountService.resolveEmailAccount({
+        templateId: deliveryTemplateForResolution?.id,
+        userId: req.user?.id
+      });
+      if (resolution.type === 'database' && resolution.account) {
+        emailAccount = resolution.account;
+        console.log(`📧 Resend delivery email using: ${resolution.account.email} (database)`);
+      } else {
+        emailAccount = resolution.accountKey || deliveryTemplateForResolution?.email_account || 'primary';
+        console.log(`📧 Resend delivery email using: ${emailAccount} (legacy)`);
+      }
+    } catch (resolveErr) {
+      console.error('📧 Error resolving email account:', resolveErr.message);
+    }
+
     // Send email
     const emailResult = await sendEmail(
       customerEmail,
       emailSubject,
       emailHtml,
       attachments,
-      'primary'
+      emailAccount
     );
 
     if (emailResult.success) {
