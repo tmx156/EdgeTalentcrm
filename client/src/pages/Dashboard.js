@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiWifi, FiClock, FiMessageSquare, FiMail, FiSend, FiX, FiArrowRight, FiPhone } from 'react-icons/fi';
+import { FiWifi, FiClock, FiMessageSquare, FiMail, FiSend, FiX, FiArrowRight, FiPhone, FiTrash2 } from 'react-icons/fi';
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
@@ -19,6 +19,7 @@ const Dashboard = () => {
   const [replyMode, setReplyMode] = useState('sms');
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
+  const [deletingCallbackId, setDeletingCallbackId] = useState(null);
 
   // Format time ago helper
   const timeAgo = (date) => {
@@ -67,13 +68,42 @@ const Dashboard = () => {
     try {
       const callbacksRes = await axios.get('/api/leads/callback-reminders/upcoming');
       const callbacks = callbacksRes.data?.reminders || [];
+      const debug = callbacksRes.data?._debug;
       console.log(`📞 Fetched ${callbacks.length} upcoming callback reminders`);
+      if (debug) {
+        console.log(`📞 DEBUG: Requesting user: ${debug.requestingUserName} (ID: ${debug.requestingUserId})`);
+      }
       setUpcomingCallbacks(callbacks);
     } catch (e) {
       console.error('Error fetching upcoming callbacks:', e);
       setUpcomingCallbacks([]);
     }
   }, []);
+
+  // Delete a callback reminder
+  const handleDeleteCallback = async (callbackId, leadName) => {
+    if (!window.confirm(`Delete callback reminder for ${leadName}?`)) {
+      return;
+    }
+
+    setDeletingCallbackId(callbackId);
+    try {
+      const response = await axios.delete(`/api/callback-reminders/${callbackId}`);
+      if (response.data.success) {
+        // Remove from local state immediately
+        setUpcomingCallbacks(prev => prev.filter(cb => cb.id !== callbackId));
+        console.log(`🗑️ Callback reminder ${callbackId} deleted`);
+      } else {
+        alert(response.data.message || 'Failed to delete callback reminder');
+      }
+    } catch (e) {
+      console.error('Error deleting callback:', e);
+      const errorMsg = e.response?.data?.message || e.message || 'Failed to delete callback reminder';
+      alert(errorMsg);
+    } finally {
+      setDeletingCallbackId(null);
+    }
+  };
 
   // Initial fetch
   useEffect(() => {
@@ -207,42 +237,93 @@ const Dashboard = () => {
               {(upcomingCallbacks || []).length > 0 && (
                 <>
                   {upcomingCallbacks.map((callback) => (
-                    <div key={callback.id} className="bg-white border-l-4 border-purple-400 rounded-lg p-5 hover:shadow-md transition-shadow">
+                    <div
+                      key={callback.id}
+                      className={`bg-white border-l-4 rounded-lg p-5 hover:shadow-md transition-shadow ${
+                        callback.isToday
+                          ? 'border-red-500 bg-red-50'
+                          : callback.isTomorrow
+                            ? 'border-orange-400 bg-orange-50'
+                            : 'border-purple-400'
+                      }`}
+                    >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center space-x-3">
-                          <div className="bg-purple-100 rounded-full p-2">
-                            <FiPhone className="h-5 w-5 text-purple-600" />
+                          <div className={`rounded-full p-2 ${
+                            callback.isToday
+                              ? 'bg-red-100'
+                              : callback.isTomorrow
+                                ? 'bg-orange-100'
+                                : 'bg-purple-100'
+                          }`}>
+                            <FiPhone className={`h-5 w-5 ${
+                              callback.isToday
+                                ? 'text-red-600'
+                                : callback.isTomorrow
+                                  ? 'text-orange-600'
+                                  : 'text-purple-600'
+                            }`} />
                           </div>
                           <div>
                             <p className="font-bold text-gray-900">
                               {callback.leadName || 'Unknown Lead'}
                             </p>
-                            <span className="inline-block px-2 py-1 text-xs font-medium text-purple-700 bg-purple-100 rounded">
-                              CALLBACK TASK
+                            <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${
+                              callback.isToday
+                                ? 'text-red-700 bg-red-100'
+                                : callback.isTomorrow
+                                  ? 'text-orange-700 bg-orange-100'
+                                  : 'text-purple-700 bg-purple-100'
+                            }`}>
+                              {callback.isToday ? '📞 CALL TODAY' : callback.isTomorrow ? '📅 TOMORROW' : '📆 SCHEDULED'}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <p className="font-semibold text-gray-900 mb-2">
+                      <p className={`font-semibold mb-2 ${
+                        callback.isToday ? 'text-red-700' : callback.isTomorrow ? 'text-orange-700' : 'text-gray-900'
+                      }`}>
                         ⏰ {callback.callbackTimeDisplay}
                       </p>
 
-                      <p className="text-gray-700 text-sm mb-3">
-                        {callback.callbackNote || 'No note provided'}
-                      </p>
+                      {callback.callbackNote && (
+                        <p className="text-gray-700 text-sm mb-3">
+                          📝 {callback.callbackNote}
+                        </p>
+                      )}
 
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-gray-500">
-                          Scheduled callback
+                          {callback.leadPhone && `📱 ${callback.leadPhone}`}
                         </p>
-                        <button
-                          onClick={() => window.location.href = `/leads/${callback.leadId}`}
-                          className="text-purple-600 hover:text-purple-700 font-medium text-sm flex items-center space-x-1"
-                        >
-                          <span>View Lead</span>
-                          <FiArrowRight className="h-3 w-3" />
-                        </button>
+                        <div className="flex items-center space-x-3">
+                          <button
+                            onClick={() => handleDeleteCallback(callback.id, callback.leadName)}
+                            disabled={deletingCallbackId === callback.id}
+                            className="text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                            title="Delete callback"
+                          >
+                            {deletingCallbackId === callback.id ? (
+                              <span className="text-xs">...</span>
+                            ) : (
+                              <FiTrash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => window.location.href = `/leads/${callback.leadId}`}
+                            className={`font-medium text-sm flex items-center space-x-1 ${
+                              callback.isToday
+                                ? 'text-red-600 hover:text-red-700'
+                                : callback.isTomorrow
+                                  ? 'text-orange-600 hover:text-orange-700'
+                                  : 'text-purple-600 hover:text-purple-700'
+                            }`}
+                          >
+                            <span>View Lead</span>
+                            <FiArrowRight className="h-3 w-3" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}

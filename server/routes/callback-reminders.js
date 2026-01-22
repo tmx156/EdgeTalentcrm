@@ -89,5 +89,57 @@ router.get('/debug', auth, async (req, res) => {
   }
 });
 
+// @route   DELETE /api/callback-reminders/:id
+// @desc    Delete a callback reminder (user can only delete their own)
+// @access  Private
+router.delete('/:id', auth, async (req, res) => {
+  try {
+    const reminderId = req.params.id;
+    console.log(`🗑️ Delete request for callback ${reminderId} by user ${req.user.id}`);
+
+    // First check if the reminder exists and belongs to this user
+    const { data: reminders, error: fetchError } = await supabase
+      .from('callback_reminders')
+      .select('*')
+      .eq('id', reminderId);
+
+    if (fetchError) {
+      console.error('Error fetching callback reminder:', fetchError);
+      return res.status(500).json({ message: 'Database error', error: fetchError.message });
+    }
+
+    if (!reminders || reminders.length === 0) {
+      console.log(`🗑️ Callback ${reminderId} not found`);
+      return res.status(404).json({ message: 'Callback reminder not found' });
+    }
+
+    const reminder = reminders[0];
+
+    // Check ownership - user can only delete their own callbacks
+    if (reminder.user_id !== req.user.id) {
+      console.log(`🗑️ User ${req.user.id} tried to delete callback owned by ${reminder.user_id}`);
+      return res.status(403).json({ message: 'You can only delete your own callback reminders' });
+    }
+
+    // Delete the reminder
+    const { error: deleteError } = await supabase
+      .from('callback_reminders')
+      .delete()
+      .eq('id', reminderId);
+
+    if (deleteError) {
+      console.error('Error deleting callback reminder:', deleteError);
+      return res.status(500).json({ message: 'Failed to delete callback reminder' });
+    }
+
+    console.log(`🗑️ Callback reminder ${reminderId} deleted by user ${req.user.id}`);
+
+    res.json({ success: true, message: 'Callback reminder deleted' });
+  } catch (error) {
+    console.error('Error deleting callback reminder:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 module.exports = router;
 

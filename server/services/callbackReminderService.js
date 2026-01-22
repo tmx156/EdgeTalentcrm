@@ -83,11 +83,8 @@ class CallbackReminderService {
               timestamp: new Date().toISOString()
             };
 
-            // Emit to specific user room
+            // Emit to specific user room ONLY (user-specific callbacks)
             global.io.to(`user_${reminder.user_id}`).emit('callback_reminder', notification);
-            
-            // Also emit to all admins
-            global.io.emit('callback_reminder', notification);
 
             console.log(`📞 Callback reminder sent to user ${reminder.user_id} for lead ${reminder.lead_id}`);
           }

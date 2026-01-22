@@ -9,6 +9,7 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
   const [error, setError] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [showCallbackModal, setShowCallbackModal] = useState(false);
+  const [callbackDate, setCallbackDate] = useState('');
   const [callbackTime, setCallbackTime] = useState('');
   const [callbackNote, setCallbackNote] = useState('');
   const [pendingStatus, setPendingStatus] = useState(null);
@@ -167,7 +168,15 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
             case 'callback':
               if (callbackTime) {
                 // Show confirmation that callback is scheduled
-                alert(`Callback scheduled for ${callbackTime}. You'll receive a reminder notification.`);
+                // Format the datetime nicely for display
+                const formattedDateTime = callbackTime.includes('T')
+                  ? new Date(callbackTime).toLocaleString('en-GB', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                      timeZone: 'Europe/London'
+                    })
+                  : callbackTime;
+                alert(`Callback scheduled for ${formattedDateTime}. You'll receive a reminder notification.`);
               }
               break;
           }
@@ -182,18 +191,25 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
       setLoading(false);
       setShowCallbackModal(false);
       setPendingStatus(null);
+      setCallbackDate('');
       setCallbackTime('');
       setCallbackNote('');
     }
   };
 
   const handleCallbackSubmit = () => {
+    if (!callbackDate) {
+      setError('Please select a callback date');
+      return;
+    }
     if (!callbackTime) {
       setError('Please select a callback time');
       return;
     }
 
-    updateStatus(pendingStatus, callbackTime, callbackNote);
+    // Combine date and time into a single datetime string
+    const callbackDateTime = `${callbackDate}T${callbackTime}`;
+    updateStatus(pendingStatus, callbackDateTime, callbackNote);
   };
 
   // Get current time in UK timezone for default value (using CRM time utils)
@@ -204,9 +220,20 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
     return `${hours}:${minutes}`;
   };
 
-  // Initialize callback time with current UK time
+  // Get current date in UK timezone for default value
+  const getCurrentUKDateString = () => {
+    const ukTime = getCurrentUKTime();
+    const year = ukTime.getFullYear();
+    const month = String(ukTime.getMonth() + 1).padStart(2, '0');
+    const day = String(ukTime.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Initialize callback date and time with current UK values when modal opens
   useEffect(() => {
-    if (showCallbackModal && !callbackTime) {
+    if (showCallbackModal) {
+      // Always reset to current UK date/time when modal opens fresh
+      setCallbackDate(getCurrentUKDateString());
       setCallbackTime(getCurrentUKTimeString());
     }
   }, [showCallbackModal]);
@@ -460,6 +487,7 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
                 onClick={() => {
                   setShowCallbackModal(false);
                   setPendingStatus(null);
+                  setCallbackDate('');
                   setCallbackTime('');
                   setCallbackNote('');
                 }}
@@ -472,17 +500,31 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Callback Date
+                </label>
+                <input
+                  type="date"
+                  value={callbackDate}
+                  onChange={(e) => setCallbackDate(e.target.value)}
+                  min={getCurrentUKDateString()}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Callback Time (UK Time)
                 </label>
                 <input
                   type="time"
-                  value={callbackTime || getCurrentUKTimeString()}
+                  value={callbackTime}
                   onChange={(e) => setCallbackTime(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                   required
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  You'll receive a notification at this time to call back
+                  You'll receive a notification at this date and time to call back
                 </p>
               </div>
 
@@ -508,7 +550,7 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
               <div className="flex space-x-3">
                 <button
                   onClick={handleCallbackSubmit}
-                  disabled={loading || !callbackTime}
+                  disabled={loading || !callbackDate || !callbackTime}
                   className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                 >
                   <FiClock className="h-4 w-4" />
@@ -518,6 +560,7 @@ const LeadStatusDropdown = ({ leadId, lead, onStatusUpdate }) => {
                   onClick={() => {
                     setShowCallbackModal(false);
                     setPendingStatus(null);
+                    setCallbackDate('');
                     setCallbackTime('');
                     setCallbackNote('');
                   }}
