@@ -399,16 +399,24 @@ router.get('/oauth2callback2', async (req, res) => {
 router.get('/auth3', async (req, res) => {
   try {
     console.log('🔐 Starting Gmail OAuth2 authentication flow for TERTIARY account...');
+    console.log('🔐 GMAIL_CLIENT_ID_3 set:', !!process.env.GMAIL_CLIENT_ID_3);
+    console.log('🔐 GMAIL_CLIENT_SECRET_3 set:', !!process.env.GMAIL_CLIENT_SECRET_3);
+    console.log('🔐 GMAIL_REDIRECT_URI_3:', process.env.GMAIL_REDIRECT_URI_3 || 'not set');
 
     const clientId = process.env.GMAIL_CLIENT_ID_3;
     const clientSecret = process.env.GMAIL_CLIENT_SECRET_3;
-    const redirectUri = process.env.GMAIL_REDIRECT_URI_3 || 'http://localhost:5000/api/gmail/oauth2callback3';
+    const redirectUri = process.env.GMAIL_REDIRECT_URI_3 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback3';
 
     if (!clientId || !clientSecret) {
+      console.error('❌ Missing tertiary credentials - clientId:', !!clientId, 'clientSecret:', !!clientSecret);
       return res.status(500).json({
         success: false,
         message: 'Tertiary Gmail account credentials not configured',
-        instructions: 'Set GMAIL_CLIENT_ID_3 and GMAIL_CLIENT_SECRET_3 in your .env file'
+        instructions: 'Set GMAIL_CLIENT_ID_3 and GMAIL_CLIENT_SECRET_3 in Railway environment variables',
+        debug: {
+          hasClientId: !!clientId,
+          hasClientSecret: !!clientSecret
+        }
       });
     }
 
@@ -453,7 +461,7 @@ router.get('/oauth2callback3', async (req, res) => {
 
     const clientId = process.env.GMAIL_CLIENT_ID_3;
     const clientSecret = process.env.GMAIL_CLIENT_SECRET_3;
-    const redirectUri = process.env.GMAIL_REDIRECT_URI_3 || 'http://localhost:5000/api/gmail/oauth2callback3';
+    const redirectUri = process.env.GMAIL_REDIRECT_URI_3 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback3';
 
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
     const { tokens } = await oauth2Client.getToken(code);

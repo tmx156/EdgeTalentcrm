@@ -33,7 +33,7 @@ const ACCOUNTS = {
     clientId: process.env.GMAIL_CLIENT_ID_2,
     clientSecret: process.env.GMAIL_CLIENT_SECRET_2,
     refreshToken: process.env.GMAIL_REFRESH_TOKEN_2,
-    redirectUri: process.env.GMAIL_REDIRECT_URI_2 || 'http://localhost:5000/api/gmail/oauth2callback2',
+    redirectUri: process.env.GMAIL_REDIRECT_URI_2 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback2',
     displayName: 'Edge Talent'
   },
   tertiary: {
@@ -41,7 +41,7 @@ const ACCOUNTS = {
     clientId: process.env.GMAIL_CLIENT_ID_3,
     clientSecret: process.env.GMAIL_CLIENT_SECRET_3,
     refreshToken: process.env.GMAIL_REFRESH_TOKEN_3,
-    redirectUri: process.env.GMAIL_REDIRECT_URI_3 || 'http://localhost:5000/api/gmail/oauth2callback3',
+    redirectUri: process.env.GMAIL_REDIRECT_URI_3 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback3',
     displayName: 'Edge Talent'
   }
 };
