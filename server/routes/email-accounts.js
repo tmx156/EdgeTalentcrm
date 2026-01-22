@@ -594,6 +594,89 @@ router.post('/:id/set-default', auth, async (req, res) => {
 });
 
 /**
+ * @route   GET /api/email-accounts/:id/auth-url
+ * @desc    Get OAuth authorization URL for an email account (returns URL as JSON)
+ * @access  Private (Admin only)
+ */
+router.get('/:id/auth-url', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Unauthorized: Admin access required' });
+    }
+
+    const { id } = req.params;
+
+    // Get account from database
+    const account = await emailAccountService.getAccountById(id);
+
+    if (!account) {
+      return res.status(404).json({ message: 'Email account not found' });
+    }
+
+    if (!account.client_id) {
+      return res.status(400).json({ message: 'Client ID not configured for this account. Please add Client ID first.' });
+    }
+
+    if (!account.client_secret) {
+      return res.status(400).json({ message: 'Client Secret not configured for this account. Please add Client Secret first.' });
+    }
+
+    // Use the redirect URI from the account, or construct a default one
+    const redirectUri = account.redirect_uri ||
+      `${req.protocol}://${req.get('host')}/api/email-accounts/oauth-callback`;
+
+    console.log('🔐 Generating OAuth URL for account:', {
+      id: account.id,
+      email: account.email,
+      clientId: account.client_id.substring(0, 20) + '...',
+      redirectUri
+    });
+
+    // Create OAuth2 client with database credentials
+    const oauth2Client = new google.auth.OAuth2(
+      account.client_id,
+      account.client_secret,
+      redirectUri
+    );
+
+    // Generate a state token to prevent CSRF and track which account this is for
+    const state = Buffer.from(JSON.stringify({
+      accountId: id,
+      timestamp: Date.now()
+    })).toString('base64');
+
+    // Store state temporarily (expires in 10 minutes)
+    pendingOAuthStates.set(state, {
+      accountId: id,
+      clientId: account.client_id,
+      clientSecret: account.client_secret,
+      redirectUri,
+      expires: Date.now() + 10 * 60 * 1000
+    });
+
+    // Generate the authorization URL
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent', // Force consent to always get refresh token
+      scope: [
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/userinfo.email'
+      ],
+      state
+    });
+
+    console.log('🔐 Generated auth URL for frontend');
+
+    // Return the URL as JSON so frontend can redirect
+    res.json({ authUrl });
+  } catch (error) {
+    console.error('Error generating OAuth URL:', error);
+    res.status(500).json({ message: 'Failed to generate authorization URL', error: error.message });
+  }
+});
+
+/**
  * @route   GET /api/email-accounts/:id/auth
  * @desc    Start OAuth flow for an email account using its stored credentials
  * @access  Private (Admin only)
