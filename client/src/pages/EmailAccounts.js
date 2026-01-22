@@ -477,6 +477,15 @@ const EmailAccounts = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
+                      <a
+                        href={`/api/email-accounts/${account.id}/auth`}
+                        className={`${account.hasClientId ? 'text-purple-600 hover:text-purple-900' : 'text-gray-300 cursor-not-allowed pointer-events-none'}`}
+                        title={account.hasClientId ? "Authorize with Google" : "Add Client ID first"}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <FiKey className="h-4 w-4" />
+                      </a>
                       <button
                         onClick={() => handleTestConnection(account.id)}
                         disabled={testingAccountId === account.id}
