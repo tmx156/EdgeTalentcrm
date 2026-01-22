@@ -41,17 +41,44 @@ router.get('/', auth, async (req, res) => {
  */
 router.get('/dropdown', auth, async (req, res) => {
   try {
-    const accounts = await emailAccountService.getAllAccounts();
+    const dropdown = [];
 
-    // Return simplified list for dropdowns
-    const dropdown = accounts
+    // Add env var accounts first (these always work)
+    const { ACCOUNTS } = gmailService;
+
+    if (ACCOUNTS.primary && ACCOUNTS.primary.email) {
+      dropdown.push({
+        id: 'primary',
+        name: 'Primary Email (Env)',
+        email: ACCOUNTS.primary.email,
+        is_default: true,
+        isEnvVar: true
+      });
+    }
+
+    if (ACCOUNTS.secondary && ACCOUNTS.secondary.email) {
+      dropdown.push({
+        id: 'secondary',
+        name: 'Secondary Email (Env)',
+        email: ACCOUNTS.secondary.email,
+        is_default: false,
+        isEnvVar: true
+      });
+    }
+
+    // Also add database accounts if any
+    const accounts = await emailAccountService.getAllAccounts();
+    const dbAccounts = accounts
       .filter(a => a.is_active)
       .map(a => ({
         id: a.id,
         name: a.name,
         email: a.email,
-        is_default: a.is_default
+        is_default: a.is_default,
+        isEnvVar: false
       }));
+
+    dropdown.push(...dbAccounts);
 
     res.json(dropdown);
   } catch (error) {

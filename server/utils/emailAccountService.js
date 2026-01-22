@@ -166,6 +166,9 @@ class EmailAccountService {
   /**
    * Get the email account assigned to a specific user (returns null if no assignment)
    * Note: This does NOT fall back to default - that's handled by resolveEmailAccount
+   * Returns: { type: 'env', accountKey: 'primary'|'secondary' } for env var accounts
+   *          { type: 'database', account: {...} } for database accounts
+   *          null if no assignment
    */
   async getAccountForUser(userId) {
     try {
@@ -190,9 +193,18 @@ class EmailAccountService {
 
       // Check if user has an assigned account
       if (user && user.assigned_email_account_id) {
-        const account = await this.getAccountById(user.assigned_email_account_id);
+        const assignedId = user.assigned_email_account_id;
+
+        // Check if it's an env var account ('primary' or 'secondary')
+        if (assignedId === 'primary' || assignedId === 'secondary') {
+          console.log(`📧 User has env var email account assigned: ${assignedId}`);
+          return { type: 'env', accountKey: assignedId };
+        }
+
+        // Otherwise it's a database account UUID
+        const account = await this.getAccountById(assignedId);
         if (account && account.is_active) {
-          return account;
+          return { type: 'database', account };
         }
         // Account exists but is inactive - log and return null
         console.log(`📧 User's assigned email account is inactive, will use default`);
@@ -544,10 +556,16 @@ class EmailAccountService {
 
       // Priority 3: User-assigned account
       if (userId) {
-        const account = await this.getAccountForUser(userId);
-        if (account) {
-          console.log(`📧 Using user-assigned email account: ${account.email}`);
-          return { type: 'database', account };
+        const userAssignment = await this.getAccountForUser(userId);
+        if (userAssignment) {
+          // getAccountForUser now returns { type: 'env'|'database', ... }
+          if (userAssignment.type === 'env') {
+            console.log(`📧 Using user-assigned env var account: ${userAssignment.accountKey}`);
+            return userAssignment;
+          } else if (userAssignment.type === 'database' && userAssignment.account) {
+            console.log(`📧 Using user-assigned database account: ${userAssignment.account.email}`);
+            return userAssignment;
+          }
         }
       }
 
