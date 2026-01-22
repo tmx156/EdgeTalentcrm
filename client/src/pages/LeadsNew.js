@@ -40,6 +40,7 @@ const LeadsNew = () => {
   });
 
   const [searchTerm, setSearchTerm] = useState('');
+  const searchInputRef = useRef(null); // Ref to maintain focus
   // Read statusFilter from URL query params first, then navigation state, then default to 'all'
   const [statusFilter, setStatusFilter] = useState(() => {
     const urlParams = new URLSearchParams(location.search);
@@ -947,7 +948,9 @@ const LeadsNew = () => {
     }
   };
 
-  if (loading && leads.length === 0) {
+  // Only show full-page loading spinner on initial load, not while searching
+  // This prevents the search input from being unmounted and losing focus
+  if (loading && leads.length === 0 && !searchTerm) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center">
         <div className="text-center space-y-4">
@@ -1092,6 +1095,7 @@ const LeadsNew = () => {
             <div className="flex-1 relative">
               <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
               <input
+                ref={searchInputRef}
                 type="text"
                 placeholder="Search by name, phone, email, or postcode..."
                 className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-800 placeholder-gray-400"
@@ -1127,30 +1131,30 @@ const LeadsNew = () => {
         </div>
 
         {/* Status Filter Tabs */}
-        <div className="px-6 pb-3">
-          <div className="flex items-center space-x-2 overflow-x-auto pb-2">
+        <div className="px-3 sm:px-6 pb-3">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {statusFilterButtons.map(filter => {
               const getFilterStyle = () => {
                 if (statusFilter !== filter.value) {
-                  return 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50';
+                  return 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300';
                 }
                 switch(filter.value) {
-                  case 'all': return 'bg-gray-600 text-white shadow-lg transform scale-105';
-                  case 'Assigned': return 'bg-orange-600 text-white shadow-lg transform scale-105';
-                  case 'Booked': return 'bg-blue-600 text-white shadow-lg transform scale-105';
-                  case 'No answer': return 'bg-yellow-600 text-white shadow-lg transform scale-105';
-                  case 'No Answer x2': return 'bg-orange-600 text-white shadow-lg transform scale-105';
-                  case 'No Answer x3': return 'bg-red-600 text-white shadow-lg transform scale-105';
-                  case 'Left Message': return 'bg-yellow-600 text-white shadow-lg transform scale-105';
-                  case 'Not interested': return 'bg-red-600 text-white shadow-lg transform scale-105';
-                  case 'Call back': return 'bg-purple-600 text-white shadow-lg transform scale-105';
-                  case 'Wrong Number': return 'bg-teal-600 text-white shadow-lg transform scale-105';
-                  case 'Sales/converted - purchased': return 'bg-green-600 text-white shadow-lg transform scale-105';
-                  case 'Not Qualified': return 'bg-red-600 text-white shadow-lg transform scale-105';
-                  default: return 'bg-gray-600 text-white shadow-lg transform scale-105';
+                  case 'all': return 'bg-gray-700 text-white shadow-md ring-2 ring-gray-400/30';
+                  case 'Assigned': return 'bg-orange-500 text-white shadow-md ring-2 ring-orange-400/30';
+                  case 'Booked': return 'bg-blue-500 text-white shadow-md ring-2 ring-blue-400/30';
+                  case 'No answer': return 'bg-yellow-500 text-white shadow-md ring-2 ring-yellow-400/30';
+                  case 'No Answer x2': return 'bg-orange-500 text-white shadow-md ring-2 ring-orange-400/30';
+                  case 'No Answer x3': return 'bg-red-500 text-white shadow-md ring-2 ring-red-400/30';
+                  case 'Left Message': return 'bg-amber-500 text-white shadow-md ring-2 ring-amber-400/30';
+                  case 'Not interested': return 'bg-red-500 text-white shadow-md ring-2 ring-red-400/30';
+                  case 'Call back': return 'bg-purple-500 text-white shadow-md ring-2 ring-purple-400/30';
+                  case 'Wrong Number': return 'bg-teal-500 text-white shadow-md ring-2 ring-teal-400/30';
+                  case 'Sales/converted - purchased': return 'bg-green-500 text-white shadow-md ring-2 ring-green-400/30';
+                  case 'Not Qualified': return 'bg-red-500 text-white shadow-md ring-2 ring-red-400/30';
+                  default: return 'bg-gray-700 text-white shadow-md ring-2 ring-gray-400/30';
                 }
               };
-              
+
               return (
                 <button
                   key={filter.value}
@@ -1160,13 +1164,13 @@ const LeadsNew = () => {
                     setCurrentPage(1); // Reset to page 1 immediately when filter changes
                     console.log('🔴 [FilterClick] State updated:', { newFilter: filter.value, newPage: 1 });
                   }}
-                  className={`px-4 py-2 rounded-xl font-medium transition-all duration-200 whitespace-nowrap ${getFilterStyle()}`}
+                  className={`inline-flex items-center px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 ${getFilterStyle()}`}
                 >
-                  {filter.label}
-                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                  <span className="truncate max-w-[80px] sm:max-w-none">{filter.label}</span>
+                  <span className={`ml-1.5 px-1.5 py-0.5 rounded-md text-[10px] sm:text-xs font-semibold ${
                     statusFilter === filter.value
-                      ? 'bg-white/20 text-white'
-                      : 'bg-gray-100 text-gray-600'
+                      ? 'bg-white/25 text-white'
+                      : 'bg-gray-100 text-gray-500'
                   }`}>
                     {filter.count}
                   </span>
