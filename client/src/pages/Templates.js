@@ -16,6 +16,7 @@ const Templates = () => {
   const [leads, setLeads] = useState([]);
   const [selectedLead, setSelectedLead] = useState('');
   const [variables, setVariables] = useState([]);
+  const [emailAccounts, setEmailAccounts] = useState([]);
   
   // Refs to track which field is focused for variable insertion
   const emailBodyRef = useRef(null);
@@ -33,7 +34,7 @@ const Templates = () => {
     sendEmail: true,
     sendSMS: true,
     isActive: true,
-    emailAccount: 'primary',
+    emailAccount: '', // Empty = use user's assigned account
     attachments: []
   });
 
@@ -85,6 +86,7 @@ const Templates = () => {
   useEffect(() => {
     fetchTemplates();
     fetchVariables();
+    fetchEmailAccounts();
     if (user?.role === 'admin') {
       fetchLeads();
     }
@@ -119,6 +121,22 @@ const Templates = () => {
       console.error('Error fetching templates:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchEmailAccounts = async () => {
+    try {
+      const response = await fetch('/api/email-accounts/dropdown', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setEmailAccounts(data);
+      }
+    } catch (error) {
+      console.error('Error fetching email accounts:', error);
     }
   };
 
@@ -243,7 +261,7 @@ const Templates = () => {
       sendEmail: template.sendEmail,
       sendSMS: template.sendSMS,
       isActive: template.isActive,
-      emailAccount: template.email_account || template.emailAccount || 'primary',
+      emailAccount: template.email_account || template.emailAccount || '', // Empty = use user's assigned account
       attachments: Array.isArray(existingAttachments) ? existingAttachments : []
     });
     setShowModal(true);
@@ -326,7 +344,7 @@ const Templates = () => {
       sendEmail: true,
       sendSMS: true,
       isActive: true,
-      emailAccount: 'primary',
+      emailAccount: '', // Empty = use user's assigned account
       attachments: []
     });
   };
@@ -735,11 +753,31 @@ const Templates = () => {
                                 onChange={(e) => setFormData({...formData, emailAccount: e.target.value})}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                               >
-                                <option value="primary">📧 Primary Account (hello@edgetalent.co.uk)</option>
-                                <option value="secondary">📧 Diary@edgetalent.co.uk</option>
+                                <option value="">👤 Use User's Assigned Account (Recommended)</option>
+                                {emailAccounts.filter(a => a.isEnvVar).length > 0 && (
+                                  <optgroup label="Email Accounts">
+                                    {emailAccounts.filter(a => a.isEnvVar).map(account => (
+                                      <option key={account.id} value={account.id}>
+                                        📧 {account.name} ({account.email})
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {emailAccounts.filter(a => !a.isEnvVar).length > 0 && (
+                                  <optgroup label="Database Accounts">
+                                    {emailAccounts.filter(a => !a.isEnvVar).map(account => (
+                                      <option key={account.id} value={account.id}>
+                                        📧 {account.name} ({account.email}){account.is_default ? ' ⭐' : ''}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
                               </select>
                               <p className="text-xs text-gray-500 mt-1">
-                                Emails will be sent via Gmail API from the selected account
+                                {formData.emailAccount === ''
+                                  ? "Email will be sent from the account assigned to the user sending it"
+                                  : "Email will always be sent from the selected account"
+                                }
                               </p>
                             </div>
                           )}

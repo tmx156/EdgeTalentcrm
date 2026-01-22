@@ -13,6 +13,7 @@ const BookersTemplates = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [variables, setVariables] = useState([]);
+  const [emailAccounts, setEmailAccounts] = useState([]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -24,12 +25,13 @@ const BookersTemplates = () => {
     sendEmail: true,
     sendSMS: false,
     isActive: true,
-    emailAccount: 'primary' // Always send from hello@edgetalent.co.uk
+    emailAccount: '' // Empty = use user's assigned account
   });
 
   useEffect(() => {
     fetchTemplates();
     fetchVariables();
+    fetchEmailAccounts();
   }, [user]);
 
   const fetchTemplates = async () => {
@@ -77,6 +79,22 @@ const BookersTemplates = () => {
     }
   };
 
+  const fetchEmailAccounts = async () => {
+    try {
+      const response = await fetch('/api/email-accounts/dropdown', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setEmailAccounts(data);
+      }
+    } catch (error) {
+      console.error('Error fetching email accounts:', error);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -91,14 +109,13 @@ const BookersTemplates = () => {
         'invitation_email'
       ].includes(formData.type) ? formData.type : 'no_answer';
 
-      // Always send from hello@edgetalent.co.uk (primary account)
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ ...formData, type: validType, emailAccount: 'primary' })
+        body: JSON.stringify({ ...formData, type: validType })
       });
       if (response.ok) {
         alert('Template saved successfully!');
@@ -127,7 +144,8 @@ const BookersTemplates = () => {
       reminderDays: template.reminderDays || 5,
       sendEmail: template.sendEmail,
       sendSMS: template.sendSMS,
-      isActive: template.isActive
+      isActive: template.isActive,
+      emailAccount: template.email_account || template.emailAccount || ''
     });
     setShowModal(true);
   };
@@ -169,7 +187,7 @@ const BookersTemplates = () => {
       sendEmail: true,
       sendSMS: false,
       isActive: true,
-      emailAccount: 'primary' // Always send from hello@edgetalent.co.uk
+      emailAccount: '' // Empty = use user's assigned account
     });
   };
 
@@ -427,6 +445,36 @@ const BookersTemplates = () => {
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
                         required
                       />
+                    </div>
+                    {/* Email Account Selector */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Send From Email Account
+                      </label>
+                      <select
+                        value={formData.emailAccount}
+                        onChange={(e) => setFormData({...formData, emailAccount: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="">👤 Use My Assigned Account</option>
+                        {emailAccounts.filter(a => a.isEnvVar).map(account => (
+                          <option key={account.id} value={account.id}>
+                            📧 {account.name} ({account.email})
+                          </option>
+                        ))}
+                        {emailAccounts.filter(a => !a.isEnvVar).length > 0 && (
+                          emailAccounts.filter(a => !a.isEnvVar).map(account => (
+                            <option key={account.id} value={account.id}>
+                              📧 {account.name} ({account.email}){account.is_default ? ' ⭐' : ''}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formData.emailAccount === ''
+                          ? "Email will be sent from your assigned account"
+                          : "Email will always be sent from the selected account"}
+                      </p>
                     </div>
                   </div>
                 )}
