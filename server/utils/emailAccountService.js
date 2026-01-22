@@ -14,7 +14,10 @@ const IV_LENGTH = 16;
  * Encrypt sensitive data (client_secret, refresh_token)
  */
 function encrypt(text) {
-  if (!text) return null;
+  if (!text) {
+    console.log('🔐 Encrypt: No text provided, returning null');
+    return null;
+  }
   try {
     // Ensure key is exactly 32 bytes
     const key = Buffer.from(ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32));
@@ -22,9 +25,11 @@ function encrypt(text) {
     const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
     let encrypted = cipher.update(text, 'utf8', 'hex');
     encrypted += cipher.final('hex');
-    return iv.toString('hex') + ':' + encrypted;
+    const result = iv.toString('hex') + ':' + encrypted;
+    console.log(`🔐 Encrypt: Success - input length: ${text.length}, output length: ${result.length}`);
+    return result;
   } catch (error) {
-    console.error('Encryption error:', error);
+    console.error('🔐 Encryption error:', error);
     return null;
   }
 }
@@ -33,20 +38,27 @@ function encrypt(text) {
  * Decrypt sensitive data
  */
 function decrypt(encryptedText) {
-  if (!encryptedText) return null;
+  if (!encryptedText) {
+    console.log('🔓 Decrypt: No encrypted text provided, returning null');
+    return null;
+  }
   try {
     const key = Buffer.from(ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32));
     const parts = encryptedText.split(':');
-    if (parts.length !== 2) return null;
+    if (parts.length !== 2) {
+      console.log(`🔓 Decrypt: Invalid format (no colon separator), got ${parts.length} parts`);
+      return null;
+    }
 
     const iv = Buffer.from(parts[0], 'hex');
     const encryptedData = parts[1];
     const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
     let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
+    console.log(`🔓 Decrypt: Success - output length: ${decrypted.length}`);
     return decrypted;
   } catch (error) {
-    console.error('Decryption error:', error);
+    console.error('🔓 Decryption error:', error);
     return null;
   }
 }
@@ -200,6 +212,20 @@ class EmailAccountService {
   async createAccount(data) {
     try {
       const { name, email, client_id, client_secret, refresh_token, redirect_uri, display_name, is_default } = data;
+
+      console.log('📧 Creating email account:', {
+        name,
+        email,
+        hasClientId: !!client_id,
+        clientIdLength: client_id?.length || 0,
+        hasClientSecret: !!client_secret,
+        clientSecretLength: client_secret?.length || 0,
+        hasRefreshToken: !!refresh_token,
+        refreshTokenLength: refresh_token?.length || 0,
+        redirect_uri,
+        display_name,
+        is_default
+      });
 
       // Validate required fields
       if (!name || !email) {
@@ -399,13 +425,30 @@ class EmailAccountService {
    */
   async testAccount(id) {
     try {
+      console.log(`🧪 Testing email account: ${id}`);
       const account = await this.getAccountById(id);
 
       if (!account) {
         throw new Error('Email account not found');
       }
 
+      console.log('🧪 Account retrieved:', {
+        id: account.id,
+        email: account.email,
+        hasClientId: !!account.client_id,
+        clientIdLength: account.client_id?.length || 0,
+        hasClientSecret: !!account.client_secret,
+        clientSecretLength: account.client_secret?.length || 0,
+        hasRefreshToken: !!account.refresh_token,
+        refreshTokenLength: account.refresh_token?.length || 0
+      });
+
       if (!account.client_id || !account.client_secret || !account.refresh_token) {
+        console.log('🧪 Missing credentials:', {
+          client_id: !!account.client_id,
+          client_secret: !!account.client_secret,
+          refresh_token: !!account.refresh_token
+        });
         return {
           success: false,
           error: 'Missing OAuth credentials (client_id, client_secret, or refresh_token)'
