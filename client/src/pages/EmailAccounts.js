@@ -439,9 +439,12 @@ const EmailAccounts = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex flex-col space-y-1">
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 flex-wrap gap-1">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${account.hasClientId ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                          Client ID {account.hasClientId ? <FiCheck className="ml-1 h-3 w-3" /> : <FiX className="ml-1 h-3 w-3" />}
+                          ID {account.hasClientId ? <FiCheck className="ml-1 h-3 w-3" /> : <FiX className="ml-1 h-3 w-3" />}
+                        </span>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${account.hasClientSecret ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          Secret {account.hasClientSecret ? <FiCheck className="ml-1 h-3 w-3" /> : <FiX className="ml-1 h-3 w-3" />}
                         </span>
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${account.hasRefreshToken ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                           Token {account.hasRefreshToken ? <FiCheck className="ml-1 h-3 w-3" /> : <FiX className="ml-1 h-3 w-3" />}
@@ -804,9 +807,21 @@ const EmailAccounts = () => {
 
               <hr className="my-4" />
               <h3 className="text-sm font-medium text-gray-700">Update OAuth Credentials</h3>
-              <p className="text-xs text-gray-500 mb-4">
-                Leave blank to keep existing credentials.
+              <p className="text-xs text-gray-500 mb-2">
+                Credentials are hidden for security. Leave blank to keep existing.
               </p>
+              <div className="flex items-center space-x-2 mb-4 text-xs">
+                <span className="text-gray-600">Currently saved:</span>
+                <span className={accounts.find(a => a.id === editAccountData?.id)?.hasClientId ? 'text-green-600' : 'text-red-600'}>
+                  ID {accounts.find(a => a.id === editAccountData?.id)?.hasClientId ? '✓' : '✗'}
+                </span>
+                <span className={accounts.find(a => a.id === editAccountData?.id)?.hasClientSecret ? 'text-green-600' : 'text-red-600'}>
+                  Secret {accounts.find(a => a.id === editAccountData?.id)?.hasClientSecret ? '✓' : '✗'}
+                </span>
+                <span className={accounts.find(a => a.id === editAccountData?.id)?.hasRefreshToken ? 'text-green-600' : 'text-red-600'}>
+                  Token {accounts.find(a => a.id === editAccountData?.id)?.hasRefreshToken ? '✓' : '✗'}
+                </span>
+              </div>
 
               {/* Client ID Field */}
               <div>
