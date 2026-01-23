@@ -454,25 +454,31 @@ const BookersTemplates = () => {
                       <select
                         value={formData.emailAccount}
                         onChange={(e) => setFormData({...formData, emailAccount: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
                       >
-                        <option value="">👤 Use My Assigned Account</option>
-                        {emailAccounts.filter(a => a.isEnvVar).map(account => (
-                          <option key={account.id} value={account.id}>
-                            📧 {account.name} ({account.email})
-                          </option>
-                        ))}
+                        <option value="">👤 Use User's Assigned Account (Recommended)</option>
+                        {emailAccounts.filter(a => a.isEnvVar).length > 0 && (
+                          <optgroup label="Email Accounts">
+                            {emailAccounts.filter(a => a.isEnvVar).map(account => (
+                              <option key={account.id} value={account.id}>
+                                📧 {account.name} ({account.email})
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                         {emailAccounts.filter(a => !a.isEnvVar).length > 0 && (
-                          emailAccounts.filter(a => !a.isEnvVar).map(account => (
-                            <option key={account.id} value={account.id}>
-                              📧 {account.name} ({account.email}){account.is_default ? ' ⭐' : ''}
-                            </option>
-                          ))
+                          <optgroup label="Database Accounts">
+                            {emailAccounts.filter(a => !a.isEnvVar).map(account => (
+                              <option key={account.id} value={account.id}>
+                                📧 {account.name} ({account.email}){account.is_default ? ' ⭐' : ''}
+                              </option>
+                            ))}
+                          </optgroup>
                         )}
                       </select>
                       <p className="text-xs text-gray-500 mt-1">
                         {formData.emailAccount === ''
-                          ? "Email will be sent from your assigned account"
+                          ? "Email will be sent from the account assigned to the user sending it"
                           : "Email will always be sent from the selected account"}
                       </p>
                     </div>
