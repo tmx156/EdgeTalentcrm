@@ -5533,8 +5533,9 @@ router.post('/:id/resend-welcome-pack', auth, async (req, res) => {
       {
         templateId: template.id,
         sendEmail: true,
-        sendSms: true,
-        emailAccount: template.email_account || 'primary'
+        sendSms: true
+        // Don't pass emailAccount - let resolveEmailAccount handle priority:
+        // template.email_account > user assignment > default > primary
       }
     );
 

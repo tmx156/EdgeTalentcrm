@@ -588,7 +588,8 @@ class MessagingService {
             console.log(`📧 Resolved email account: ${resolution.account.email} (database)`);
           } else {
             // Fall back to legacy env var account
-            resolvedEmailAccount = options.emailAccount || template.email_account || resolution.accountKey || 'primary';
+            // Priority: resolution result > template setting > options > primary
+            resolvedEmailAccount = resolution.accountKey || template.email_account || options.emailAccount || 'primary';
             console.log(`📧 Using legacy email account: ${resolvedEmailAccount}`);
           }
         } catch (resolveError) {
