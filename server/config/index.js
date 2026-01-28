@@ -29,7 +29,7 @@ const config = {
     // Option 2: API Key + Secret to generate JWT dynamically (preferred)
     apiKey: process.env.SMS_WORKS_API_KEY || null,
     apiSecret: process.env.SMS_WORKS_API_SECRET || null,
-    senderId: process.env.SMS_WORKS_SENDER_ID || 'Edge Talent', // Default to "Edge Talent" (alphanumeric sender)
+    senderId: process.env.SMS_WORKS_SENDER_ID || '447860043007', // Replyable UK number
     // Note: The SMS Works uses webhooks for incoming messages, no polling needed
   },
 

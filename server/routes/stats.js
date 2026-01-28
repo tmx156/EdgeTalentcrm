@@ -184,7 +184,7 @@ router.get('/leads', auth, async (req, res) => {
       booked: leads?.filter(l => l.status === 'Booked').length || 0,
       attended: leads?.filter(l => l.status === 'Attended').length || 0,
       cancelled: leads?.filter(l => l.status === 'Cancelled').length || 0,
-      assigned: leads?.filter(l => l.status === 'Assigned').length || 0,
+      assigned: leads?.filter(l => l.status === 'Assigned' && !getCallStatus(l)).length || 0,
       rejected: leads?.filter(l => l.status === 'Rejected').length || 0,
       callback: leads?.filter(l => l.status === 'Call Back').length || 0,
       noAnswer: leads?.filter(l => l.status === 'No Answer').length || 0,

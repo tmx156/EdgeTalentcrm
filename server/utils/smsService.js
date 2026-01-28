@@ -65,7 +65,7 @@ const SMS_CONFIG = {
     // Option 2: API Key + Secret to generate JWT dynamically
     apiKey: process.env.SMS_WORKS_API_KEY,
     apiSecret: process.env.SMS_WORKS_API_SECRET,
-    senderId: process.env.SMS_WORKS_SENDER_ID || 'Edge Talent'
+    senderId: process.env.SMS_WORKS_SENDER_ID || '447860043007'
   }
 };
 
@@ -378,9 +378,9 @@ const sendSMS = async (to, message) => {
     // Remove '+' from destination for The SMS Works API (they expect format like 447123456789)
     const destination = normalized.replace(/^\+/, '');
     
-    // Get sender ID - can be text (e.g., "Edge Talent") or numeric
+    // Get sender ID - can be text (alphanumeric) or numeric (replyable number)
     // If it's numeric, remove + and non-digits. If it's text, use as-is (max 11 chars for alphanumeric)
-    let senderId = SMS_CONFIG.thesmsworks.senderId || 'Edge Talent';
+    let senderId = SMS_CONFIG.thesmsworks.senderId || '447860043007';
     
     // If sender is numeric, sanitize it (remove + and non-digits)
     // If sender is text (contains letters), use it as-is (alphanumeric sender)
@@ -401,7 +401,7 @@ const sendSMS = async (to, message) => {
 
     // Prepare payload for The SMS Works API
     const payload = {
-      sender: senderId || 'Edge Talent', // Use "Edge Talent" as default if not set
+      sender: senderId || '447860043007', // Replyable UK number
       destination: destination,
       content: message
     };

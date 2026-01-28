@@ -25,6 +25,73 @@ const supabase = getSupabaseClient();
 
 const router = express.Router();
 
+// Helper: Parse a CSV line respecting quoted fields (handles commas inside quotes)
+const parseCSVLine = (line) => {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') {
+        current += '"';
+        i++; // skip escaped quote
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  result.push(current.trim());
+  return result;
+};
+
+// Helper: Parse UK date to ISO string using UTC (avoids timezone shifting)
+const parseEntryDateToISO = (raw) => {
+  if (!raw) return null;
+  const str = raw.toString().trim();
+  if (!str) return null;
+  const ukMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+  if (ukMatch) {
+    const [, day, month, year, hours, minutes] = ukMatch;
+    return new Date(Date.UTC(
+      parseInt(year), parseInt(month) - 1, parseInt(day),
+      parseInt(hours || 0), parseInt(minutes || 0)
+    )).toISOString();
+  }
+  const parsed = new Date(raw);
+  return !isNaN(parsed.getTime()) ? parsed.toISOString() : null;
+};
+
+// Helper: Clean up stale preview files older than 1 hour
+const cleanupStalePreviewFiles = (uploadDir) => {
+  try {
+    if (!fs.existsSync(uploadDir)) return;
+    const files = fs.readdirSync(uploadDir).filter(f => f.startsWith('preview-') && f.endsWith('.json'));
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    for (const file of files) {
+      const filePath = path.join(uploadDir, file);
+      const stat = fs.statSync(filePath);
+      if (stat.mtimeMs < oneHourAgo) {
+        fs.unlinkSync(filePath);
+        console.log(`🧹 Cleaned up stale preview file: ${file}`);
+      }
+    }
+  } catch (e) {
+    // Non-fatal
+  }
+};
+
 // Helper function to wrap promises with timeout
 const withTimeout = (promise, timeoutMs, operationName = 'Operation') => {
   const timeoutPromise = new Promise((_, reject) => {
@@ -376,7 +443,7 @@ router.get('/', auth, async (req, res) => {
     // so we don't use range() initially - we'll paginate after filtering
     let dataQuery = supabase
       .from('leads')
-      .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, is_double_confirmed, booking_status, has_sale, created_at, assigned_at, booked_at, custom_fields, review_date, review_time, review_slot', { count: 'exact' })
+      .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, is_double_confirmed, booking_status, has_sale, created_at, assigned_at, booked_at, custom_fields, review_date, review_time, review_slot, lead_source, entry_date', { count: 'exact' })
       .order('created_at', { ascending: false });
     
     // Only apply range for non-call_status filters (standard status filters)
@@ -521,7 +588,7 @@ router.get('/', auth, async (req, res) => {
         // Clone the query and apply range for this batch
         const batchQuery = supabase
           .from('leads')
-          .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, is_double_confirmed, booking_status, has_sale, created_at, assigned_at, booked_at, custom_fields, call_status, review_date, review_time, review_slot')
+          .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, is_double_confirmed, booking_status, has_sale, created_at, assigned_at, booked_at, custom_fields, call_status, review_date, review_time, review_slot, lead_source')
           .order('created_at', { ascending: false })
           .neq('postcode', 'ZZGHOST')
           .range(paginationFrom, paginationFrom + paginationBatchSize - 1);
@@ -696,6 +763,7 @@ router.get('/', auth, async (req, res) => {
         has_sale: lead.has_sale,
         created_at: lead.created_at,
         assigned_at: lead.assigned_at,
+        lead_source: lead.lead_source,
         custom_fields: lead.custom_fields, // Include for filtering
         call_status: callStatus, // Extracted for easy access
         booker: lead.booker_id && usersMap[lead.booker_id] ? {
@@ -772,10 +840,10 @@ router.get('/calendar', auth, async (req, res) => {
     let query = supabase
       .from('leads')
       .select(`
-        id, name, phone, email, status, date_booked, booker_id,
+        id, name, phone, email, age, status, date_booked, booked_at, booker_id,
         is_confirmed, is_double_confirmed, booking_status, has_sale, time_booked, booking_slot,
         created_at, postcode, notes, image_url, review_date, review_time, review_slot,
-        date_of_birth, height_inches, waist_inches, hips_inches, eye_color, hair_color, hair_length
+        date_of_birth, height_inches, chest_inches, waist_inches, hips_inches, eye_color, hair_color, hair_length
       `)
       .or('date_booked.not.is.null,status.eq.Booked')
       .is('deleted_at', null) // Ensure we don't fetch deleted leads
@@ -1009,9 +1077,10 @@ router.get('/calendar', auth, async (req, res) => {
         const fallbackPromise = supabase
           .from('leads')
           .select(`
-            id, name, phone, email, age, status, date_booked, booker_id,
+            id, name, phone, email, age, status, date_booked, booked_at, booker_id,
             is_confirmed, booking_status, booking_history, has_sale,
-            created_at, updated_at, postcode, notes, image_url
+            created_at, updated_at, postcode, notes, image_url,
+            date_of_birth, height_inches, chest_inches, waist_inches, hips_inches, eye_color, hair_color, hair_length
           `)
           .not('date_booked', 'is', null)
           .is('deleted_at', null)
@@ -2322,6 +2391,8 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
                     key === 'everBooked' ? 'ever_booked' :
                     key === 'bookedAt' ? 'booked_at' :
                     key === 'booker' ? 'booker_id' : // Map 'booker' to 'booker_id'
+                    key === 'leadSource' ? 'lead_source' :
+                    key === 'entryDate' ? 'entry_date' :
                     key;
 
       // Convert Date objects to ISO strings
@@ -3668,6 +3739,601 @@ router.get('/calendar-public', async (req, res) => {
   }
 });
 
+// @route   POST /api/leads/upload-preview
+// @desc    Parse uploaded file, return columns + sample rows + suggested mapping for manual column mapping
+// @access  Admin only
+router.post('/upload-preview', auth, adminAuth, (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('❌ Multer error (preview):', err.message);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'File too large. Maximum size is 10MB.' });
+      }
+      if (err.message.includes('Invalid file type')) {
+        return res.status(400).json({ message: 'Invalid file type. Please upload CSV or Excel files only.' });
+      }
+      return res.status(400).json({ message: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    console.log('📤 Upload preview request received');
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const filePath = req.file.path;
+    const fileExtension = path.extname(req.file.originalname).toLowerCase();
+    let rawRows = [];
+
+    // --- Parse file ---
+    if (fileExtension === '.csv') {
+      const csvContent = fs.readFileSync(filePath, 'utf8');
+      const lines = csvContent.split('\n').filter(line => line.trim());
+      if (lines.length < 2) {
+        fs.unlinkSync(filePath);
+        return res.status(400).json({ message: 'CSV file must have at least a header row and one data row' });
+      }
+      const headers = parseCSVLine(lines[0]);
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.every(v => !v)) continue;
+        const row = {};
+        headers.forEach((header, idx) => { row[header] = values[idx] || ''; });
+        rawRows.push(row);
+      }
+    } else if (fileExtension === '.xlsx' || fileExtension === '.xls') {
+      try {
+        const workbook = xlsx.readFile(filePath);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        rawRows = xlsx.utils.sheet_to_json(worksheet, { defval: '' });
+        rawRows = rawRows.filter(row => Object.values(row).some(val => val && val.toString().trim()));
+      } catch (excelError) {
+        fs.unlinkSync(filePath);
+        return res.status(400).json({ message: 'Failed to parse Excel file: ' + excelError.message });
+      }
+    }
+
+    // Clean up original uploaded file
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    console.log(`📊 Preview: Parsed ${rawRows.length} rows from file`);
+
+    if (rawRows.length === 0) {
+      return res.status(400).json({ message: 'No data rows found in file' });
+    }
+
+    const columns = Object.keys(rawRows[0]);
+    const sampleRows = rawRows.slice(0, 3);
+
+    // --- Auto-detect suggested mapping ---
+    const suggestedMapping = {
+      name: null,
+      phone: null,
+      email: null,
+      postcode: null,
+      age: null,
+      lead_source: null,
+      entry_date: null,
+      parent_phone: null,
+      gender: null,
+      image_url: null
+    };
+
+    for (const col of columns) {
+      const lk = col.toLowerCase().trim();
+      if (lk.includes('name') && !suggestedMapping.name) {
+        suggestedMapping.name = col;
+      } else if ((lk.includes('phone') || lk.includes('mobile') || lk.includes('tel')) && !lk.includes('parent') && !suggestedMapping.phone) {
+        suggestedMapping.phone = col;
+      } else if (lk.includes('email') && !suggestedMapping.email) {
+        suggestedMapping.email = col;
+      } else if ((lk.includes('postcode') || lk.includes('postal') || lk.includes('zip')) && !suggestedMapping.postcode) {
+        suggestedMapping.postcode = col;
+      } else if (lk === 'age' && !suggestedMapping.age) {
+        suggestedMapping.age = col;
+      } else if (lk.includes('source') && !suggestedMapping.lead_source) {
+        suggestedMapping.lead_source = col;
+      } else if (lk.includes('entry') && lk.includes('date') && !suggestedMapping.entry_date) {
+        suggestedMapping.entry_date = col;
+      } else if (lk.includes('parent') && lk.includes('phone') && !suggestedMapping.parent_phone) {
+        suggestedMapping.parent_phone = col;
+      } else if ((lk.includes('gender') || lk === 'sex') && !suggestedMapping.gender) {
+        suggestedMapping.gender = col;
+      } else if ((lk.includes('image') || lk.includes('photo') || lk.includes('picture') || lk.includes('thumbnail')) && (lk.includes('url') || lk.includes('link')) && !suggestedMapping.image_url) {
+        suggestedMapping.image_url = col;
+      }
+    }
+
+    // Save parsed rows to temp JSON file
+    const fileId = uuidv4();
+    const uploadDir = path.join(__dirname, '../uploads');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    // Clean up stale preview files older than 1 hour
+    cleanupStalePreviewFiles(uploadDir);
+    const previewPath = path.join(uploadDir, `preview-${fileId}.json`);
+    fs.writeFileSync(previewPath, JSON.stringify(rawRows));
+
+    console.log(`📋 Preview saved: ${fileId} (${rawRows.length} rows, ${columns.length} columns)`);
+
+    res.json({
+      fileId,
+      columns,
+      sampleRows,
+      suggestedMapping,
+      totalRows: rawRows.length
+    });
+  } catch (error) {
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    console.error('Upload preview error:', error);
+    res.status(500).json({ message: 'Server error during preview', error: error.message });
+  }
+});
+
+// @route   POST /api/leads/upload-analyze
+// @desc    Analyze mapped file data before import — validate rows, check duplicates
+// @access  Admin only
+router.post('/upload-analyze', auth, adminAuth, async (req, res) => {
+  try {
+    const { fileId, columnMapping } = req.body || {};
+    if (!fileId || !columnMapping) {
+      return res.status(400).json({ message: 'Missing fileId or columnMapping' });
+    }
+
+    const mapping = typeof columnMapping === 'string' ? JSON.parse(columnMapping) : columnMapping;
+
+    // Read saved preview file (don't delete — import will need it later)
+    const uploadDir = path.join(__dirname, '../uploads');
+    const previewPath = path.join(uploadDir, `preview-${fileId}.json`);
+    if (!fs.existsSync(previewPath)) {
+      return res.status(400).json({ message: 'Preview data expired or not found. Please upload the file again.' });
+    }
+
+    const rawRows = JSON.parse(fs.readFileSync(previewPath, 'utf8'));
+    const totalRows = rawRows.length;
+
+    const errors = [];
+    const warnings = [];
+    const phoneMap = {}; // phone -> [{ rowNum, name }]
+    const allPhones = [];
+
+    for (let i = 0; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      const rowNum = i + 2; // +2 for 1-based + header row
+
+      // Apply mapping
+      const name = (mapping.name && row[mapping.name]) ? row[mapping.name].toString().trim() : '';
+      const phone = (mapping.phone && row[mapping.phone]) ? row[mapping.phone].toString().trim() : '';
+      const email = (mapping.email && row[mapping.email]) ? row[mapping.email].toString().trim() : '';
+
+      // Validation: missing both name and phone
+      if (!name && !phone) {
+        errors.push({ row: rowNum, issue: 'Missing name and phone — will be skipped' });
+        continue;
+      }
+
+      // Validate phone format
+      if (phone) {
+        const digitsOnly = phone.replace(/[^0-9]/g, '');
+        if (digitsOnly.length < 7) {
+          errors.push({ row: rowNum, issue: `Invalid phone: "${phone}" (too short)` });
+        } else if (digitsOnly.length > 15) {
+          errors.push({ row: rowNum, issue: `Invalid phone: "${phone}" (too long)` });
+        } else {
+          // Track for in-file duplicate detection
+          const normalizedPhone = digitsOnly.slice(-10); // last 10 digits for comparison
+          if (!phoneMap[normalizedPhone]) {
+            phoneMap[normalizedPhone] = [];
+          }
+          phoneMap[normalizedPhone].push({ rowNum, name, phone });
+          allPhones.push(phone);
+        }
+      }
+
+      // Validate email format
+      if (email && !email.includes('@')) {
+        warnings.push({ row: rowNum, issue: `Invalid email format: "${email}"` });
+      }
+    }
+
+    // In-file duplicates (phones appearing 2+ times)
+    const inFileDuplicates = [];
+    for (const [normalized, entries] of Object.entries(phoneMap)) {
+      if (entries.length >= 2) {
+        inFileDuplicates.push({
+          phone: entries[0].phone,
+          count: entries.length,
+          rows: entries.map(e => e.rowNum),
+          names: entries.map(e => e.name || '(no name)')
+        });
+      }
+    }
+
+    // DB duplicate check — query existing leads by phone
+    let dbDuplicates = [];
+    if (allPhones.length > 0) {
+      try {
+        // Batch in groups of 200 to avoid query limits
+        const batchSize = 200;
+        const existingLeads = [];
+        for (let b = 0; b < allPhones.length; b += batchSize) {
+          const batch = allPhones.slice(b, b + batchSize);
+          const { data, error } = await supabase
+            .from('leads')
+            .select('name, phone, status')
+            .in('phone', batch);
+          if (!error && data) {
+            existingLeads.push(...data);
+          }
+        }
+
+        // Also try normalized matching (strip leading 0, +44 etc)
+        const normalizePhone = (p) => {
+          let d = p.replace(/[^0-9]/g, '');
+          if (d.startsWith('44') && d.length > 10) d = d.slice(2);
+          if (d.startsWith('0')) d = d.slice(1);
+          return d;
+        };
+
+        const existingPhoneSet = new Set();
+        for (const lead of existingLeads) {
+          const key = normalizePhone(lead.phone);
+          if (!existingPhoneSet.has(key)) {
+            existingPhoneSet.add(key);
+            dbDuplicates.push({
+              phone: lead.phone,
+              existingName: lead.name,
+              existingStatus: lead.status
+            });
+          }
+        }
+      } catch (dbErr) {
+        console.warn('⚠️ DB duplicate check failed:', dbErr.message);
+        // Non-fatal — continue without DB check
+      }
+    }
+
+    // Build summary
+    const errorRowCount = errors.length;
+    const validRows = totalRows - errorRowCount;
+
+    const summary = {
+      willImport: validRows,
+      willSkip: errorRowCount,
+      duplicatesInFile: inFileDuplicates.reduce((sum, d) => sum + d.count - 1, 0), // extra copies
+      duplicatesInDB: dbDuplicates.length
+    };
+
+    console.log(`📊 Upload analysis: ${totalRows} total, ${validRows} valid, ${errors.length} errors, ${inFileDuplicates.length} in-file dups, ${dbDuplicates.length} DB dups`);
+
+    res.json({
+      totalRows,
+      validRows,
+      errors: errors.slice(0, 50),
+      warnings: warnings.slice(0, 50),
+      inFileDuplicates: inFileDuplicates.slice(0, 50),
+      dbDuplicates: dbDuplicates.slice(0, 50),
+      summary,
+      truncated: {
+        errors: errors.length > 50,
+        warnings: warnings.length > 50,
+        inFileDuplicates: inFileDuplicates.length > 50,
+        dbDuplicates: dbDuplicates.length > 50
+      }
+    });
+  } catch (error) {
+    console.error('Upload analysis error:', error);
+    res.status(500).json({ message: 'Server error during analysis', error: error.message });
+  }
+});
+
+// @route   POST /api/leads/upload-simple
+// @desc    Simple upload — supports two modes:
+//          1) File upload with auto-map (legacy) — send multipart file
+//          2) Mapped import from preview — send JSON { fileId, columnMapping }
+// @access  Admin only
+router.post('/upload-simple', auth, adminAuth, (req, res, next) => {
+  // Try multer, but don't fail if no file (might be JSON body for mapped import)
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      // If this is a mapped import (JSON body), the content-type won't be multipart
+      // so multer may error — check if it's a real file-upload error
+      if (req.headers['content-type'] && req.headers['content-type'].includes('application/json')) {
+        // Not a file upload, skip multer error
+        return next();
+      }
+      console.error('❌ Multer error:', err.message);
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'File too large. Maximum size is 10MB.' });
+      }
+      if (err.message.includes('Invalid file type')) {
+        return res.status(400).json({ message: 'Invalid file type. Please upload CSV or Excel files only.' });
+      }
+      return res.status(400).json({ message: err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
+  try {
+    console.log('📤 Simple upload request received');
+
+    // ===== MODE 2: Mapped import from preview (fileId + columnMapping) =====
+    const { fileId, columnMapping } = req.body || {};
+    if (fileId && columnMapping) {
+      console.log('📋 Mapped import mode — fileId:', fileId);
+      const mapping = typeof columnMapping === 'string' ? JSON.parse(columnMapping) : columnMapping;
+
+      // Read saved preview file
+      const uploadDir = path.join(__dirname, '../uploads');
+      const previewPath = path.join(uploadDir, `preview-${fileId}.json`);
+      if (!fs.existsSync(previewPath)) {
+        return res.status(400).json({ message: 'Preview data expired or not found. Please upload the file again.' });
+      }
+
+      const rawRows = JSON.parse(fs.readFileSync(previewPath, 'utf8'));
+      // Clean up temp file
+      fs.unlinkSync(previewPath);
+
+      console.log(`📊 Mapped import: ${rawRows.length} rows, mapping:`, mapping);
+
+      const processedLeads = [];
+      const errors = [];
+
+      for (let i = 0; i < rawRows.length; i++) {
+        const row = rawRows[i];
+        const rowNum = i + 2; // +2 for header row + 1-based indexing (matches analyze)
+        try {
+          const mapped = {};
+
+          // Apply user-provided column mapping
+          if (mapping.name && row[mapping.name]) mapped.name = row[mapping.name].toString().trim();
+          if (mapping.phone && row[mapping.phone]) mapped.phone = row[mapping.phone].toString().trim();
+          if (mapping.email && row[mapping.email]) mapped.email = row[mapping.email].toString().trim();
+          if (mapping.postcode && row[mapping.postcode]) mapped.postcode = row[mapping.postcode].toString().trim();
+          if (mapping.age && row[mapping.age]) mapped.age = row[mapping.age].toString().trim();
+          if (mapping.lead_source && row[mapping.lead_source]) mapped.lead_source = row[mapping.lead_source].toString().trim();
+          if (mapping.parent_phone && row[mapping.parent_phone]) mapped.parent_phone = row[mapping.parent_phone].toString().trim();
+          if (mapping.image_url && row[mapping.image_url]) mapped.image_url = row[mapping.image_url].toString().trim();
+          if (mapping.gender && row[mapping.gender]) mapped.gender = row[mapping.gender].toString().trim();
+
+          // Parse entry date (UTC to avoid timezone shifting)
+          if (mapping.entry_date && row[mapping.entry_date]) {
+            mapped.entry_date = parseEntryDateToISO(row[mapping.entry_date]);
+          }
+
+          // Must have name or phone
+          if (!mapped.name && !mapped.phone) {
+            errors.push(`Row ${rowNum}: Missing both name and phone — skipped`);
+            continue;
+          }
+
+          let bookingCode = null;
+          try {
+            bookingCode = await generateBookingCode(mapped.name || 'Lead');
+          } catch (bcErr) {
+            console.warn(`⚠️ Booking code generation failed for row ${rowNum}:`, bcErr.message);
+          }
+
+          const leadToInsert = {
+            id: uuidv4(),
+            name: mapped.name || `Lead ${rowNum}`,
+            phone: mapped.phone || null,
+            email: mapped.email || null,
+            postcode: mapped.postcode || '',
+            image_url: mapped.image_url || '',
+            parent_phone: mapped.parent_phone || '',
+            lead_source: mapped.lead_source || null,
+            entry_date: mapped.entry_date || null,
+            gender: mapped.gender || null,
+            status: 'New',
+            booker_id: null,
+            date_booked: null,
+            is_confirmed: false,
+            booking_status: null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          if (mapped.age) {
+            const ageVal = parseInt(mapped.age);
+            if (!isNaN(ageVal) && ageVal > 0) {
+              leadToInsert.age = ageVal;
+            }
+          }
+
+          await dbManager.insert('leads', leadToInsert);
+          processedLeads.push(leadToInsert);
+        } catch (rowErr) {
+          errors.push(`Row ${rowNum}: ${rowErr.message}`);
+        }
+      }
+
+      console.log(`✅ Mapped import complete: ${processedLeads.length} imported, ${errors.length} errors`);
+
+      if (global.io && processedLeads.length > 0) {
+        global.io.emit('leads_bulk_imported', { count: processedLeads.length, action: 'mapped_upload', timestamp: new Date() });
+        global.io.emit('stats_update_needed', { type: 'mapped_upload', timestamp: new Date() });
+      }
+
+      return res.json({
+        message: `Successfully imported ${processedLeads.length} leads`,
+        imported: processedLeads.length,
+        total: rawRows.length,
+        errors: errors.slice(0, 20)
+      });
+    }
+
+    // ===== MODE 1: Legacy file upload with auto-map =====
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const filePath = req.file.path;
+    const fileExtension = path.extname(req.file.originalname).toLowerCase();
+    let rawRows = [];
+
+    // --- Parse file ---
+    if (fileExtension === '.csv') {
+      const csvContent = fs.readFileSync(filePath, 'utf8');
+      const lines = csvContent.split('\n').filter(line => line.trim());
+      if (lines.length < 2) {
+        fs.unlinkSync(filePath);
+        return res.status(400).json({ message: 'CSV file must have at least a header row and one data row' });
+      }
+      const headers = parseCSVLine(lines[0]);
+      for (let i = 1; i < lines.length; i++) {
+        const values = parseCSVLine(lines[i]);
+        if (values.every(v => !v)) continue;
+        const row = {};
+        headers.forEach((header, idx) => { row[header] = values[idx] || ''; });
+        rawRows.push(row);
+      }
+    } else if (fileExtension === '.xlsx' || fileExtension === '.xls') {
+      try {
+        const workbook = xlsx.readFile(filePath);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        rawRows = xlsx.utils.sheet_to_json(worksheet, { defval: '' });
+        rawRows = rawRows.filter(row => Object.values(row).some(val => val && val.toString().trim()));
+      } catch (excelError) {
+        fs.unlinkSync(filePath);
+        return res.status(400).json({ message: 'Failed to parse Excel file: ' + excelError.message });
+      }
+    }
+
+    fs.unlinkSync(filePath); // clean up
+    console.log(`📊 Parsed ${rawRows.length} rows from file`);
+
+    if (rawRows.length === 0) {
+      return res.status(400).json({ message: 'No data rows found in file' });
+    }
+
+    // --- Auto-map columns ---
+    const columnKeys = Object.keys(rawRows[0]);
+    console.log('🔍 Columns found:', columnKeys);
+
+    const processedLeads = [];
+    const errors = [];
+
+    for (let i = 0; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      const rowNum = i + 1;
+      try {
+        const mapped = {};
+
+        for (const key of columnKeys) {
+          const val = row[key];
+          if (!val || val.toString().trim() === '') continue;
+          const lk = key.toLowerCase().trim();
+
+          if (lk.includes('name') && !mapped.name) {
+            mapped.name = val.toString().trim();
+          } else if (lk === 'age' && !mapped.age) {
+            mapped.age = val.toString().trim();
+          } else if (lk.includes('email') && !mapped.email) {
+            mapped.email = val.toString().trim();
+          } else if ((lk.includes('phone') || lk.includes('mobile') || lk.includes('tel')) && !lk.includes('parent') && !mapped.phone) {
+            mapped.phone = val.toString().trim();
+          } else if ((lk.includes('postcode') || lk.includes('postal') || lk.includes('zip')) && !mapped.postcode) {
+            mapped.postcode = val.toString().trim();
+          } else if (lk.includes('image') && lk.includes('url') && !mapped.image_url) {
+            mapped.image_url = val.toString().trim();
+          } else if (lk.includes('parent') && lk.includes('phone') && !mapped.parent_phone) {
+            mapped.parent_phone = val.toString().trim();
+          } else if (lk.includes('source') && !mapped.lead_source) {
+            mapped.lead_source = val.toString().trim();
+          } else if (lk.includes('entry') && lk.includes('date') && !mapped.entry_date) {
+            mapped.entry_date = parseEntryDateToISO(val);
+          } else if ((lk.includes('gender') || lk === 'sex') && !mapped.gender) {
+            mapped.gender = val.toString().trim();
+          }
+        }
+
+        // Must have name or phone
+        if (!mapped.name && !mapped.phone) {
+          errors.push(`Row ${rowNum}: Missing both name and phone — skipped`);
+          continue;
+        }
+
+        // Build lead object
+        let bookingCode = null;
+        try {
+          bookingCode = await generateBookingCode(mapped.name || 'Lead');
+        } catch (bcErr) {
+          console.warn(`⚠️ Booking code generation failed for row ${rowNum}:`, bcErr.message);
+        }
+
+        const leadToInsert = {
+          id: uuidv4(),
+          name: mapped.name || `Lead ${rowNum}`,
+          phone: mapped.phone || null,
+          email: mapped.email || null,
+          postcode: mapped.postcode || '',
+          image_url: mapped.image_url || '',
+          parent_phone: mapped.parent_phone || '',
+          lead_source: mapped.lead_source || null,
+          entry_date: mapped.entry_date || null,
+          gender: mapped.gender || null,
+          status: 'New',
+          booker_id: null,
+          date_booked: null,
+          is_confirmed: false,
+          booking_status: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        // Add age if valid
+        if (mapped.age) {
+          const ageVal = parseInt(mapped.age);
+          if (!isNaN(ageVal) && ageVal > 0) {
+            leadToInsert.age = ageVal;
+          }
+        }
+
+        await dbManager.insert('leads', leadToInsert);
+        processedLeads.push(leadToInsert);
+      } catch (rowErr) {
+        errors.push(`Row ${rowNum}: ${rowErr.message}`);
+      }
+    }
+
+    console.log(`✅ Simple upload complete: ${processedLeads.length} imported, ${errors.length} errors`);
+
+    // Emit real-time update
+    if (global.io && processedLeads.length > 0) {
+      global.io.emit('leads_bulk_imported', {
+        count: processedLeads.length,
+        action: 'simple_upload',
+        timestamp: new Date()
+      });
+      global.io.emit('stats_update_needed', {
+        type: 'simple_upload',
+        timestamp: new Date()
+      });
+    }
+
+    res.json({
+      message: `Successfully imported ${processedLeads.length} leads`,
+      imported: processedLeads.length,
+      total: rawRows.length,
+      errors: errors.slice(0, 20)
+    });
+  } catch (error) {
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    console.error('Simple upload error:', error);
+    res.status(500).json({ message: 'Server error during upload', error: error.message });
+  }
+});
+
 // @route   POST /api/leads/upload-analyze
 // @desc    Upload and analyze CSV/Excel file for column mapping
 // @access  Admin only
@@ -4373,18 +5039,20 @@ router.post('/bulk-create', auth, adminAuth, async (req, res) => {
         const leadToInsert = {
           id: uuidv4(),
           name: leadData.name,
-          phone: leadData.phone,
-          email: leadData.email,
+          phone: leadData.phone || null,
+          email: leadData.email || null,
           postcode: leadData.postcode,
           image_url: leadData.image_url,
           parent_phone: leadData.parent_phone,
           age: leadData.age,
+          gender: leadData.gender || null,
+          notes: leadData.notes || null,
+          lead_source: leadData.lead_source || null,
           booker_id: null, // Never assign booker for uploaded leads
           status: 'New', // Always create uploaded leads as 'New'
           date_booked: null, // Never set dateBooked for uploaded leads
-          is_confirmed: 0, // Convert boolean to integer for database compatibility
+          is_confirmed: false,
           booking_status: null,
-          booking_code: bookingCode, // Clean booking slug for public links
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };

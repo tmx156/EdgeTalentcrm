@@ -304,13 +304,8 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         </tr>
         <tr>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="2">
-            ${contractData.paymentMethod !== 'finance' ? `
             <span style="font-size: 9px;">AUTHORISATION CODE:</span><br/>
             <span style="font-weight: 500;">${contractData.authCode || ''}</span>
-            ` : `
-            <span style="font-size: 9px; color: #92400e;">${t.finance_provider_text || 'FINANCE VIA PAYL8R'}</span><br/>
-            <span style="font-size: 8px; color: #666;">${t.finance_info_text || 'Complete docs before receipt'}</span>
-            `}
           </td>
           <td style="padding: 5px;">
             <div style="text-align: right;">

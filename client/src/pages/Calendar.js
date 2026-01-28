@@ -53,6 +53,7 @@ const Calendar = () => {
   const [statsForm, setStatsForm] = useState({
     date_of_birth: '',
     height_inches: '',
+    chest_inches: '',
     waist_inches: '',
     hips_inches: '',
     eye_color: '',
@@ -2493,6 +2494,7 @@ const Calendar = () => {
       setStatsForm({
         date_of_birth: lead.date_of_birth ? lead.date_of_birth.split('T')[0] : '',
         height_inches: lead.height_inches || '',
+        chest_inches: lead.chest_inches || '',
         waist_inches: lead.waist_inches || '',
         hips_inches: lead.hips_inches || '',
         eye_color: lead.eye_color || '',
@@ -2512,6 +2514,7 @@ const Calendar = () => {
       const response = await axios.put(`/api/leads/${selectedEvent.id}`, {
         date_of_birth: statsForm.date_of_birth || null,
         height_inches: statsForm.height_inches ? parseInt(statsForm.height_inches) : null,
+        chest_inches: statsForm.chest_inches ? parseInt(statsForm.chest_inches) : null,
         waist_inches: statsForm.waist_inches ? parseInt(statsForm.waist_inches) : null,
         hips_inches: statsForm.hips_inches ? parseInt(statsForm.hips_inches) : null,
         eye_color: statsForm.eye_color || null,
@@ -2533,6 +2536,7 @@ const Calendar = () => {
                       ...event.extendedProps.lead,
                       date_of_birth: statsForm.date_of_birth,
                       height_inches: statsForm.height_inches,
+                      chest_inches: statsForm.chest_inches,
                       waist_inches: statsForm.waist_inches,
                       hips_inches: statsForm.hips_inches,
                       eye_color: statsForm.eye_color,
@@ -2554,6 +2558,7 @@ const Calendar = () => {
               ...prev.extendedProps.lead,
               date_of_birth: statsForm.date_of_birth,
               height_inches: statsForm.height_inches,
+              chest_inches: statsForm.chest_inches,
               waist_inches: statsForm.waist_inches,
               hips_inches: statsForm.hips_inches,
               eye_color: statsForm.eye_color,
@@ -3582,6 +3587,11 @@ const Calendar = () => {
                     </span>
                   )}
                 </div>
+                {(selectedEvent.extendedProps?.lead?.booked_at || selectedEvent.extendedProps?.lead?.created_at) && (
+                  <p className="text-white/80 text-xs mt-1">
+                    Booked on: {new Date(selectedEvent.extendedProps.lead.booked_at || selectedEvent.extendedProps.lead.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                )}
               </div>
               {/* Photo Top Right */}
               <div className="relative ml-0 sm:ml-4 absolute top-3 right-3 sm:static">
@@ -3786,7 +3796,17 @@ const Calendar = () => {
                               />
                             </div>
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1">Chest (inches)</label>
+                              <input
+                                type="number"
+                                value={statsForm.chest_inches || ''}
+                                onChange={(e) => setStatsForm({...statsForm, chest_inches: e.target.value})}
+                                placeholder="e.g. 34"
+                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-400 focus:border-transparent transition-all"
+                              />
+                            </div>
                             <div>
                               <label className="block text-xs font-medium text-gray-600 mb-1">Waist (inches)</label>
                               <input
@@ -3893,6 +3913,14 @@ const Calendar = () => {
                             <span className="text-sm font-medium text-gray-900">
                               {selectedEvent.extendedProps?.lead?.height_inches
                                 ? `${selectedEvent.extendedProps.lead.height_inches}"`
+                                : '—'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-gray-200">
+                            <span className="text-xs text-gray-500 uppercase tracking-wide">Chest</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {selectedEvent.extendedProps?.lead?.chest_inches
+                                ? `${selectedEvent.extendedProps.lead.chest_inches}"`
                                 : '—'}
                             </span>
                           </div>

@@ -1,36 +1,38 @@
 -- =====================================================
--- Migration: Update Package Prices (January 2026)
+-- Migration: Update Package Values (January 2026)
 -- =====================================================
--- Updates main package prices to new values:
+-- Updates main package total_value (the "was" price shown crossed out):
 -- INTRO: £1199
 -- SILVER: £3100
 -- GOLD: £3600
 -- PLATINUM: £4800
+--
+-- Note: The actual price (what customer pays) remains unchanged.
 -- =====================================================
 
--- Update INTRO package price
+-- Update INTRO package value
 UPDATE packages
-SET price = 1199.00,
+SET total_value = 1199.00,
     updated_at = NOW()
 WHERE code = 'intro';
 
--- Update SILVER package price
+-- Update SILVER package value
 UPDATE packages
-SET price = 3100.00,
+SET total_value = 3100.00,
     updated_at = NOW()
 WHERE code = 'silver';
 
--- Update GOLD package price
+-- Update GOLD package value
 UPDATE packages
-SET price = 3600.00,
+SET total_value = 3600.00,
     updated_at = NOW()
 WHERE code = 'gold';
 
--- Update PLATINUM package price
+-- Update PLATINUM package value
 UPDATE packages
-SET price = 4800.00,
+SET total_value = 4800.00,
     updated_at = NOW()
 WHERE code = 'platinum';
 
 -- Verify the updates
-SELECT code, name, price FROM packages WHERE type = 'main' ORDER BY display_order;
+SELECT code, name, price, total_value FROM packages WHERE type = 'main' ORDER BY display_order;

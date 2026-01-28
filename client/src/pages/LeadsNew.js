@@ -3,13 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   FiPlus, FiSearch, FiFilter, FiChevronRight, FiUserPlus,
   FiCalendar, FiWifi, FiUpload, FiTrash2, FiX, FiFileText,
-  FiCheck, FiPhone, FiMail, FiMapPin, FiActivity, FiUser,
+  FiCheck, FiPhone, FiMail, FiMapPin, FiUser,
   FiMessageSquare, FiClock, FiEye
 } from 'react-icons/fi';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import LeadAnalysisModal from '../components/LeadAnalysisModal';
+
 import LazyImage from '../components/LazyImage';
 import ImageLightbox from '../components/ImageLightbox';
 import BulkCommunicationModal from '../components/BulkCommunicationModal';
@@ -82,13 +82,14 @@ const LeadsNew = () => {
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState('');
-  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
-  const [duplicateAnalysis, setDuplicateAnalysis] = useState(null);
-  const [showLeadAnalysisModal, setShowLeadAnalysisModal] = useState(false);
-  const [analysisReport, setAnalysisReport] = useState(null);
-  const [distanceStats, setDistanceStats] = useState(null);
-  const [isImporting, setIsImporting] = useState(false);
-  
+  // Column mapping state
+  const [showMappingModal, setShowMappingModal] = useState(false);
+  const [previewData, setPreviewData] = useState(null); // { fileId, columns, sampleRows, suggestedMapping, totalRows }
+  const [columnMapping, setColumnMapping] = useState({});
+  const [importingMapped, setImportingMapped] = useState(false);
+  const [analysisData, setAnalysisData] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+
   const [newLead, setNewLead] = useState({
     name: '',
     phone: '',
@@ -312,8 +313,9 @@ const LeadsNew = () => {
     { value: 'Call back', label: '📞 Call back', count: leadCounts.callBack },
     { value: 'Wrong number', label: '📞 Wrong number', count: leadCounts.wrongNumber },
     { value: 'Sales/converted - purchased', label: '💰 Sales', count: leadCounts.salesConverted },
-    { value: 'Not Qualified', label: '❌ Not Qualified', count: leadCounts.notQualified }
-  ], [leadCounts.total, leadCounts.assigned, leadCounts.booked, leadCounts.noAnswerCall, leadCounts.noAnswerX2, leadCounts.noAnswerX3, leadCounts.leftMessage, leadCounts.notInterestedCall, leadCounts.callBack, leadCounts.wrongNumber, leadCounts.salesConverted, leadCounts.notQualified]);
+    { value: 'Not Qualified', label: '❌ Not Qualified', count: leadCounts.notQualified },
+    ...(user?.role === 'admin' ? [{ value: 'Rejected', label: 'Rejected', count: leadCounts.rejected }] : [])
+  ], [leadCounts.total, leadCounts.assigned, leadCounts.booked, leadCounts.noAnswerCall, leadCounts.noAnswerX2, leadCounts.noAnswerX3, leadCounts.leftMessage, leadCounts.notInterestedCall, leadCounts.callBack, leadCounts.wrongNumber, leadCounts.salesConverted, leadCounts.notQualified, leadCounts.rejected, user?.role]);
 
   // Handle navigation state from sidebar
   useEffect(() => {
@@ -576,22 +578,29 @@ const LeadsNew = () => {
     }
   };
 
-  // Handle upload submission - Original simple flow
-  const handleUploadSubmit = async () => {
-    console.log('🚀 Upload button clicked!');
-    console.log('📁 File selected:', uploadFile);
+  // CRM fields for column mapping
+  const CRM_FIELDS = [
+    { key: 'name', label: 'Name' },
+    { key: 'phone', label: 'Phone' },
+    { key: 'email', label: 'Email' },
+    { key: 'postcode', label: 'Postcode' },
+    { key: 'age', label: 'Age' },
+    { key: 'lead_source', label: 'Lead Source' },
+    { key: 'entry_date', label: 'Entry Date' },
+    { key: 'parent_phone', label: 'Parent Phone' },
+    { key: 'gender', label: 'Gender' },
+    { key: 'image_url', label: 'Image URL' }
+  ];
 
+  // Handle upload submission — sends file for preview/mapping
+  const handleUploadSubmit = async () => {
     if (!uploadFile) {
-      console.log('❌ No file selected');
       alert('Please select a file first');
       return;
     }
 
     const token = localStorage.getItem('token');
     if (!token) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('❌ No authentication token available');
-      }
       alert('Please login again to upload files');
       return;
     }
@@ -600,221 +609,123 @@ const LeadsNew = () => {
     formData.append('file', uploadFile);
 
     try {
-      setUploadStatus('Analyzing file...');
-      setUploadProgress(10);
+      setUploadStatus('Analyzing...');
+      setUploadProgress(30);
 
-      const response = await axios.post('/api/leads/upload', formData, {
+      const response = await axios.post('/api/leads/upload-preview', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`,
         },
         onUploadProgress: (progressEvent) => {
           const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          setUploadProgress(progress);
+          setUploadProgress(Math.min(progress, 60));
         },
       });
 
       setUploadProgress(100);
+      setUploadStatus('');
+      setUploadProgress(0);
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Upload response received:', response.data);
-        console.log('🔍 Analysis data:', response.data.analysis);
-        console.log('🔍 Report length:', response.data.analysis?.report?.length);
-      }
+      // Store preview data and open mapping modal
+      setPreviewData(response.data);
+      setColumnMapping(response.data.suggestedMapping || {});
+      setShowUploadModal(false);
+      setUploadFile(null);
+      setShowMappingModal(true);
 
-      // Always show analysis modal for review before importing
-      if (response.data.analysis) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('✅ Showing analysis modal with analysis data');
-        }
-        setDuplicateAnalysis(response.data);
-        setAnalysisReport(response.data.analysis.report || []);
-        setDistanceStats(response.data.analysis.distanceStats || null);
-        setShowUploadModal(false); // Close upload modal
-        setShowLeadAnalysisModal(true);
-        setUploadStatus('');
-      } else {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('❌ No analysis data received');
-        }
-        setUploadStatus('Analysis failed');
-        setTimeout(() => setUploadStatus(''), 3000);
-      }
-      
     } catch (error) {
-      console.error('Error uploading file:', error);
-      
-      // Handle specific error cases
+      console.error('Error previewing file:', error);
       if (error.response?.status === 401) {
-        setUploadStatus('Authentication failed - please login again');
-        alert('Your session has expired. Please login again to upload files.');
+        alert('Your session has expired. Please login again.');
       } else if (error.response?.status === 403) {
-        setUploadStatus('Access denied - admin privileges required');
         alert('You need admin privileges to upload files.');
       } else if (error.response?.status === 400) {
-        setUploadStatus('Invalid file format');
-        alert('Please select a valid CSV or Excel file.');
+        alert(error.response?.data?.message || 'Invalid file format.');
       } else {
-        setUploadStatus('Upload failed');
         alert('Upload failed. Please try again.');
       }
-      
-      setTimeout(() => setUploadStatus(''), 3000);
+      setUploadStatus('');
+      setUploadProgress(0);
     }
   };
 
+  // Handle confirmed import with user-defined column mapping
+  const handleConfirmImport = async () => {
+    if (!previewData?.fileId) return;
 
-  // Import leads to database
-  const importLeads = async (leadsToImport) => {
-    if (isImporting) {
-      console.log('⚠️ Import already in progress, skipping duplicate request');
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please login again');
       return;
     }
-    
+
+    setImportingMapped(true);
     try {
-      setIsImporting(true);
-      setUploadStatus('Importing leads...');
-      
-      const token = localStorage.getItem('token');
-      const response = await axios.post('/api/leads/bulk-create', {
-        leads: leadsToImport
+      const response = await axios.post('/api/leads/upload-simple', {
+        fileId: previewData.fileId,
+        columnMapping
       }, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        }
       });
 
-      console.log('📊 Import response:', response.data);
-      
-      // Show detailed results
-      const { imported, duplicates, errors } = response.data;
-      let statusMessage = `Import Complete! ${imported} leads imported`;
-      if (duplicates > 0) {
-        statusMessage += `, ${duplicates} duplicates skipped`;
-      }
+      const { imported, total, errors } = response.data;
+      let msg = `Done! ${imported} of ${total} leads imported.`;
       if (errors && errors.length > 0) {
-        statusMessage += `, ${errors.length} errors`;
-        console.warn('Import errors:', errors);
+        msg += ` (${errors.length} rows skipped)`;
       }
-      
-      setUploadStatus(statusMessage);
-      
-      // Close all modals
-      setShowUploadModal(false);
-      setShowDuplicateModal(false);
-      setShowLeadAnalysisModal(false);
-      setUploadFile(null);
-      setDuplicateAnalysis(null);
-      setAnalysisReport(null);
-      setDistanceStats(null);
-      setUploadProgress(0);
-      
-      setTimeout(() => {
-        setUploadStatus('');
-        fetchLeads();
-        fetchLeadCounts();
-      }, 3000);
-      
+
+      setShowMappingModal(false);
+      setPreviewData(null);
+      setColumnMapping({});
+      setAnalysisData(null);
+      alert(msg);
+      fetchLeads();
+      fetchLeadCounts();
     } catch (error) {
-      console.error('Error importing leads:', error);
-      setUploadStatus('Import failed: ' + (error.response?.data?.message || error.message));
-      setTimeout(() => setUploadStatus(''), 3000);
+      console.error('Error importing mapped leads:', error);
+      if (error.response?.status === 400) {
+        alert(error.response?.data?.message || 'Import failed.');
+      } else {
+        alert('Import failed. Please try again.');
+      }
     } finally {
-      setIsImporting(false);
+      setImportingMapped(false);
     }
   };
 
-  // Handle duplicate modal actions
-  const handleDuplicateAction = async (action) => {
-    if (!duplicateAnalysis) return;
+  // Analyze mapped file before importing
+  const handleAnalyze = async () => {
+    if (!previewData?.fileId) return;
 
-    if (action === 'import_all') {
-      await importLeads(duplicateAnalysis.processedLeads);
-    } else if (action === 'import_unique') {
-      // Filter out duplicates
-      const uniqueLeads = duplicateAnalysis.processedLeads.filter((lead, index) => {
-        const duplicate = duplicateAnalysis.analysis.report.find(d => d.row === index + 1);
-        return !duplicate || !duplicate.duplicateOf; // Keep non-duplicate leads
+    const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Please login again');
+      return;
+    }
+
+    setAnalyzing(true);
+    setAnalysisData(null);
+    try {
+      const response = await axios.post('/api/leads/upload-analyze', {
+        fileId: previewData.fileId,
+        columnMapping
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        }
       });
-      await importLeads(uniqueLeads);
+      setAnalysisData(response.data);
+    } catch (error) {
+      console.error('Error analyzing upload:', error);
+      alert(error.response?.data?.message || 'Analysis failed. Please try again.');
+    } finally {
+      setAnalyzing(false);
     }
-  };
-
-  // Handle LeadAnalysisModal actions
-  const handleAcceptAll = async () => {
-    if (!duplicateAnalysis || isImporting) return;
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 Accepting all leads:', duplicateAnalysis.processedLeads.length);
-    }
-    await importLeads(duplicateAnalysis.processedLeads);
-    setShowLeadAnalysisModal(false);
-  };
-
-  const handleDiscardDuplicates = async () => {
-    if (!duplicateAnalysis || !analysisReport || isImporting) return;
-
-    // Filter out leads that are marked as duplicates
-    const uniqueLeads = duplicateAnalysis.processedLeads.filter((lead, index) => {
-      const reportItem = analysisReport.find(item => item.row === index + 1);
-      return !reportItem || !reportItem.duplicateOf;
-    });
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 Discarding duplicates - importing unique leads:', uniqueLeads.length);
-    }
-    await importLeads(uniqueLeads);
-    setShowLeadAnalysisModal(false);
-  };
-
-  const handleSaveValidLeads = async () => {
-    if (!duplicateAnalysis || !analysisReport || isImporting) return;
-
-    // Filter out leads that have any issues (duplicates or far flags)
-    const validLeads = duplicateAnalysis.processedLeads.filter((lead, index) => {
-      const reportItem = analysisReport.find(item => item.row === index + 1);
-      return !reportItem;
-    });
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔄 Saving valid leads only:', validLeads.length);
-    }
-    await importLeads(validLeads);
-    setShowLeadAnalysisModal(false);
-  };
-
-  const handleExportCSV = () => {
-    if (!duplicateAnalysis || !analysisReport) return;
-
-    // Create CSV content with analysis results
-    const headers = ['Row', 'Name', 'Phone', 'Email', 'Postcode', 'Issues', 'Distance (mi)'];
-    const csvContent = [
-      headers.join(','),
-      ...analysisReport.map(item => [
-        item.row,
-        `"${item.lead.name || ''}"`,
-        `"${item.lead.phone || ''}"`,
-        `"${item.lead.email || ''}"`,
-        `"${item.lead.postcode || ''}"`,
-        `"${item.duplicateOf ? 'Duplicate' : ''}${item.farFlag ? 'Far' : ''}"`,
-        item.distanceMiles ? item.distanceMiles.toFixed(1) : ''
-      ].join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'lead_analysis_report.csv';
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  const handleCloseAnalysisModal = () => {
-    setShowLeadAnalysisModal(false);
-    setAnalysisReport(null);
-    setDistanceStats(null);
-    setDuplicateAnalysis(null);
-    setUploadFile(null);
-    setUploadProgress(0);
-    setUploadStatus('');
   };
 
   // Memoized fetchSalesTeam to prevent unnecessary recreations
@@ -1334,7 +1245,10 @@ const LeadsNew = () => {
                       </div>
                     )}
                     <div className="text-white">
-                      <h3 className="font-bold text-lg">{lead.name}</h3>
+                      <h3 className="font-bold text-lg">
+                        {lead.name}
+                        {lead.lead_source && <span className="ml-2 inline-flex px-1.5 py-0.5 text-[9px] bg-teal-100 text-teal-700 rounded-full font-medium align-middle">{lead.lead_source}</span>}
+                      </h3>
                     </div>
                   </div>
                 </div>
@@ -1454,8 +1368,13 @@ const LeadsNew = () => {
                           </div>
                         )}
                         <div className="min-w-0">
-                          <div className="font-medium text-gray-900 text-xs sm:text-sm truncate max-w-[80px] sm:max-w-[120px] lg:max-w-none">{lead.name}</div>
-                          <div className="text-[10px] sm:text-sm text-gray-500">{lead.postcode}</div>
+                          <div className="font-medium text-gray-900 text-xs sm:text-sm truncate max-w-[80px] sm:max-w-[120px] lg:max-w-none">
+                            {lead.name}
+                          </div>
+                          <div className="text-[10px] sm:text-sm text-gray-500">
+                            {lead.postcode}
+                            {lead.lead_source && <span className="ml-1 px-1.5 py-0.5 text-[9px] bg-teal-100 text-teal-700 rounded-full font-medium">{lead.lead_source}</span>}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -1704,14 +1623,12 @@ const LeadsNew = () => {
                 </div>
 
                 <div className="bg-blue-50 p-3 rounded-md">
-                  <h4 className="text-sm font-medium text-blue-900 mb-2">Smart Upload Features:</h4>
-                  <div className="text-xs text-blue-800">
-                    <p>🚀 <strong>Auto-processing:</strong> Well-labeled files go straight to analysis</p>
-                    <p>🎯 <strong>Smart mapping:</strong> Columns auto-detected based on names</p>
-                    <p>🚫 <strong>Skip unwanted:</strong> Empty columns auto-skipped, others can be skipped manually</p>
-                    <p className="mt-2 text-green-700">
-                      ✅ <strong>Any format works!</strong> Upload and we'll help you map the columns.
-                    </p>
+                  <h4 className="text-sm font-medium text-blue-900 mb-2">How it works:</h4>
+                  <div className="text-xs text-blue-800 space-y-0.5">
+                    <p>1. Select your CSV or Excel file</p>
+                    <p>2. Click <strong>Upload & Map</strong> to detect columns</p>
+                    <p>3. Review and adjust column mapping</p>
+                    <p>4. Confirm import</p>
                   </div>
                 </div>
 
@@ -1730,12 +1647,246 @@ const LeadsNew = () => {
                   </button>
                   <button
                     onClick={handleUploadSubmit}
-                    disabled={!uploadFile || uploadStatus === 'Uploading...'}
+                    disabled={!uploadFile || uploadStatus === 'Analyzing...'}
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {uploadStatus === 'Uploading...' ? 'Uploading...' : 'Upload'}
+                    {uploadStatus === 'Analyzing...' ? 'Analyzing...' : 'Upload & Map'}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Column Mapping Modal */}
+      {showMappingModal && previewData && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-50 flex items-start justify-center pt-10" style={{ pointerEvents: 'auto' }}>
+          <div className="relative mx-4 p-6 border w-full max-w-3xl shadow-2xl rounded-2xl bg-white">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Map Columns</h3>
+                <p className="text-sm text-gray-500 mt-1">{previewData.totalRows} rows detected &mdash; {previewData.columns.length} columns found</p>
+              </div>
+              <button
+                onClick={() => { setShowMappingModal(false); setPreviewData(null); setColumnMapping({}); setAnalysisData(null); }}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <FiX className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Mapping Dropdowns */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              {CRM_FIELDS.map(field => (
+                <div key={field.key} className="flex items-center space-x-3">
+                  <label className="w-28 text-sm font-medium text-gray-700 flex-shrink-0">{field.label}</label>
+                  <select
+                    value={columnMapping[field.key] || ''}
+                    onChange={(e) => { setColumnMapping(prev => ({ ...prev, [field.key]: e.target.value || null })); setAnalysisData(null); }}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="">(skip)</option>
+                    {previewData.columns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            {/* Sample Data Preview */}
+            <div className="mb-6">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Preview (first {previewData.sampleRows.length} rows)</h4>
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {CRM_FIELDS.filter(f => columnMapping[f.key]).map(f => (
+                        <th key={f.key} className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">
+                          {f.label}
+                          <span className="block text-[10px] font-normal text-gray-400">{columnMapping[f.key]}</span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {previewData.sampleRows.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        {CRM_FIELDS.filter(f => columnMapping[f.key]).map(f => (
+                          <td key={f.key} className="px-3 py-2 text-gray-700 whitespace-nowrap max-w-[160px] truncate">
+                            {row[columnMapping[f.key]] || <span className="text-gray-300">—</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {CRM_FIELDS.filter(f => columnMapping[f.key]).length === 0 && (
+                  <div className="text-center py-6 text-gray-400 text-sm">No columns mapped yet — select columns above to see a preview</div>
+                )}
+              </div>
+            </div>
+
+            {/* Analysis Results Panel */}
+            {analysisData && (
+              <div className="mb-6 border border-gray-200 rounded-lg overflow-hidden">
+                {/* Summary Bar */}
+                <div className="flex flex-wrap gap-3 p-4 bg-gray-50 border-b border-gray-200">
+                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                    Total: {analysisData.totalRows}
+                  </span>
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${analysisData.validRows === analysisData.totalRows ? 'bg-green-100 text-green-800' : 'bg-green-100 text-green-700'}`}>
+                    Valid: {analysisData.validRows}
+                  </span>
+                  {analysisData.summary.willSkip > 0 && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                      Errors: {analysisData.summary.willSkip}
+                    </span>
+                  )}
+                  {analysisData.summary.duplicatesInFile > 0 && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+                      In-file duplicates: {analysisData.summary.duplicatesInFile}
+                    </span>
+                  )}
+                  {analysisData.summary.duplicatesInDB > 0 && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                      Already in CRM: {analysisData.summary.duplicatesInDB}
+                    </span>
+                  )}
+                  {analysisData.summary.willSkip === 0 && analysisData.summary.duplicatesInDB === 0 && analysisData.summary.duplicatesInFile === 0 && analysisData.warnings.length === 0 && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                      All clear
+                    </span>
+                  )}
+                </div>
+
+                {/* Errors Section */}
+                {analysisData.errors.length > 0 && (
+                  <details className="border-b border-gray-200">
+                    <summary className="px-4 py-3 cursor-pointer hover:bg-red-50 text-sm font-medium text-red-700 flex items-center justify-between">
+                      <span>Errors — {analysisData.errors.length} rows will be skipped</span>
+                    </summary>
+                    <div className="px-4 pb-3 max-h-40 overflow-y-auto">
+                      {analysisData.errors.map((err, idx) => (
+                        <div key={idx} className="text-xs text-red-600 py-1 border-b border-red-50 last:border-0">
+                          <span className="font-medium">Row {err.row}:</span> {err.issue}
+                        </div>
+                      ))}
+                      {analysisData.truncated?.errors && (
+                        <div className="text-xs text-gray-400 italic pt-1">Showing first 50 of more errors...</div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                {/* Warnings Section */}
+                {analysisData.warnings.length > 0 && (
+                  <details className="border-b border-gray-200">
+                    <summary className="px-4 py-3 cursor-pointer hover:bg-amber-50 text-sm font-medium text-amber-700">
+                      <span>Warnings — {analysisData.warnings.length} rows with issues (will still import)</span>
+                    </summary>
+                    <div className="px-4 pb-3 max-h-40 overflow-y-auto">
+                      {analysisData.warnings.map((warn, idx) => (
+                        <div key={idx} className="text-xs text-amber-600 py-1 border-b border-amber-50 last:border-0">
+                          <span className="font-medium">Row {warn.row}:</span> {warn.issue}
+                        </div>
+                      ))}
+                      {analysisData.truncated?.warnings && (
+                        <div className="text-xs text-gray-400 italic pt-1">Showing first 50 of more warnings...</div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                {/* In-file Duplicates Section */}
+                {analysisData.inFileDuplicates.length > 0 && (
+                  <details className="border-b border-gray-200">
+                    <summary className="px-4 py-3 cursor-pointer hover:bg-amber-50 text-sm font-medium text-amber-700">
+                      <span>In-file duplicates — {analysisData.inFileDuplicates.length} phone numbers appear multiple times</span>
+                    </summary>
+                    <div className="px-4 pb-3 max-h-40 overflow-y-auto">
+                      {analysisData.inFileDuplicates.map((dup, idx) => (
+                        <div key={idx} className="text-xs text-amber-600 py-1 border-b border-amber-50 last:border-0">
+                          <span className="font-medium">{dup.phone}</span> — appears {dup.count}x (rows {dup.rows.join(', ')}) — {dup.names.join(', ')}
+                        </div>
+                      ))}
+                      {analysisData.truncated?.inFileDuplicates && (
+                        <div className="text-xs text-gray-400 italic pt-1">Showing first 50 of more duplicates...</div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                {/* DB Duplicates Section */}
+                {analysisData.dbDuplicates.length > 0 && (
+                  <details className="border-b border-gray-200 last:border-0">
+                    <summary className="px-4 py-3 cursor-pointer hover:bg-orange-50 text-sm font-medium text-orange-700">
+                      <span>Already in CRM — {analysisData.dbDuplicates.length} phone numbers already exist</span>
+                    </summary>
+                    <div className="px-4 pb-3 max-h-40 overflow-y-auto">
+                      {analysisData.dbDuplicates.map((dup, idx) => (
+                        <div key={idx} className="text-xs text-orange-600 py-1 border-b border-orange-50 last:border-0">
+                          <span className="font-medium">{dup.phone}</span> — {dup.existingName} ({dup.existingStatus})
+                        </div>
+                      ))}
+                      {analysisData.truncated?.dbDuplicates && (
+                        <div className="text-xs text-gray-400 italic pt-1">Showing first 50 of more matches...</div>
+                      )}
+                    </div>
+                  </details>
+                )}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+              <p className="text-xs text-gray-400">
+                {Object.values(columnMapping).filter(Boolean).length} of {CRM_FIELDS.length} fields mapped
+              </p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => { setShowMappingModal(false); setPreviewData(null); setColumnMapping({}); setAnalysisData(null); }}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAnalyze}
+                  disabled={analyzing || (!columnMapping.name && !columnMapping.phone)}
+                  className="px-5 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {analyzing ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Analyzing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FiEye className="h-4 w-4" />
+                      <span>{analysisData ? 'Re-analyze' : 'Analyze'}</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={handleConfirmImport}
+                  disabled={importingMapped || !analysisData || (!columnMapping.name && !columnMapping.phone)}
+                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                  title={!analysisData ? 'Run analysis first before importing' : ''}
+                >
+                  {importingMapped ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Importing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FiCheck className="h-4 w-4" />
+                      <span>Import {analysisData ? analysisData.summary.willImport : previewData.totalRows} Leads</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -1947,96 +2098,6 @@ const LeadsNew = () => {
         </div>
       )}
 
-
-      {/* Duplicate Checking Modal */}
-      {showDuplicateModal && duplicateAnalysis && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50" style={{ pointerEvents: 'auto' }}>
-          <div className="relative top-10 mx-auto p-5 border w-4/5 max-w-6xl shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <div className="flex items-center justify-center w-12 h-12 mx-auto bg-yellow-100 rounded-full mb-4">
-                <FiActivity className="h-6 w-6 text-yellow-600" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 text-center mb-2">Duplicate Check Results</h3>
-              <p className="text-sm text-gray-500 text-center mb-6">
-                Found {duplicateAnalysis.analysis.report.length} potential issues with your leads.
-              </p>
-              
-              <div className="max-h-96 overflow-y-auto mb-6">
-                <div className="space-y-2">
-                  {duplicateAnalysis.analysis.report.map((item, index) => (
-                    <div key={index} className={`p-3 rounded-lg border ${
-                      item.duplicateOf ? 'bg-red-50 border-red-200' : 
-                      item.farFlag ? 'bg-yellow-50 border-yellow-200' : 
-                      'bg-gray-50 border-gray-200'
-                    }`}>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-medium text-sm">
-                            Row {item.row}: {item.lead?.name || 'Unknown'}
-                          </div>
-                          <div className="text-xs text-gray-600 mt-1">
-                            {item.duplicateOf && `Duplicate of: ${item.duplicateOf}`}
-                            {item.farFlag && `Distance: ${item.distanceMiles?.toFixed(1)} miles`}
-                            {item.reason && ` (${item.reason})`}
-                          </div>
-                        </div>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          item.duplicateOf ? 'bg-red-100 text-red-800' :
-                          item.farFlag ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {item.duplicateOf ? 'Duplicate' : 
-                           item.farFlag ? 'Far Away' : 'Issue'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setShowDuplicateModal(false);
-                    setDuplicateAnalysis(null);
-                    setUploadFile(null);
-                    setUploadStatus('');
-                  }}
-                  className="px-4 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 transition-colors"
-                >
-                  Cancel Import
-                </button>
-                <button
-                  onClick={() => handleDuplicateAction('import_unique')}
-                  className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors"
-                >
-                  Import Unique Only ({duplicateAnalysis.processedLeads.length - duplicateAnalysis.analysis.report.filter(a => a.duplicateOf).length} leads)
-                </button>
-                <button
-                  onClick={() => handleDuplicateAction('import_all')}
-                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-                >
-                  Import All ({duplicateAnalysis.processedLeads.length} leads)
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Lead Analysis Modal */}
-      <LeadAnalysisModal
-        isOpen={showLeadAnalysisModal}
-        onClose={handleCloseAnalysisModal}
-        report={analysisReport}
-        distanceStats={distanceStats}
-        processedLeads={duplicateAnalysis?.processedLeads}
-        onAcceptAll={handleAcceptAll}
-        onDiscardDuplicates={handleDiscardDuplicates}
-        onExportCSV={handleExportCSV}
-        onSaveValidLeads={handleSaveValidLeads}
-        isImporting={isImporting}
-      />
 
       {/* Bulk Communication Modal */}
       <BulkCommunicationModal

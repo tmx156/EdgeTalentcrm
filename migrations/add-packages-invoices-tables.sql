@@ -206,17 +206,17 @@ CREATE POLICY "Selected images are deletable by authenticated users" ON selected
 -- 6. SEED DATA - DEFAULT PACKAGES
 -- =====================================================
 
--- Insert main packages (inc VAT) - Prices updated January 2026
+-- Insert main packages (inc VAT) - Values updated January 2026
 INSERT INTO packages (name, code, type, price, vat_inclusive, image_count, includes, total_value, description, display_order) VALUES
 (
     'INTRO',
     'intro',
     'main',
-    1199.00,
+    840.00,
     true,
     10,
     '["10 images on USB Stick", "Project Influencer Guide"]',
-    1499.00,
+    1199.00,
     'Perfect starter package with 10 professionally edited images',
     1
 ),
@@ -224,11 +224,11 @@ INSERT INTO packages (name, code, type, price, vat_inclusive, image_count, inclu
     'SILVER',
     'silver',
     'main',
-    3100.00,
+    1200.00,
     true,
     NULL,
     '["Full shoot on USB Stick", "Digital Z-Card", "Project Influencer Guide", "3Lance Casting VIP membership"]',
-    3875.00,
+    3100.00,
     'Complete package with full shoot and digital Z-Card',
     2
 ),
@@ -236,11 +236,11 @@ INSERT INTO packages (name, code, type, price, vat_inclusive, image_count, inclu
     'GOLD',
     'gold',
     'main',
-    3600.00,
+    1800.00,
     true,
     NULL,
     '["Full shoot on USB Stick", "Digital Z-Card", "Online E-folio", "Project Influencer Guide", "3Lance Casting VIP membership"]',
-    4500.00,
+    3600.00,
     'Premium package with online portfolio',
     3
 ),
@@ -248,11 +248,11 @@ INSERT INTO packages (name, code, type, price, vat_inclusive, image_count, inclu
     'PLATINUM',
     'platinum',
     'main',
-    4800.00,
+    2400.00,
     true,
     NULL,
     '["Full shoot on USB Stick", "Digital Z-Card", "Online E-folio", "Project Influencer Guide", "3Lance Casting VIP Membership", "+1 more shoot inc all images on USB", "Video Intro"]',
-    6000.00,
+    4800.00,
     'Ultimate package with video intro and additional shoot',
     4
 )

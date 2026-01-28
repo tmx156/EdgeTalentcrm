@@ -90,7 +90,11 @@ CREATE TABLE IF NOT EXISTS leads (
     custom_fields JSONB,
 
     -- Booker call status tracking (separate from main status)
-    call_status TEXT  -- Values: No answer, Left Message, Not interested, Call back, Wrong number, Sales/converted - purchased, Not Qualified
+    call_status TEXT,  -- Values: No answer, Left Message, Not interested, Call back, Wrong number, Sales/converted - purchased, Not Qualified
+
+    -- Lead source and entry date (from upload files)
+    lead_source TEXT,
+    entry_date TIMESTAMPTZ
 );
 
 -- Indexes for leads
@@ -106,6 +110,7 @@ CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email) WHERE email IS NOT NU
 CREATE INDEX IF NOT EXISTS idx_leads_phone ON leads(phone) WHERE phone IS NOT NULL AND deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_leads_deleted_at ON leads(deleted_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_leads_booking_status ON leads(booking_status) WHERE booking_status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_leads_lead_source ON leads(lead_source) WHERE lead_source IS NOT NULL AND deleted_at IS NULL;
 
 -- =====================================================
 -- 3. SALES TABLE

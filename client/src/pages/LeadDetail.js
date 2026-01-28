@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { FiArrowLeft, FiEdit, FiSave, FiPhone, FiMail, FiMapPin, FiCalendar, FiMessageSquare, FiSend, FiChevronLeft, FiChevronRight, FiChevronUp, FiChevronDown, FiClock, FiUser, FiCheck, FiSettings, FiX } from 'react-icons/fi';
+import { FiArrowLeft, FiEdit, FiSave, FiPhone, FiMail, FiMapPin, FiCalendar, FiMessageSquare, FiSend, FiChevronLeft, FiChevronRight, FiChevronUp, FiChevronDown, FiClock, FiUser, FiCheck, FiSettings, FiX, FiActivity } from 'react-icons/fi';
 import axios from 'axios';
 import LeadStatusDropdown from '../components/LeadStatusDropdown';
 import PhotoModal from '../components/PhotoModal';
@@ -91,7 +91,7 @@ const LeadDetail = () => {
 
   // Add state for reject modal
   const [showRejectModal, setShowRejectModal] = useState(false);
-  const [rejectReason, setRejectReason] = useState('Duplicate');
+  const [rejectReason, setRejectReason] = useState('Duplicated');
   const [rejecting, setRejecting] = useState(false);
   
   // Add state for status change (for bookers)
@@ -1741,6 +1741,21 @@ const LeadDetail = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* Entry Date */}
+                  <div className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-xl p-4">
+                    <div className="flex items-start space-x-4">
+                      <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
+                        <FiCalendar className="h-6 w-6 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-amber-600 uppercase tracking-wide">Entry Date</p>
+                        <p className="text-lg font-bold text-gray-900 mt-1">
+                          {lead.entry_date ? new Date(lead.entry_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -2617,8 +2632,14 @@ const LeadDetail = () => {
                         {formatDate(lead.created_at)}
                       </span>
                     </div>
-                    
-
+                    {lead.lead_source && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">Lead Source:</span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-100 text-teal-800">
+                          {lead.lead_source}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2636,8 +2657,8 @@ const LeadDetail = () => {
                 </div>
               )}
 
-              {/* Images & Gallery Button - For Viewers and Admins */}
-              {!editing && (user?.role === 'viewer' || user?.role === 'admin') && (
+              {/* Images & Gallery Button - Admin only */}
+              {!editing && user?.role === 'admin' && (
                 <div className="mt-4 space-y-2">
                   {/* View Gallery Button - For browsing photos */}
                   <button
@@ -2767,17 +2788,7 @@ const LeadDetail = () => {
         <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 w-96">
             <h2 className="text-lg font-bold mb-4">Reject Lead</h2>
-            <label className="block mb-2 font-medium">Reason:</label>
-            <select
-              className="w-full border rounded px-3 py-2 mb-4"
-              value={rejectReason}
-              onChange={e => setRejectReason(e.target.value)}
-            >
-              <option value="Duplicate">Duplicate</option>
-              <option value="Already Booked">Already Booked</option>
-              <option value="Far South">Far South</option>
-              <option value="Photo">Photo</option>
-            </select>
+            <p className="text-sm text-gray-600 mb-4">This lead will be rejected as <span className="font-semibold">Duplicated</span>.</p>
             <div className="flex justify-end space-x-2">
               <button
                 className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
