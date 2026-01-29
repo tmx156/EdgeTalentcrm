@@ -1770,23 +1770,51 @@ const LeadDetail = () => {
                         <FiPhone className="h-6 w-6 text-white" />
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-purple-600 uppercase tracking-wide">Phone Number</p>
-                        {editing ? (
-                          <input
-                            type="tel"
-                            name="phone"
-                            value={formData.phone}
-                            onChange={handleInputChange}
-                            className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-lg font-bold text-gray-900"
-                          />
-                        ) : (
-                          <p className="text-lg font-bold text-gray-900 mt-1">{lead.phone}</p>
-                        )}
-                        {!editing && (
-                          <a href={`tel:${lead.phone}`} className="text-sm text-purple-600 hover:text-purple-800 transition-colors">
-                            Click to call →
-                          </a>
-                        )}
+                        <div className={`flex ${(lead.parent_phone || editing) ? 'gap-6' : ''}`}>
+                          {/* Main Phone */}
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-purple-600 uppercase tracking-wide">Phone Number</p>
+                            {editing ? (
+                              <input
+                                type="tel"
+                                name="phone"
+                                value={formData.phone}
+                                onChange={handleInputChange}
+                                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-lg font-bold text-gray-900"
+                              />
+                            ) : (
+                              <p className="text-lg font-bold text-gray-900 mt-1">{lead.phone}</p>
+                            )}
+                            {!editing && (
+                              <a href={`tel:${lead.phone}`} className="text-sm text-purple-600 hover:text-purple-800 transition-colors">
+                                Click to call →
+                              </a>
+                            )}
+                          </div>
+                          {/* Parent Phone - shown only if exists */}
+                          {(lead.parent_phone || editing) && (
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-purple-600 uppercase tracking-wide">Parent Phone</p>
+                              {editing ? (
+                                <input
+                                  type="tel"
+                                  name="parent_phone"
+                                  value={formData.parent_phone || ''}
+                                  onChange={handleInputChange}
+                                  className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-lg font-bold text-gray-900"
+                                  placeholder="Optional"
+                                />
+                              ) : (
+                                <p className="text-lg font-bold text-gray-900 mt-1">{lead.parent_phone}</p>
+                              )}
+                              {!editing && lead.parent_phone && (
+                                <a href={`tel:${lead.parent_phone}`} className="text-sm text-purple-600 hover:text-purple-800 transition-colors">
+                                  Click to call →
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

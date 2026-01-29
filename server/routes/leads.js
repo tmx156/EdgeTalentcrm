@@ -525,12 +525,13 @@ router.get('/', auth, async (req, res) => {
       const orExpr = [
         `name.ilike.${like}`,
         `phone.ilike.${like}`,
+        `parent_phone.ilike.${like}`,
         `email.ilike.${like}`,
         `postcode.ilike.${like}`
       ].join(',');
       dataQuery = dataQuery.or(orExpr);
       countQuery = countQuery.or(orExpr);
-      console.log(`🔍 Search filter applied across name/phone/email/postcode: ${term} (page ${pageInt})`);
+      console.log(`🔍 Search filter applied across name/phone/parent_phone/email/postcode: ${term} (page ${pageInt})`);
     }
 
     // Apply assigned_at date range filter for "Date Assigned" filter
@@ -613,6 +614,7 @@ router.get('/', auth, async (req, res) => {
           const orExpr = [
             `name.ilike.${like}`,
             `phone.ilike.${like}`,
+            `parent_phone.ilike.${like}`,
             `email.ilike.${like}`,
             `postcode.ilike.${like}`
           ].join(',');

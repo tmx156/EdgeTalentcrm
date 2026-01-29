@@ -62,7 +62,7 @@ router.get('/leads', salesapeAuth, async (req, res) => {
     }
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`);
+      query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,parent_phone.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
     if (created_at_start) {
