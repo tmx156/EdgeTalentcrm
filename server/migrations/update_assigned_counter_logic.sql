@@ -1,12 +1,15 @@
--- Fix get_lead_stats function to exclude ghost bookings and ensure it works correctly
+-- Migration: Update Assigned Counter Logic
+-- Date: 2026-02-04
+-- Description: Change the assigned_count logic to count all leads with booker_id,
+--              not just leads with status = 'Assigned'
+--              This ensures leads retain their "assigned" status even if they
+--              move to "No Answer", "Call back", etc.
 
--- First, drop all existing variants of the function
--- We need to specify the exact signature for each variant
+-- Drop existing function variants
 DO $$ 
 DECLARE
   func_record RECORD;
 BEGIN
-  -- Find all get_lead_stats functions and drop them
   FOR func_record IN 
     SELECT 
       p.proname as func_name,
@@ -25,7 +28,7 @@ BEGIN
   END LOOP;
 END $$;
 
--- Create optimized function for lead statistics with ghost booking exclusion
+-- Create updated function with new assigned_count logic
 CREATE OR REPLACE FUNCTION get_lead_stats(
   start_date timestamptz DEFAULT NULL,
   end_date timestamptz DEFAULT NULL,
@@ -57,12 +60,12 @@ BEGIN
       (start_date IS NULL OR created_at >= start_date)
       AND (end_date IS NULL OR created_at <= end_date)
       AND (booker_user_id IS NULL OR booker_id::text = booker_user_id)
-      AND (postcode IS NULL OR postcode != 'ZZGHOST')  -- Exclude ghost bookings
+      AND (postcode IS NULL OR postcode != 'ZZGHOST')
   )
   SELECT
     COUNT(*)::bigint as total,
     COUNT(*) FILTER (WHERE status = 'New')::bigint as new_count,
-    COUNT(*) FILTER (WHERE status = 'Booked')::bigint as booked_count,  -- Fixed: Use status, not ever_booked
+    COUNT(*) FILTER (WHERE status = 'Booked')::bigint as booked_count,
     COUNT(*) FILTER (WHERE status = 'Attended')::bigint as attended_count,
     COUNT(*) FILTER (WHERE status = 'Cancelled')::bigint as cancelled_count,
     COUNT(*) FILTER (WHERE booker_id IS NOT NULL)::bigint as assigned_count,
@@ -79,4 +82,6 @@ $$;
 GRANT EXECUTE ON FUNCTION get_lead_stats(timestamptz, timestamptz, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_lead_stats(timestamptz, timestamptz, text) TO anon;
 
-COMMENT ON FUNCTION get_lead_stats(timestamptz, timestamptz, text) IS 'Optimized aggregation function for lead statistics - returns counts by status in a single query, excludes ghost bookings';
+COMMENT ON FUNCTION get_lead_stats(timestamptz, timestamptz, text) IS 
+'Optimized aggregation function for lead statistics - returns counts by status in a single query.
+ASSIGNED_COUNT now counts all leads with booker_id IS NOT NULL (not just status=Assigned).';

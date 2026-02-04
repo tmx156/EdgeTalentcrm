@@ -436,6 +436,10 @@ router.get('/', auth, async (req, res) => {
       'Not Qualified': 'Not Qualified'
     };
     const isCallStatusFilter = status && status !== 'all' && status !== 'sales' && statusToCallStatusMap[status];
+
+    // Status filters that need special handling (check both status AND booking_status)
+    const specialStatusFilters = ['Attended', 'Cancelled', 'No Show', 'Sales'];
+    const isSpecialStatusFilter = status && specialStatusFilters.includes(status);
     
     // Build Supabase queries (data + count) with consistent filters
     // Include custom_fields for call_status filtering
@@ -494,14 +498,20 @@ router.get('/', auth, async (req, res) => {
           // Don't apply status filter here - we'll filter by call_status after fetching
           // Also don't apply range - we'll fetch more and paginate after filtering
           console.log(`📊 Filtering by call_status: ${callStatusValue} (will filter after fetch, then paginate)`);
+        } else if (isSpecialStatusFilter) {
+          // For special status filters (Attended, Cancelled, No Show), we need to check
+          // both the status field AND booking_status field
+          // Don't apply status filter here - we'll filter after fetching
+          console.log(`📊 Filtering by special status: ${status} (will filter after fetch, then paginate)`);
         } else {
           // Standard status filter
           dataQuery = dataQuery.eq('status', status);
           countQuery = countQuery.eq('status', status);
 
-          // For "Assigned" status, exclude leads that have a call_status set
+          // For "Assigned" status + booker role, exclude leads that have a call_status set
           // This ensures leads move out of Assigned folder when booker sets a call outcome
-          if (status === 'Assigned') {
+          // Admins see all assigned leads regardless of call_status
+          if (status === 'Assigned' && req.user.role !== 'admin') {
             dataQuery = dataQuery.is('call_status', null);
             countQuery = countQuery.is('call_status', null);
           }
@@ -579,7 +589,7 @@ router.get('/', auth, async (req, res) => {
 
     // For call_status filtering, we need to fetch ALL leads using pagination
     // to bypass Supabase's default 1000 row limit
-    if (isCallStatusFilter) {
+    if (isCallStatusFilter || isSpecialStatusFilter) {
       console.log(`📊 Using pagination to fetch all leads for call_status filtering...`);
       leads = [];
       let paginationFrom = 0;
@@ -694,14 +704,44 @@ router.get('/', auth, async (req, res) => {
       // Apply pagination to filtered results
       filteredLeads = allFilteredLeadsForCount.slice(from, to + 1);
       console.log(`📄 Paginated to ${filteredLeads.length} leads (page ${pageInt}, showing ${from} to ${Math.min(to, allFilteredLeadsForCount.length - 1)} of ${allFilteredLeadsForCount.length})`);
+    } else if (isSpecialStatusFilter) {
+      // For special status filters (Attended, Cancelled, No Show), filter by status AND booking_status
+      allFilteredLeadsForCount = (leads || []).filter(lead => {
+        if (status === 'Attended') {
+          // Attended = status is 'Attended' OR (status is 'Booked' AND booking_status is Arrived/Left/No Sale/Complete)
+          const isAttended = lead.status === 'Attended';
+          const isBookedButAttended = lead.status === 'Booked' && 
+            ['Arrived', 'Left', 'No Sale', 'Complete'].includes(lead.booking_status);
+          return isAttended || isBookedButAttended;
+        } else if (status === 'Cancelled') {
+          // Cancelled = status is 'Cancelled' OR (status is 'Booked' AND booking_status is 'Cancel')
+          const isCancelled = lead.status === 'Cancelled';
+          const isBookedButCancelled = lead.status === 'Booked' && lead.booking_status === 'Cancel';
+          return isCancelled || isBookedButCancelled;
+        } else if (status === 'No Show') {
+          // No Show = status is 'No Show' OR (status is 'Booked' AND booking_status is 'No Show')
+          const isNoShow = lead.status === 'No Show';
+          const isBookedButNoShow = lead.status === 'Booked' && lead.booking_status === 'No Show';
+          return isNoShow || isBookedButNoShow;
+        } else if (status === 'Sales') {
+          // Sales = has_sale > 0
+          return lead.has_sale > 0;
+        }
+        return false;
+      });
+      console.log(`📊 Filtered ${allFilteredLeadsForCount.length} leads by special status: ${status}`);
+
+      // Apply pagination to filtered results
+      filteredLeads = allFilteredLeadsForCount.slice(from, to + 1);
+      console.log(`📄 Paginated to ${filteredLeads.length} leads (page ${pageInt}, showing ${from} to ${Math.min(to, allFilteredLeadsForCount.length - 1)} of ${allFilteredLeadsForCount.length})`);
     }
 
-    // Get total count - for call_status filters, use the pre-paginated filtered count
+    // Get total count - for call_status filters and special status filters, use the pre-paginated filtered count
     let total = typeof totalCount === 'number' ? totalCount : 0;
-    if (isCallStatusFilter && allFilteredLeadsForCount !== null) {
-      // For call_status filter, use the count from filtered leads (before pagination)
+    if ((isCallStatusFilter || isSpecialStatusFilter) && allFilteredLeadsForCount !== null) {
+      // For call_status filter or special status filter, use the count from filtered leads (before pagination)
       total = allFilteredLeadsForCount.length;
-      console.log(`📊 Total count for call_status filter: ${total}`);
+      console.log(`📊 Total count for filter: ${total}`);
     } else {
       if (!total) {
         const { count, error: countError } = await countQuery;
@@ -1994,6 +2034,8 @@ router.post('/', auth, async (req, res) => {
       ever_booked: leadData.status === 'Booked' ? true : false,
       // ✅ SHORT BOOKING CODE: For cleaner public booking URLs
       booking_code: bookingCode,
+      // Set assigned_at when lead is created with a booker
+      assigned_at: leadData.booker ? new Date().toISOString() : null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };

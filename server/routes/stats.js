@@ -85,7 +85,7 @@ router.get('/leads', auth, async (req, res) => {
     const buildQuery = (from, to) => {
       let query = dbManager.client
         .from('leads')
-        .select('status, custom_fields, call_status')
+        .select('status, custom_fields, call_status, booker_id, booking_status, has_sale')
         .neq('postcode', 'ZZGHOST') // Exclude ghost bookings
         .range(from, to);
 
@@ -184,7 +184,27 @@ router.get('/leads', auth, async (req, res) => {
       booked: leads?.filter(l => l.status === 'Booked').length || 0,
       attended: leads?.filter(l => l.status === 'Attended').length || 0,
       cancelled: leads?.filter(l => l.status === 'Cancelled').length || 0,
-      assigned: leads?.filter(l => l.status === 'Assigned' && !getCallStatus(l)).length || 0,
+      assigned: leads?.filter(l => {
+        if (l.status !== 'Assigned') return false;
+        // For bookers, exclude leads with call_status set (they appear in call_status tabs instead)
+        if (req.user.role !== 'admin' && getCallStatus(l)) return false;
+        return true;
+      }).length || 0,
+      attendedFilter: leads?.filter(l => {
+        const isAttended = l.status === 'Attended';
+        const isBookedButAttended = l.status === 'Booked' && ['Arrived', 'Left', 'No Sale', 'Complete'].includes(l.booking_status);
+        return (isAttended || isBookedButAttended) && l.booker_id != null;
+      }).length || 0,
+      cancelledFilter: leads?.filter(l => {
+        const isCancelled = l.status === 'Cancelled';
+        const isBookedButCancelled = l.status === 'Booked' && l.booking_status === 'Cancel';
+        return (isCancelled || isBookedButCancelled) && l.booker_id != null;
+      }).length || 0,
+      noShow: leads?.filter(l => {
+        const isNoShow = l.status === 'No Show';
+        const isBookedButNoShow = l.status === 'Booked' && l.booking_status === 'No Show';
+        return (isNoShow || isBookedButNoShow) && l.booker_id != null;
+      }).length || 0,
       rejected: leads?.filter(l => l.status === 'Rejected').length || 0,
       callback: leads?.filter(l => l.status === 'Call Back').length || 0,
       noAnswer: leads?.filter(l => l.status === 'No Answer').length || 0,
@@ -198,8 +218,8 @@ router.get('/leads', auth, async (req, res) => {
       leftMessage: leads?.filter(l => getCallStatus(l) === 'Left Message' && hasNotProgressed(l)).length || 0,
       notInterestedCall: leads?.filter(l => getCallStatus(l) === 'Not interested' && hasNotProgressed(l)).length || 0,
       callBack: leads?.filter(l => getCallStatus(l) === 'Call back' && hasNotProgressed(l)).length || 0,
-      wrongNumberCall: leads?.filter(l => getCallStatus(l) === 'Wrong number' && hasNotProgressed(l)).length || 0,
-      salesConverted: leads?.filter(l => getCallStatus(l) === 'Sales/converted - purchased' && hasNotProgressed(l)).length || 0,
+      wrongNumber: leads?.filter(l => getCallStatus(l) === 'Wrong number' && hasNotProgressed(l)).length || 0,
+      salesConverted: leads?.filter(l => l.has_sale > 0 && l.booker_id != null).length || 0,
       notQualified: leads?.filter(l => getCallStatus(l) === 'Not Qualified' && hasNotProgressed(l)).length || 0,
       noPhoto: leads?.filter(l => (getCallStatus(l) === 'No photo' || l.status === 'No photo') && hasNotProgressed(l)).length || 0
     };

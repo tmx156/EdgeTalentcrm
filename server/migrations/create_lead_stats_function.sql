@@ -32,7 +32,7 @@ BEGIN
   WITH filtered_leads AS (
     SELECT
       status,
-      ever_booked
+      booker_id
     FROM leads
     WHERE
       (start_date IS NULL OR created_at >= start_date)
@@ -43,10 +43,10 @@ BEGIN
   SELECT
     COUNT(*)::bigint as total,
     COUNT(*) FILTER (WHERE status = 'New')::bigint as new_count,
-    COUNT(*) FILTER (WHERE ever_booked = true)::bigint as booked_count,
+    COUNT(*) FILTER (WHERE status = 'Booked')::bigint as booked_count,
     COUNT(*) FILTER (WHERE status = 'Attended')::bigint as attended_count,
     COUNT(*) FILTER (WHERE status = 'Cancelled')::bigint as cancelled_count,
-    COUNT(*) FILTER (WHERE status = 'Assigned')::bigint as assigned_count,
+    COUNT(*) FILTER (WHERE booker_id IS NOT NULL)::bigint as assigned_count,
     COUNT(*) FILTER (WHERE status = 'Rejected')::bigint as rejected_count,
     COUNT(*) FILTER (WHERE status = 'Call Back')::bigint as callback_count,
     COUNT(*) FILTER (WHERE status = 'No Answer')::bigint as no_answer_count,

@@ -31,12 +31,17 @@ const LeadsNew = () => {
     assigned: 0,
     rejected: 0,
     noAnswerCall: 0,
+    noAnswerX2: 0,
+    noAnswerX3: 0,
     leftMessage: 0,
     notInterestedCall: 0,
     callBack: 0,
     wrongNumber: 0,
     salesConverted: 0,
-    notQualified: 0
+    notQualified: 0,
+    attendedFilter: 0,
+    cancelledFilter: 0,
+    noShow: 0
   });
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -186,22 +191,13 @@ const LeadsNew = () => {
         search: searchTerm
       };
 
-      // Add date filter if applicable
+      // Add date filter if applicable - always use assigned_at
       const dateRange = getDateRange();
       if (dateRange) {
-        // Use assigned_at for Assigned status, created_at for all others
-        if (statusFilter === 'Assigned') {
-          params.assigned_at_start = dateRange.start;
-          params.assigned_at_end = dateRange.end;
-          if (process.env.NODE_ENV === 'development') {
-            console.log('📅 Assigned date filter active:', dateFilter, 'Range:', dateRange);
-          }
-        } else {
-          params.created_at_start = dateRange.start;
-          params.created_at_end = dateRange.end;
-          if (process.env.NODE_ENV === 'development') {
-            console.log('📅 Created date filter active:', dateFilter, 'Range:', dateRange);
-          }
+        params.assigned_at_start = dateRange.start;
+        params.assigned_at_end = dateRange.end;
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📅 Assigned date filter active:', dateFilter, 'Range:', dateRange);
         }
       } else {
         if (process.env.NODE_ENV === 'development') {
@@ -238,10 +234,8 @@ const LeadsNew = () => {
       const dateRange = getDateRange();
       
       if (dateRange) {
-        // Always use created_at for stats counters
-        // (assigned_at is only used for the actual leads list when viewing Assigned status)
-        params.created_at_start = dateRange.start;
-        params.created_at_end = dateRange.end;
+        params.assigned_at_start = dateRange.start;
+        params.assigned_at_end = dateRange.end;
         if (process.env.NODE_ENV === 'development') {
           console.log('📊 Fetching counts with date filter:', dateRange);
         }
@@ -305,6 +299,9 @@ const LeadsNew = () => {
     { value: 'all', label: 'All', count: leadCounts.total },
     { value: 'Assigned', label: '👤 Assigned', count: leadCounts.assigned },
     { value: 'Booked', label: '📅 Booked', count: leadCounts.booked },
+    { value: 'Attended', label: '✅ Attended', count: leadCounts.attendedFilter },
+    { value: 'Cancelled', label: '❌ Cancelled', count: leadCounts.cancelledFilter },
+    { value: 'No Show', label: '🚫 No Show', count: leadCounts.noShow },
     { value: 'No answer', label: '📵 No answer', count: leadCounts.noAnswerCall },
     { value: 'No Answer x2', label: '📵 No Answer x2', count: leadCounts.noAnswerX2 },
     { value: 'No Answer x3', label: '📵 No Answer x3', count: leadCounts.noAnswerX3 },
@@ -312,10 +309,10 @@ const LeadsNew = () => {
     { value: 'Not interested', label: '🚫 Not interested', count: leadCounts.notInterestedCall },
     { value: 'Call back', label: '📞 Call back', count: leadCounts.callBack },
     { value: 'Wrong number', label: '📞 Wrong number', count: leadCounts.wrongNumber },
-    { value: 'Sales/converted - purchased', label: '💰 Sales', count: leadCounts.salesConverted },
+    { value: 'Sales', label: '💰 Sales', count: leadCounts.salesConverted },
     { value: 'Not Qualified', label: '❌ Not Qualified', count: leadCounts.notQualified },
     ...(user?.role === 'admin' ? [{ value: 'Rejected', label: 'Rejected', count: leadCounts.rejected }] : [])
-  ], [leadCounts.total, leadCounts.assigned, leadCounts.booked, leadCounts.noAnswerCall, leadCounts.noAnswerX2, leadCounts.noAnswerX3, leadCounts.leftMessage, leadCounts.notInterestedCall, leadCounts.callBack, leadCounts.wrongNumber, leadCounts.salesConverted, leadCounts.notQualified, leadCounts.rejected, user?.role]);
+  ], [leadCounts.total, leadCounts.assigned, leadCounts.booked, leadCounts.attendedFilter, leadCounts.cancelledFilter, leadCounts.noShow, leadCounts.noAnswerCall, leadCounts.noAnswerX2, leadCounts.noAnswerX3, leadCounts.leftMessage, leadCounts.notInterestedCall, leadCounts.callBack, leadCounts.wrongNumber, leadCounts.salesConverted, leadCounts.notQualified, leadCounts.rejected, user?.role]);
 
   // Handle navigation state from sidebar
   useEffect(() => {
@@ -419,17 +416,21 @@ const LeadsNew = () => {
   // Memoized handleRowClick - removed filteredLeads to reduce memory usage
   const handleRowClick = useCallback((lead) => {
     // Pass filter context to LeadDetail for navigation (removed filteredLeads to save memory)
+    const dateRange = getDateRange();
     navigate(`/leads/${lead.id}`, {
       state: {
         statusFilter,
         searchTerm,
         dateFilter,
         customDateStart,
-        customDateEnd
-        // Removed: filteredLeads: leads - this was causing memory bloat
+        customDateEnd,
+        ...(dateRange ? {
+          assigned_at_start: dateRange.start,
+          assigned_at_end: dateRange.end
+        } : {})
       }
     });
-  }, [navigate, statusFilter, searchTerm, dateFilter, customDateStart, customDateEnd]);
+  }, [navigate, statusFilter, searchTerm, dateFilter, customDateStart, customDateEnd, getDateRange]);
 
   // Memoized handleBookLead to prevent unnecessary re-renders
   const handleBookLead = useCallback((lead, e) => {
@@ -455,6 +456,7 @@ const LeadsNew = () => {
       'Booked': 'bg-blue-100 text-blue-800 border-blue-300',
       'Attended': 'bg-green-100 text-green-800 border-green-300',
       'Cancelled': 'bg-red-100 text-red-800 border-red-300',
+      'No Show': 'bg-gray-100 text-gray-800 border-gray-300',
       'Assigned': 'bg-purple-100 text-purple-800 border-purple-300',
       'Rejected': 'bg-gray-100 text-gray-800 border-gray-300',
       // Call status colors
@@ -466,7 +468,8 @@ const LeadsNew = () => {
       'Call back': 'bg-purple-100 text-purple-800 border-purple-300',
       'Wrong number': 'bg-teal-100 text-teal-800 border-teal-300',
       'No photo': 'bg-purple-100 text-purple-800 border-purple-300',
-      'Sales/converted - purchased': 'bg-green-100 text-green-800 border-green-300',
+      'Sales': 'bg-green-600 text-white border-green-400',
+      'Sale': 'bg-green-600 text-white border-green-400',
       'Not Qualified': 'bg-red-100 text-red-800 border-red-300'
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-300';
@@ -474,8 +477,13 @@ const LeadsNew = () => {
 
   // Get the display status - show main status for progressed leads, otherwise prefer call_status
   const getDisplayStatus = useCallback((lead) => {
+    // Special case: if lead has a sale, show as "Attended" (or "Sale" if you prefer)
+    if (lead.has_sale > 0 && (lead.status === 'Attended' || lead.status === 'Booked')) {
+      return 'Attended';
+    }
+    
     // If lead has progressed (Booked, Attended, Cancelled, Rejected, Sale), show main status
-    const progressedStatuses = ['Booked', 'Attended', 'Cancelled', 'Rejected', 'Sale'];
+    const progressedStatuses = ['Booked', 'Attended', 'Cancelled', 'Rejected', 'Sale', 'No Show'];
     if (progressedStatuses.includes(lead.status)) {
       return lead.status;
     }
@@ -894,7 +902,7 @@ const LeadsNew = () => {
                 </span>
               </div>
               <div className="px-3 py-1 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 rounded-full text-sm font-semibold">
-                {totalLeads} Total Leads
+                {leadCounts.total} Total Leads
               </div>
             </div>
 
@@ -1053,6 +1061,9 @@ const LeadsNew = () => {
                   case 'all': return 'bg-gray-700 text-white shadow-md ring-2 ring-gray-400/30';
                   case 'Assigned': return 'bg-orange-500 text-white shadow-md ring-2 ring-orange-400/30';
                   case 'Booked': return 'bg-blue-500 text-white shadow-md ring-2 ring-blue-400/30';
+                  case 'Attended': return 'bg-green-500 text-white shadow-md ring-2 ring-green-400/30';
+                  case 'Cancelled': return 'bg-red-500 text-white shadow-md ring-2 ring-red-400/30';
+                  case 'No Show': return 'bg-gray-500 text-white shadow-md ring-2 ring-gray-400/30';
                   case 'No answer': return 'bg-yellow-500 text-white shadow-md ring-2 ring-yellow-400/30';
                   case 'No Answer x2': return 'bg-orange-500 text-white shadow-md ring-2 ring-orange-400/30';
                   case 'No Answer x3': return 'bg-red-500 text-white shadow-md ring-2 ring-red-400/30';
@@ -1060,7 +1071,7 @@ const LeadsNew = () => {
                   case 'Not interested': return 'bg-red-500 text-white shadow-md ring-2 ring-red-400/30';
                   case 'Call back': return 'bg-purple-500 text-white shadow-md ring-2 ring-purple-400/30';
                   case 'Wrong Number': return 'bg-teal-500 text-white shadow-md ring-2 ring-teal-400/30';
-                  case 'Sales/converted - purchased': return 'bg-green-500 text-white shadow-md ring-2 ring-green-400/30';
+                  case 'Sales': return 'bg-green-600 text-white shadow-md ring-2 ring-green-400/30';
                   case 'Not Qualified': return 'bg-red-500 text-white shadow-md ring-2 ring-red-400/30';
                   default: return 'bg-gray-700 text-white shadow-md ring-2 ring-gray-400/30';
                 }
@@ -1099,7 +1110,7 @@ const LeadsNew = () => {
           <div className="flex items-center space-x-2 flex-shrink-0">
             <FiCalendar className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
             <span className="text-xs sm:text-sm font-semibold text-gray-800 whitespace-nowrap">
-              {statusFilter === 'Assigned' ? 'Date Assigned:' : 'Date Added:'}
+              Date Assigned:
             </span>
           </div>
 
@@ -1222,10 +1233,34 @@ const LeadsNew = () => {
                       }}
                     />
                   )}
-                  <div className="absolute top-3 right-3">
+                  <div className="absolute top-3 right-3 flex items-center gap-1">
                     <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(getDisplayStatus(lead))}`}>
                       {getDisplayStatus(lead)}
                     </span>
+                    {lead.has_sale > 0 && (
+                      <span className="text-sm bg-white rounded-full px-1" title="Sale Completed">💰</span>
+                    )}
+                    {lead.booking_status === 'Arrived' && (
+                      <span className="text-sm bg-white rounded-full px-1" title="Arrived">🚶</span>
+                    )}
+                    {lead.booking_status === 'No Show' && (
+                      <span className="text-sm bg-white rounded-full px-1" title="No Show">🚫</span>
+                    )}
+                    {lead.booking_status === 'Cancel' && (
+                      <span className="text-sm bg-white rounded-full px-1" title="Cancelled">❌</span>
+                    )}
+                    {lead.booking_status === 'Complete' && (
+                      <span className="text-sm bg-white rounded-full px-1" title="Complete">✅</span>
+                    )}
+                    {lead.booking_status === 'No Sale' && (
+                      <span className="text-sm bg-white rounded-full px-1" title="No Sale">📋</span>
+                    )}
+                    {lead.booking_status === 'Reschedule' && (
+                      <span className="text-sm bg-white rounded-full px-1" title="Rescheduled">🔄</span>
+                    )}
+                    {lead.booking_status === 'Review' && (
+                      <span className="text-sm bg-white rounded-full px-1" title="Under Review">👁️</span>
+                    )}
                   </div>
                   <div className="absolute bottom-3 left-3 flex items-center space-x-3">
                     {lead.image_url ? (
@@ -1392,9 +1427,35 @@ const LeadsNew = () => {
                       </div>
                     </td>
                     <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4">
-                      <span className={`px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold border whitespace-nowrap ${getStatusColor(getDisplayStatus(lead))}`}>
-                        {getDisplayStatus(lead)}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={`px-1.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold border whitespace-nowrap ${getStatusColor(getDisplayStatus(lead))}`}>
+                          {getDisplayStatus(lead)}
+                        </span>
+                        {lead.has_sale > 0 && (
+                          <span className="text-xs" title="Sale Completed">💰</span>
+                        )}
+                        {lead.booking_status === 'Arrived' && (
+                          <span className="text-xs" title="Arrived">🚶</span>
+                        )}
+                        {lead.booking_status === 'No Show' && (
+                          <span className="text-xs" title="No Show">🚫</span>
+                        )}
+                        {lead.booking_status === 'Cancel' && (
+                          <span className="text-xs" title="Cancelled">❌</span>
+                        )}
+                        {lead.booking_status === 'Complete' && (
+                          <span className="text-xs" title="Complete">✅</span>
+                        )}
+                        {lead.booking_status === 'No Sale' && (
+                          <span className="text-xs" title="No Sale">📋</span>
+                        )}
+                        {lead.booking_status === 'Reschedule' && (
+                          <span className="text-xs" title="Rescheduled">🔄</span>
+                        )}
+                        {lead.booking_status === 'Review' && (
+                          <span className="text-xs" title="Under Review">👁️</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-xs sm:text-sm text-gray-900 hidden md:table-cell">
                       {formatDate(lead.date_booked)}
