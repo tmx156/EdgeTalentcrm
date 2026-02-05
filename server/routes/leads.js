@@ -3757,8 +3757,25 @@ router.get('/calendar-public', async (req, res) => {
 
     console.log(`📅 Public Calendar API: Found ${leads?.length || 0} events`);
 
+    // Get unique booker IDs and fetch their names
+    const bookerIds = [...new Set((leads || []).filter(lead => lead.booker_id).map(lead => lead.booker_id))];
+    let usersMap = new Map();
+    
+    if (bookerIds.length > 0) {
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .in('id', bookerIds);
+      
+      if (!usersError && users) {
+        users.forEach(user => usersMap.set(user.id, user));
+      }
+    }
+
     const events = leads?.map(lead => {
       const date = new Date(lead.date_booked);
+      const booker = lead.booker_id && usersMap.has(lead.booker_id) ? usersMap.get(lead.booker_id) : null;
+      
       return {
         id: lead.id,
         title: lead.name,
@@ -3771,6 +3788,7 @@ router.get('/calendar-public', async (req, res) => {
           status: lead.status,
           date_booked: lead.date_booked,
           booker_id: lead.booker_id,
+          booker_name: booker ? booker.name : null,
           time: date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
         }
       };

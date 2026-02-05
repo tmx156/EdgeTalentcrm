@@ -29,24 +29,24 @@ const SALESAPE_CONFIG = {
   PAT_CODE: process.env.SALESAPE_PAT_CODE || process.env.SALESAPE_PAT
 };
 
-// Default booker for SalesApe/public bookings (Sally)
+// Default booker for SalesApe/public bookings (SalesApe AI)
 let DEFAULT_SALESAPE_BOOKER_ID = null;
 
-// Look up Sally's user ID on startup
+// Look up SalesApe AI's user ID on startup
 async function initDefaultBooker() {
   try {
-    const { data: sally, error } = await supabase
+    const { data: salesapeai, error } = await supabase
       .from('users')
       .select('id, name')
-      .ilike('name', '%sally%')
+      .ilike('name', '%salesape%')
       .limit(1)
       .single();
 
-    if (sally && !error) {
-      DEFAULT_SALESAPE_BOOKER_ID = sally.id;
-      console.log(`✅ SalesApe bookings will be assigned to: ${sally.name} (${sally.id})`);
+    if (salesapeai && !error) {
+      DEFAULT_SALESAPE_BOOKER_ID = salesapeai.id;
+      console.log(`✅ SalesApe bookings will be assigned to: ${salesapeai.name} (${salesapeai.id})`);
     } else {
-      console.warn('⚠️ Could not find Sally user for SalesApe bookings');
+      console.warn('⚠️ Could not find SalesApe AI user for SalesApe bookings');
     }
   } catch (err) {
     console.error('Error looking up default booker:', err.message);
@@ -309,7 +309,7 @@ router.post('/book/:identifier', async (req, res) => {
     }
 
     if (DEFAULT_SALESAPE_BOOKER_ID) {
-      console.log('📋 Booking assigned to Sally (SalesApe default booker)');
+      console.log('📋 Booking assigned to SalesApe AI (SalesApe default booker)');
     }
 
     // If client updated their name or email, save it

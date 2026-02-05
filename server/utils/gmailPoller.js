@@ -62,10 +62,13 @@ class GmailPoller {
     this.pollTimer = null;
     this.io = ioInstance;
     this.lastHistoryId = null;
-    this.processedMessages = new Set();
+    // Use Map instead of Set to store timestamps for cleanup
+    this.processedMessages = new Map(); // messageId -> timestamp
     this.processedMessagesFile = path.join(__dirname, `../data/processed_gmail_messages_${accountKey}.json`);
     this.retryAttempts = 3; // Number of retry attempts for failed operations
     this.retryDelay = 2000; // Delay between retries (ms)
+    this.maxProcessedMessages = 10000; // Max messages to track (prevents memory bloat)
+    this.messageRetentionDays = 30; // How long to track processed messages
 
     // Validate account configuration
     if (!this.accountConfig || !this.accountConfig.clientId || !this.accountConfig.clientSecret || !this.accountConfig.refreshToken) {
@@ -90,10 +93,23 @@ class GmailPoller {
 
       if (fsSync.existsSync(this.processedMessagesFile)) {
         const data = JSON.parse(fsSync.readFileSync(this.processedMessagesFile, 'utf8'));
+        const cutoffTime = Date.now() - (this.messageRetentionDays * 24 * 60 * 60 * 1000);
+        
         if (data.processedIds && Array.isArray(data.processedIds)) {
-          data.processedIds.forEach(id => this.processedMessages.add(id));
+          // Handle both old format (array of strings) and new format (array of [id, timestamp])
+          data.processedIds.forEach(item => {
+            if (Array.isArray(item) && item.length === 2) {
+              // New format: [id, timestamp]
+              if (item[1] > cutoffTime) {
+                this.processedMessages.set(item[0], item[1]);
+              }
+            } else if (typeof item === 'string') {
+              // Old format: just id - assign current timestamp
+              this.processedMessages.set(item, Date.now());
+            }
+          });
         }
-        console.log(`📧 [${this.accountConfig.displayName}] Loaded ${this.processedMessages.size} processed message IDs`);
+        console.log(`📧 [${this.accountConfig.displayName}] Loaded ${this.processedMessages.size} processed message IDs (kept within ${this.messageRetentionDays} days)`);
       } else {
         console.log(`📧 [${this.accountConfig.displayName}] No existing processed messages file found, starting fresh`);
       }
@@ -105,9 +121,14 @@ class GmailPoller {
   // Save processed messages to persistent storage
   saveProcessedMessages() {
     try {
+      // Convert Map to array of [id, timestamp] pairs
+      const processedIds = Array.from(this.processedMessages.entries());
+      
       const data = {
         lastUpdated: new Date().toISOString(),
-        processedIds: Array.from(this.processedMessages)
+        processedIds: processedIds,
+        count: processedIds.length,
+        accountKey: this.accountKey
       };
 
       const dataDir = path.dirname(this.processedMessagesFile);
@@ -123,9 +144,15 @@ class GmailPoller {
 
   // Mark message as processed
   markMessageProcessed(messageId) {
-    this.processedMessages.add(messageId);
+    this.processedMessages.set(messageId, Date.now());
+    
+    // Cleanup old messages periodically to prevent memory bloat
+    if (this.processedMessages.size >= this.maxProcessedMessages) {
+      this.cleanupOldProcessedMessages();
+    }
+    
     // Save periodically, not on every message to reduce I/O
-    if (this.processedMessages.size % 10 === 0) {
+    if (this.processedMessages.size % 50 === 0) {
       this.saveProcessedMessages();
     }
   }
@@ -133,6 +160,39 @@ class GmailPoller {
   // Check if message was already processed (in-memory check)
   isMessageProcessed(messageId) {
     return this.processedMessages.has(messageId);
+  }
+
+  // Cleanup old processed messages to prevent memory bloat
+  cleanupOldProcessedMessages() {
+    try {
+      const cutoffTime = Date.now() - (this.messageRetentionDays * 24 * 60 * 60 * 1000);
+      let cleanedCount = 0;
+      
+      // Remove messages older than retention period
+      for (const [id, timestamp] of this.processedMessages) {
+        if (timestamp < cutoffTime) {
+          this.processedMessages.delete(id);
+          cleanedCount++;
+        }
+      }
+      
+      // If still too many, remove oldest (LRU style)
+      if (this.processedMessages.size > this.maxProcessedMessages) {
+        const sortedEntries = [...this.processedMessages.entries()]
+          .sort((a, b) => b[1] - a[1]); // Sort by timestamp desc
+        
+        // Keep only the most recent maxProcessedMessages
+        this.processedMessages = new Map(sortedEntries.slice(0, this.maxProcessedMessages));
+        cleanedCount += sortedEntries.length - this.maxProcessedMessages;
+      }
+      
+      if (cleanedCount > 0) {
+        console.log(`🧹 [${this.accountConfig.displayName}] Cleaned up ${cleanedCount} old processed message IDs (current: ${this.processedMessages.size})`);
+        this.saveProcessedMessages();
+      }
+    } catch (error) {
+      console.error(`❌ [${this.accountConfig.displayName}] Error cleaning up processed messages:`, error.message);
+    }
   }
 
   getSupabase() {
@@ -249,6 +309,7 @@ class GmailPoller {
       clearInterval(this.pollTimer);
     }
 
+    // Main polling timer for scanning messages
     this.pollTimer = setInterval(async () => {
       if (this.isRunning && !this.disabled) {
         try {
@@ -260,6 +321,15 @@ class GmailPoller {
         }
       }
     }, POLL_INTERVAL_MS);
+
+    // Cleanup timer - run every hour to prevent memory bloat
+    this.cleanupTimer = setInterval(() => {
+      if (this.isRunning && !this.disabled) {
+        this.cleanupOldProcessedMessages();
+      }
+    }, 60 * 60 * 1000); // Every hour
+
+    console.log(`📧 [${this.accountConfig.displayName}] Polling started (${POLL_INTERVAL_MS / 1000}s interval) with hourly cleanup`);
   }
 
   /**
@@ -422,13 +492,28 @@ class GmailPoller {
     const fromEmail = extractEmail(from);
     const toEmail = extractEmail(to);
 
-    // Check if email is TO our account
+    // Check if email is TO our account (inbound email)
+    // Use exact matching or domain matching to avoid false positives
     const accountEmail = this.accountConfig.email.toLowerCase();
-    if (!toEmail.toLowerCase().includes(accountEmail)) {
+    const toEmailLower = toEmail.toLowerCase();
+    
+    // Check if TO matches our account exactly or is in our domain for catch-all
+    const isToOurAccount = toEmailLower === accountEmail || 
+                           toEmailLower.endsWith(`<${accountEmail}>`) ||
+                           toEmailLower.includes(`<${accountEmail}>`);
+    
+    if (!isToOurAccount) {
       // Check CC and BCC as well
       const cc = getHeader('Cc') || '';
       const bcc = getHeader('Bcc') || '';
-      if (!cc.toLowerCase().includes(accountEmail) && !bcc.toLowerCase().includes(accountEmail)) {
+      const ccLower = cc.toLowerCase();
+      const bccLower = bcc.toLowerCase();
+      
+      const isCcToUs = ccLower.includes(accountEmail) || ccLower.includes(`<${accountEmail}>`);
+      const isBccToUs = bccLower.includes(accountEmail) || bccLower.includes(`<${accountEmail}>`);
+      
+      if (!isCcToUs && !isBccToUs) {
+        console.log(`📧 [${this.accountConfig.displayName}] Skipping - not addressed to ${accountEmail} (To: ${toEmail})`);
         return 'skipped'; // Not addressed to this account
       }
     }
@@ -521,6 +606,9 @@ class GmailPoller {
     if (insertError || !insertedMessage) {
       throw new Error(`DB_ERROR_INSERT: ${insertError?.message}`);
     }
+
+    // 🔔 REPLY ROUTING: Find original sender and notify them
+    await this.routeReplyToOriginalSender(lead, subject, fromEmail, recordId);
 
     // Update booking history
     await this.updateLeadHistory(lead, subject, bodyText || '(No content)', emailReceivedDate);
@@ -959,6 +1047,121 @@ class GmailPoller {
   }
 
   /**
+   * 🔔 REPLY ROUTING: Find original sender and notify them of reply
+   * This ensures email replies go to the user who sent the original message
+   */
+  async routeReplyToOriginalSender(lead, subject, fromEmail, messageId) {
+    try {
+      // Normalize subject by removing Re:/Fwd:/FW: prefixes
+      const normalizedSubject = subject.replace(/^(re|fwd?|fw):\s*/i, '').trim().toLowerCase();
+      
+      if (!normalizedSubject) return;
+
+      // Find recent sent emails to this lead with similar subject
+      const { data: sentMessages, error } = await this.supabase
+        .from('messages')
+        .select('id, sent_by, sent_by_name, subject, sent_at, content')
+        .eq('lead_id', lead.id)
+        .eq('type', 'email')
+        .not('sent_by', 'is', null) // Only sent messages (have sent_by)
+        .order('sent_at', { ascending: false })
+        .limit(10);
+
+      if (error || !sentMessages || sentMessages.length === 0) {
+        return; // No sent messages found
+      }
+
+      // Find matching message by subject (normalized)
+      const matchingMessage = sentMessages.find(msg => {
+        const msgSubject = (msg.subject || '').replace(/^(re|fwd?|fw):\s*/i, '').trim().toLowerCase();
+        return msgSubject === normalizedSubject || 
+               normalizedSubject.includes(msgSubject) || 
+               msgSubject.includes(normalizedSubject);
+      });
+
+      if (!matchingMessage || !matchingMessage.sent_by) {
+        return; // No matching original message
+      }
+
+      const originalSenderId = matchingMessage.sent_by;
+      const originalSenderName = matchingMessage.sent_by_name || 'Unknown';
+
+      console.log(`📧 [REPLY ROUTING] Reply from ${fromEmail} matches original message sent by ${originalSenderName}`);
+      console.log(`📧 [REPLY ROUTING] Notifying user ${originalSenderId} of reply to lead ${lead.name}`);
+
+      // Create notification for original sender
+      await this.createReplyNotification({
+        messageId,
+        leadId: lead.id,
+        leadName: lead.name,
+        replyFrom: fromEmail,
+        subject: subject,
+        originalSenderId: originalSenderId,
+        originalSenderName: originalSenderName
+      });
+
+      // Emit specific event to original sender
+      if (this.io) {
+        this.io.to(`user_${originalSenderId}`).emit('email_reply_received', {
+          messageId,
+          leadId: lead.id,
+          leadName: lead.name,
+          replyFrom: fromEmail,
+          subject: subject,
+          originalMessageId: matchingMessage.id,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+    } catch (error) {
+      console.error('❌ [REPLY ROUTING] Error routing reply:', error.message);
+      // Don't throw - this shouldn't break email processing
+    }
+  }
+
+  /**
+   * Create notification for reply routing
+   */
+  async createReplyNotification({ messageId, leadId, leadName, replyFrom, subject, originalSenderId, originalSenderName }) {
+    try {
+      // Check if notifications table exists
+      const { error: tableCheckError } = await this.supabase
+        .from('notifications')
+        .select('id')
+        .limit(1);
+
+      if (tableCheckError && tableCheckError.code === '42P01') {
+        // Table doesn't exist, skip
+        return;
+      }
+
+      // Insert notification
+      await this.supabase
+        .from('notifications')
+        .insert({
+          user_id: originalSenderId,
+          type: 'email_reply',
+          title: `Reply from ${leadName}`,
+          message: `Received reply to "${subject}" from ${replyFrom}`,
+          data: {
+            messageId,
+            leadId,
+            leadName,
+            replyFrom,
+            subject
+          },
+          read: false,
+          created_at: new Date().toISOString()
+        });
+
+      console.log(`✅ [REPLY ROUTING] Notification created for user ${originalSenderId}`);
+    } catch (error) {
+      // Notifications table might not exist, log but don't fail
+      console.log(`ℹ️ [REPLY ROUTING] Notification not created (table may not exist): ${error.message}`);
+    }
+  }
+
+  /**
    * Stop the poller
    */
   stop() {
@@ -967,6 +1170,10 @@ class GmailPoller {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
+    }
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
     }
     // Save processed messages on stop
     this.saveProcessedMessages();

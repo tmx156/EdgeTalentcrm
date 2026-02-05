@@ -28,9 +28,9 @@ const TIME_SLOTS = [
   { time: '12:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
                     slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female' },
 
-  // 13:00 - Slot 1: blank, Slot 2: blank
-  { time: '13:00', slot1Type: 'blank', slot1Color: 'bg-gray-50', slot1BorderColor: 'border-gray-300', slot1Label: 'Unavailable',
-                    slot2Type: 'blank', slot2Color: 'bg-gray-50', slot2BorderColor: 'border-gray-300', slot2Label: 'Unavailable' },
+  // 13:00 - Slot 1: female, Slot 2: male
+  { time: '13:00', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
+                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male' },
 
   // 13:30 - Slot 1: female, Slot 2: male/child (striped)
   { time: '13:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',

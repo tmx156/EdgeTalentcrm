@@ -10,7 +10,7 @@ const TIME_SLOTS = [
   { time: '11:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷' },
   { time: '12:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'male', slot2Emoji: '🔵' },
   { time: '12:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷' },
-  { time: '13:00', slot1Type: 'blank', slot1Emoji: '⚫', slot2Type: 'blank', slot2Emoji: '⚫' },
+  { time: '13:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'male', slot2Emoji: '🔵' },
   { time: '13:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
   { time: '14:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
   { time: '14:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵' },

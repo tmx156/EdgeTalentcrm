@@ -61,7 +61,7 @@ const Calendar = () => {
     hair_length: ''
   });
 
-  // All possible time slots (excluding 13:00 lunch break)
+  // All possible time slots
   const ALL_TIME_SLOTS = [
     { time: '10:00', label: '10:00 AM' },
     { time: '10:30', label: '10:30 AM' },
@@ -69,6 +69,7 @@ const Calendar = () => {
     { time: '11:30', label: '11:30 AM' },
     { time: '12:00', label: '12:00 PM' },
     { time: '12:30', label: '12:30 PM' },
+    { time: '13:00', label: '1:00 PM' },
     { time: '13:30', label: '1:30 PM' },
     { time: '14:00', label: '2:00 PM' },
     { time: '14:30', label: '2:30 PM' },

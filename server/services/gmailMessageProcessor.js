@@ -72,8 +72,16 @@ async function processGmailMessage(accountKey, messageId) {
     console.log(`📧 [${accountKey}] From: ${fromEmail}, To: ${toEmail}, Subject: "${subject}"`);
 
     // Only process emails TO our account (received emails, not sent)
-    if (!toEmail.toLowerCase().includes(accountInfo.email.toLowerCase())) {
-      console.log(`📧 [${accountKey}] Skipping - not sent to ${accountInfo.email}`);
+    // Use proper matching to avoid false positives
+    const accountEmail = accountInfo.email.toLowerCase();
+    const toEmailLower = toEmail.toLowerCase();
+    
+    const isToOurAccount = toEmailLower === accountEmail || 
+                           toEmailLower.endsWith(`<${accountEmail}>`) ||
+                           toEmailLower.includes(`<${accountEmail}>`);
+    
+    if (!isToOurAccount) {
+      console.log(`📧 [${accountKey}] Skipping - not sent to ${accountInfo.email} (To: ${toEmail})`);
       return false;
     }
 
@@ -174,6 +182,9 @@ async function processGmailMessage(accountKey, messageId) {
     if (!insertedMessage) {
       throw new Error('DB_ERROR_INSERT: No data returned after insert');
     }
+
+    // 🔔 REPLY ROUTING: Find original sender and notify them
+    await routeReplyToOriginalSender(lead, subject, fromEmail, recordId, accountKey);
 
     // Update booking history
     await updateLeadHistory(lead, subject, bodyText, emailReceivedDate, accountKey);
@@ -454,6 +465,80 @@ function emitEvents(lead, messageId, subject, body, emailReceivedDate, accountKe
   });
 
   console.log(`📤 Socket.IO events emitted to rooms: ${rooms.join(', ')}`);
+}
+
+/**
+ * 🔔 REPLY ROUTING: Find original sender and notify them of reply
+ * This ensures email replies go to the user who sent the original message
+ */
+async function routeReplyToOriginalSender(lead, subject, fromEmail, messageId, accountKey) {
+  try {
+    // Normalize subject by removing Re:/Fwd:/FW: prefixes
+    const normalizedSubject = subject.replace(/^(re|fwd?|fw):\s*/i, '').trim().toLowerCase();
+    
+    if (!normalizedSubject) return;
+
+    // Find recent sent emails to this lead with similar subject
+    const { data: sentMessages, error } = await supabase
+      .from('messages')
+      .select('id, sent_by, sent_by_name, subject, sent_at, content')
+      .eq('lead_id', lead.id)
+      .eq('type', 'email')
+      .not('sent_by', 'is', null) // Only sent messages (have sent_by)
+      .order('sent_at', { ascending: false })
+      .limit(10);
+
+    if (error || !sentMessages || sentMessages.length === 0) {
+      return; // No sent messages found
+    }
+
+    // Find matching message by subject (normalized)
+    const matchingMessage = sentMessages.find(msg => {
+      const msgSubject = (msg.subject || '').replace(/^(re|fwd?|fw):\s*/i, '').trim().toLowerCase();
+      return msgSubject === normalizedSubject || 
+             normalizedSubject.includes(msgSubject) || 
+             msgSubject.includes(normalizedSubject);
+    });
+
+    if (!matchingMessage || !matchingMessage.sent_by) {
+      return; // No matching original message
+    }
+
+    const originalSenderId = matchingMessage.sent_by;
+    const originalSenderName = matchingMessage.sent_by_name || 'Unknown';
+
+    console.log(`📧 [REPLY ROUTING] Reply from ${fromEmail} matches original message sent by ${originalSenderName}`);
+    console.log(`📧 [REPLY ROUTING] Notifying user ${originalSenderId} of reply to lead ${lead.name}`);
+
+    // Emit specific event to original sender
+    if (io) {
+      io.to(`user_${originalSenderId}`).emit('email_reply_received', {
+        messageId,
+        leadId: lead.id,
+        leadName: lead.name,
+        replyFrom: fromEmail,
+        subject: subject,
+        originalMessageId: matchingMessage.id,
+        timestamp: new Date().toISOString()
+      });
+
+      // Also emit to admins
+      io.to('admins').emit('email_reply_received', {
+        messageId,
+        leadId: lead.id,
+        leadName: lead.name,
+        replyFrom: fromEmail,
+        subject: subject,
+        originalSenderId: originalSenderId,
+        originalSenderName: originalSenderName,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ [REPLY ROUTING] Error routing reply:', error.message);
+    // Don't throw - this shouldn't break email processing
+  }
 }
 
 module.exports = {

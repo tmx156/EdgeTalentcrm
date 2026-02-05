@@ -730,8 +730,25 @@ router.get('/calendar-public', async (req, res) => {
 
     console.log(`📅 Found ${validLeads.length} calendar events`);
 
+    // Get unique booker IDs and fetch their names
+    const bookerIds = [...new Set(validLeads.filter(lead => lead.booker_id).map(lead => lead.booker_id))];
+    let usersMap = new Map();
+    
+    if (bookerIds.length > 0) {
+      const { data: users, error: usersError } = await dbManager.client
+        .from('users')
+        .select('id, name, email')
+        .in('id', bookerIds);
+      
+      if (!usersError && users) {
+        users.forEach(user => usersMap.set(user.id, user));
+      }
+    }
+
     // Convert to flat events format for dashboard
     const events = validLeads.slice(0, validatedLimit).map(lead => {
+      const booker = lead.booker_id && usersMap.has(lead.booker_id) ? usersMap.get(lead.booker_id) : null;
+      
       return {
         id: lead.id,
         name: lead.name,
@@ -742,6 +759,7 @@ router.get('/calendar-public', async (req, res) => {
         booking_date: lead.date_booked,
         booking_time: lead.time_booked || null, // Use actual time_booked field
         booker_id: lead.booker_id,
+        booker_name: booker ? booker.name : null,
         created_at: lead.created_at,
         is_confirmed: lead.is_confirmed
       };
