@@ -4,6 +4,7 @@ import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { getCurrentUKTime, getTodayUK, getGreeting, getUKTimeString } from '../utils/timeUtils';
+import GmailEmailRenderer from '../components/GmailEmailRenderer';
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -160,14 +161,32 @@ const Dashboard = () => {
   const handleSendReply = async () => {
     if (!replyText.trim() || !selectedMessage) return;
 
+    // Validate recipient exists
+    if (replyMode === 'email' && !selectedMessage.leadEmail) {
+      alert('Cannot send email: Lead has no email address');
+      return;
+    }
+    if (replyMode === 'sms' && !selectedMessage.leadPhone) {
+      alert('Cannot send SMS: Lead has no phone number');
+      return;
+    }
+
     setSendingReply(true);
     try {
-      await axios.post('/api/messages-list/reply', {
+      console.log('📤 Sending reply:', {
         messageId: selectedMessage.id,
-        type: replyMode,
-        content: replyText,
-        to: selectedMessage.from
+        replyType: replyMode,
+        to: replyMode === 'email' ? selectedMessage.leadEmail : selectedMessage.leadPhone,
+        leadName: selectedMessage.leadName
       });
+
+      const response = await axios.post('/api/messages-list/reply', {
+        messageId: selectedMessage.id,
+        replyType: replyMode,        // API expects 'replyType' not 'type'
+        reply: replyText             // API expects 'reply' not 'content'
+      });
+
+      console.log('✅ Reply sent successfully:', response.data);
 
       // Mark as read
       await axios.put(`/api/messages-list/${selectedMessage.id}/read`);
@@ -176,9 +195,16 @@ const Dashboard = () => {
       setSelectedMessage(null);
       setReplyText('');
       fetchUnreadMessages();
+      
+      // Show success message with recipient info
+      const recipient = replyMode === 'email' 
+        ? (selectedMessage.leadEmail || selectedMessage.from)
+        : selectedMessage.leadPhone;
+      alert(`${replyMode.toUpperCase()} sent successfully to ${selectedMessage.leadName} (${recipient})`);
     } catch (e) {
       console.error('Error sending reply:', e);
-      alert('Failed to send reply');
+      const errorMsg = e.response?.data?.message || e.message || 'Failed to send reply';
+      alert(`Failed to send reply: ${errorMsg}`);
     } finally {
       setSendingReply(false);
     }
@@ -403,11 +429,61 @@ const Dashboard = () => {
 
               <div className="mb-6">
                 <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <p className="text-sm font-semibold text-gray-900 mb-1">From: {selectedMessage.from}</p>
-                  {selectedMessage.subject && (
-                    <p className="text-sm text-gray-700 mb-2">Subject: {selectedMessage.subject}</p>
-                  )}
-                  <p className="text-sm text-gray-600">{selectedMessage.content || selectedMessage.preview}</p>
+                  {/* Message Header */}
+                  <div className="mb-3 pb-3 border-b border-gray-200">
+                    <p className="text-sm font-semibold text-gray-900 mb-1">
+                      <span className="text-gray-500">From:</span> {selectedMessage.leadName || selectedMessage.from || 'Unknown'}
+                    </p>
+                    {selectedMessage.leadEmail && (
+                      <p className="text-sm text-gray-600 mb-1">
+                        <span className="text-gray-500">Email:</span> {selectedMessage.leadEmail}
+                      </p>
+                    )}
+                    {selectedMessage.leadPhone && (
+                      <p className="text-sm text-gray-600 mb-1">
+                        <span className="text-gray-500">Phone:</span> {selectedMessage.leadPhone}
+                      </p>
+                    )}
+                    {selectedMessage.subject && (
+                      <p className="text-sm text-gray-700 mt-2">
+                        <span className="text-gray-500">Subject:</span> {selectedMessage.subject}
+                      </p>
+                    )}
+                  </div>
+                  
+                  {/* Email Content - Use Gmail-style HTML renderer */}
+                  <div className="bg-white rounded-lg p-4 border border-gray-200">
+                    {selectedMessage.type === 'email' && (selectedMessage.email_body || selectedMessage.html_content) ? (
+                      <GmailEmailRenderer
+                        htmlContent={selectedMessage.email_body || selectedMessage.html_content}
+                        textContent={selectedMessage.content}
+                        attachments={selectedMessage.attachments || []}
+                        embeddedImages={selectedMessage.embedded_images || []}
+                      />
+                    ) : (
+                      <p className="text-sm text-gray-600 whitespace-pre-wrap">{selectedMessage.content || selectedMessage.preview}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Reply Recipient Info */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm font-medium text-blue-900">
+                    <span className="text-blue-600">Reply will be sent to:</span>{' '}
+                    {replyMode === 'email' ? (
+                      selectedMessage.leadEmail ? (
+                        <>{selectedMessage.leadName} ({selectedMessage.leadEmail})</>
+                      ) : (
+                        <span className="text-red-600">⚠️ No email address available</span>
+                      )
+                    ) : (
+                      selectedMessage.leadPhone ? (
+                        <>{selectedMessage.leadName} ({selectedMessage.leadPhone})</>
+                      ) : (
+                        <span className="text-red-600">⚠️ No phone number available</span>
+                      )
+                    )}
+                  </p>
                 </div>
 
                 <div className="flex items-center space-x-4 mb-4">
@@ -451,7 +527,12 @@ const Dashboard = () => {
                 </button>
                 <button
                   onClick={handleSendReply}
-                  disabled={!replyText.trim() || sendingReply}
+                  disabled={
+                    !replyText.trim() || 
+                    sendingReply || 
+                    (replyMode === 'email' && !selectedMessage?.leadEmail) ||
+                    (replyMode === 'sms' && !selectedMessage?.leadPhone)
+                  }
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <FiSend className="h-4 w-4" />

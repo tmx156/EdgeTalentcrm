@@ -12,6 +12,7 @@ import {
   FiInbox
 } from 'react-icons/fi';
 import { decodeEmailContent, getEmailContentPreview } from '../utils/emailContentDecoder';
+import GmailEmailRenderer from './GmailEmailRenderer';
 
 const EmailThread = ({ thread, onThreadClick, isSelected = false, userRole = 'user', onMarkThreadAsRead }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -246,11 +247,22 @@ const EmailThread = ({ thread, onThreadClick, isSelected = false, userRole = 'us
 
                     {/* Message Body */}
                     <div className="px-4 py-3">
-                      <p className={`text-sm whitespace-pre-wrap break-words ${
-                        isSent ? 'text-white' : 'text-gray-900'
-                      }`}>
-                        {decodeEmailContent(message.content || message.details?.body || message.details?.message || 'No content')}
-                      </p>
+                      {(thread.type === 'email' || message.type === 'email') && (message.email_body || message.details?.email_body || message.html_content) ? (
+                        <div className={isSent ? 'email-sent' : 'email-received'}>
+                          <GmailEmailRenderer
+                            htmlContent={message.email_body || message.details?.email_body || message.html_content}
+                            textContent={message.content || message.details?.body || message.details?.message}
+                            attachments={message.attachments || message.details?.attachments || []}
+                            embeddedImages={message.embedded_images || message.details?.embedded_images || []}
+                          />
+                        </div>
+                      ) : (
+                        <p className={`text-sm whitespace-pre-wrap break-words ${
+                          isSent ? 'text-white' : 'text-gray-900'
+                        }`}>
+                          {decodeEmailContent(message.content || message.details?.body || message.details?.message || 'No content')}
+                        </p>
+                      )}
 
                       {/* Attachments */}
                       {message.attachments && Array.isArray(message.attachments) && message.attachments.length > 0 && (
