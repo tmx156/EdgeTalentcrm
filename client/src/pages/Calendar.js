@@ -2210,6 +2210,16 @@ const Calendar = () => {
                 updatedLead.hasSale,
                 newStatus === 'Confirmed'
               ),
+              // Explicit flat properties for SlotCalendar (ensures they're not lost from closure)
+              date_booked: updatedLead.date_booked || selectedEvent.date_booked,
+              time_booked: updatedLead.time_booked || selectedEvent.time_booked,
+              booking_slot: updatedLead.booking_slot || selectedEvent.booking_slot,
+              is_confirmed: updatedLead.is_confirmed,
+              is_double_confirmed: updatedLead.is_double_confirmed || 0,
+              booking_status: updatedLead.booking_status || null,
+              name: updatedLead.name || selectedEvent.name,
+              phone: updatedLead.phone || selectedEvent.phone,
+              email: updatedLead.email || selectedEvent.email,
               extendedProps: {
                 ...selectedEvent.extendedProps,
                 status: (newStatus === 'Confirmed' || newStatus === 'Unconfirmed' || newStatus === 'Reschedule' || newStatus === 'Arrived' || newStatus === 'Left' || newStatus === 'No Show' || newStatus === 'No Sale') ? 'Booked' : newStatus,
