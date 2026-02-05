@@ -1185,7 +1185,9 @@ class GmailPoller {
  * Start Gmail poller for all configured accounts
  */
 function startGmailPoller(socketIoInstance) {
-  if (!SUPABASE_KEY) {
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+  
+  if (!supabaseKey) {
     console.error('❌ CRITICAL: Cannot start Gmail poller. Missing SUPABASE_SERVICE_ROLE_KEY environment variable.');
     console.error('⚠️  Gmail polling will be disabled until SUPABASE_SERVICE_ROLE_KEY is set in Railway.');
     return [];
