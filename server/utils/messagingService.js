@@ -253,20 +253,6 @@ class MessagingService {
         throw new Error('Lead not found');
       }
 
-      // Validate lead has required contact info BEFORE processing
-      const willSendEmail = options.sendEmail !== false;
-      const willSendSms = options.sendSms !== false;
-      
-      if (willSendEmail && !lead.email) {
-        console.error(`❌ Lead ${lead.name} (ID: ${leadId}) has no email address. Cannot send booking confirmation email.`);
-        throw new Error(`Lead ${lead.name} has no email address. Please add an email address to send booking confirmation.`);
-      }
-      
-      if (willSendSms && !lead.phone) {
-        console.error(`❌ Lead ${lead.name} (ID: ${leadId}) has no phone number. Cannot send booking confirmation SMS.`);
-        throw new Error(`Lead ${lead.name} has no phone number. Please add a phone number to send booking confirmation SMS.`);
-      }
-
       // Get booker info separately using manual join
       let bookerInfo = null;
       if (lead.booker_id) {
@@ -804,15 +790,8 @@ class MessagingService {
   
     try {
       if (!message.recipient_email || !message.subject || !message.email_body) {
-        const missingFields = [];
-        if (!message.recipient_email) missingFields.push('recipient_email (lead has no email address)');
-        if (!message.subject) missingFields.push('subject');
-        if (!message.email_body) missingFields.push('email_body');
-        
-        const errorMsg = `📩 [MSG-${messageId}] Missing required fields: ${missingFields.join(', ')}`;
+        const errorMsg = `📩 [MSG-${messageId}] Missing required fields: ${!message.recipient_email ? 'recipient_email, ' : ''}${!message.subject ? 'subject, ' : ''}${!message.email_body ? 'email_body' : ''}`.replace(/, $/, '');
         console.error(errorMsg);
-        console.error(`📩 [MSG-${messageId}] Lead ID: ${message.lead_id}`);
-        console.error(`📩 [MSG-${messageId}] Hint: If recipient_email is missing, the lead may not have an email address stored.`);
         throw new Error(errorMsg);
       }
       
