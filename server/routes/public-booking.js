@@ -391,14 +391,18 @@ router.post('/book/:identifier', async (req, res) => {
       // Don't fail the booking if history fails
     }
 
-    // Send booking confirmation
+    // Send booking confirmation using 'Booking Confirmation' template
     try {
       const bookingDate = new Date(bookingDateTime);
       await MessagingService.sendBookingConfirmation(
         leadId,
         DEFAULT_SALESAPE_BOOKER_ID, // Use Sally for SalesApe bookings
         bookingDate.toISOString(),
-        { sendEmail: true, sendSms: true }
+        { 
+          sendEmail: true, 
+          sendSms: true,
+          templateId: 'template-1764551854893-pzx8htxyc' // Use 'Booking Confirmation' template
+        }
       );
     } catch (confirmationError) {
       console.error('Error sending booking confirmation:', confirmationError);
