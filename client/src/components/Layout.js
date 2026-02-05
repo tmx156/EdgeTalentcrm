@@ -226,6 +226,7 @@ const Layout = ({ children }) => {
         timestamp: data.timestamp,
         type: data.channel || data.type || 'sms',
         subject: data.subject,
+        email_body: data.email_body || data.html_body || null, // Include HTML content for email rendering
         read: false,
         formattedTime: 'Just now'
       };
@@ -452,6 +453,11 @@ const Layout = ({ children }) => {
           const serverUnread = !msg.isRead; // Server's computed read status
           const isRead = !serverUnread || locallyMarkedAsRead;
 
+          // Skip read messages entirely - don't show in notification bell
+          if (isRead) {
+            return null;
+          }
+
           return {
             id: notificationId, // Use messageId as the primary ID for consistency
             messageId: msg.messageId || msg.id, // Include the actual message UUID
@@ -465,9 +471,10 @@ const Layout = ({ children }) => {
             formattedTime: formattedTime,
             type: msg.type, // Include message type (sms/email)
             subject: msg.details?.subject || msg.subject, // For email notifications
+            email_body: msg.email_body || msg.details?.email_body || null, // Include HTML content
             read: isRead
           };
-        });
+        }).filter(n => n !== null); // Filter out null entries (read messages)
         
         if (newNotifications.length > 0) {
           console.log('🔔 Found new notifications via polling:', newNotifications.length);

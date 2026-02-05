@@ -31,47 +31,70 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
   const fetchConversationHistory = useCallback(async () => {
     try {
       setLoadingHistory(true);
-      const response = await axios.get(`/api/leads/${notification.leadId}`);
-      const lead = response.data;
       
-      if (lead.booking_history) {
-        const history = typeof lead.booking_history === 'string' 
-          ? JSON.parse(lead.booking_history) 
-          : lead.booking_history;
-        
-        // Filter by channel depending on the message type opened
-        const wantedActions = notification?.type === 'email'
-          ? ['EMAIL_SENT', 'EMAIL_RECEIVED']
-          : ['SMS_SENT', 'SMS_RECEIVED', 'SMS_FAILED'];
-
-        let convo = history
-          .filter(entry => wantedActions.includes(entry.action))
-          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-        // CLIENT-SIDE DEDUPLICATION - Remove exact duplicates
-        const seenKeys = new Set();
-        convo = convo.filter(entry => {
-          const timestamp = entry.timestamp ? new Date(entry.timestamp).toISOString() : '';
-          const action = entry.action || '';
-          const body = entry.details?.body || entry.details?.message || '';
-          const subject = entry.details?.subject || '';
-          const performedBy = entry.performed_by || '';
-          
-          // Create a unique key including body content to catch duplicates
-          const timeKey = timestamp ? new Date(timestamp).setSeconds(0, 0) : 0;
-          const bodyContent = body.substring(0, 200).trim().toLowerCase();
-          const key = `${action}_${timeKey}_${performedBy}_${subject.substring(0, 50)}_${bodyContent}`;
-          
-          if (seenKeys.has(key)) {
-            console.log('🔄 Client-side deduplication: Removing duplicate entry');
-            return false;
+      // Fetch messages from messages-list API to get full content including email_body
+      const token = localStorage.getItem('token');
+      const response = await axios.get('/api/messages-list', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        params: { limit: 200 }
+      });
+      
+      const messages = response.data.messages || [];
+      
+      // Filter messages for this lead and type
+      const filteredMessages = messages.filter(msg => {
+        if (msg.leadId !== notification.leadId) return false;
+        if (notification?.type === 'email' && msg.type === 'email') return true;
+        if (notification?.type === 'sms' && msg.type === 'sms') return true;
+        return false;
+      });
+      
+      // Convert to conversation format
+      const convo = filteredMessages
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+        .map(msg => ({
+          action: msg.direction === 'sent' 
+            ? (msg.type === 'email' ? 'EMAIL_SENT' : 'SMS_SENT')
+            : (msg.type === 'email' ? 'EMAIL_RECEIVED' : 'SMS_RECEIVED'),
+          timestamp: msg.timestamp,
+          performed_by: msg.performedBy,
+          performed_by_name: msg.performedByName,
+          details: {
+            subject: msg.subject,
+            body: msg.content,
+            message: msg.content,
+            email_body: msg.email_body || msg.details?.email_body || null,
+            html_content: msg.email_body || msg.details?.email_body || null,
+            direction: msg.direction,
+            channel: msg.type,
+            attachments: msg.attachments || [],
+            embedded_images: msg.embedded_images || []
           }
-          seenKeys.add(key);
-          return true;
-        });
+        }));
 
-        setConversationHistory(convo);
-      }
+      // CLIENT-SIDE DEDUPLICATION - Remove exact duplicates
+      const seenKeys = new Set();
+      const dedupedConvo = convo.filter(entry => {
+        const timestamp = entry.timestamp ? new Date(entry.timestamp).toISOString() : '';
+        const action = entry.action || '';
+        const body = entry.details?.body || entry.details?.message || '';
+        const subject = entry.details?.subject || '';
+        const performedBy = entry.performed_by || '';
+        
+        // Create a unique key including body content to catch duplicates
+        const timeKey = timestamp ? new Date(timestamp).setSeconds(0, 0) : 0;
+        const bodyContent = body.substring(0, 200).trim().toLowerCase();
+        const key = `${action}_${timeKey}_${performedBy}_${subject.substring(0, 50)}_${bodyContent}`;
+        
+        if (seenKeys.has(key)) {
+          console.log('🔄 Client-side deduplication: Removing duplicate entry');
+          return false;
+        }
+        seenKeys.add(key);
+        return true;
+      });
+
+      setConversationHistory(dedupedConvo);
     } catch (error) {
       console.error('Error fetching conversation history:', error);
       setConversationHistory([]);
@@ -434,7 +457,7 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
               <div className="px-4 py-3">
                 {/* Use GmailEmailRenderer for emails, fallback to text for SMS */}
                 {notification?.type === 'email' && (notification.email_body || notification.html_content) ? (
-                  <div className={notification.direction === 'sent' ? 'text-white' : 'text-gray-900'}>
+                  <div className="email-html-wrapper">
                     <GmailEmailRenderer
                       htmlContent={notification.email_body || notification.html_content}
                       textContent={notification.content}
@@ -562,7 +585,7 @@ const MessageModal = ({ notification, isOpen, onClose, onReply }) => {
                         <div className="px-4 py-3">
                           {/* Use GmailEmailRenderer for emails if HTML content is available */}
                           {notification?.type === 'email' && (message.details?.email_body || message.details?.html_content) ? (
-                            <div className={isSent ? 'text-white' : isFailed ? 'text-red-900' : 'text-gray-900'}>
+                            <div className={isSent ? 'email-sent' : isFailed ? 'email-failed' : 'email-received'}>
                               <GmailEmailRenderer
                                 htmlContent={message.details?.email_body || message.details?.html_content}
                                 textContent={message.details?.body || message.details?.message || message.details?.subject || 'No content'}

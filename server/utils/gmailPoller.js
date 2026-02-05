@@ -613,8 +613,8 @@ class GmailPoller {
     // Update booking history
     await this.updateLeadHistory(lead, subject, bodyText || '(No content)', emailReceivedDate);
 
-    // Emit events
-    this.emitEvents(lead, recordId, subject, bodyText || '(No content)', emailReceivedDate);
+    // Emit events with HTML content for proper rendering
+    this.emitEvents(lead, recordId, subject, bodyText || '(No content)', emailReceivedDate, htmlBody);
 
     console.log(`✅ [${this.accountConfig.displayName}] Email processed successfully: "${subject}" from ${fromEmail}`);
     return 'processed';
@@ -1017,7 +1017,7 @@ class GmailPoller {
   /**
    * Emit Socket.IO events
    */
-  emitEvents(lead, messageId, subject, body, emailReceivedDate) {
+  emitEvents(lead, messageId, subject, body, emailReceivedDate, htmlBody = null) {
     if (!this.io) return;
 
     const rooms = [];
@@ -1033,7 +1033,8 @@ class GmailPoller {
       direction: 'received',
       channel: 'email',
       subject,
-      body
+      body,
+      email_body: htmlBody  // Include HTML content for Gmail-style rendering
     };
 
     rooms.forEach(room => {
