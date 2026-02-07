@@ -925,6 +925,49 @@ testDatabaseConnection().then(() => {
       console.error('❌ Error checking/creating contract_delivery template:', templateError.message);
     }
 
+    // One-time cleanup: remove orphaned messages and booking_history from previously deleted leads
+    try {
+      console.log('🧹 Running one-time orphaned data cleanup...');
+      const { data: allLeads } = await supabase.from('leads').select('id');
+      const leadIdSet = new Set((allLeads || []).map(l => l.id));
+
+      // Clean orphaned messages
+      const { data: allMessages } = await supabase.from('messages').select('id, lead_id');
+      if (allMessages) {
+        const orphanedMsgIds = allMessages
+          .filter(m => m.lead_id && !leadIdSet.has(m.lead_id))
+          .map(m => m.id);
+        if (orphanedMsgIds.length > 0) {
+          for (let i = 0; i < orphanedMsgIds.length; i += 50) {
+            await supabase.from('messages').delete().in('id', orphanedMsgIds.slice(i, i + 50));
+          }
+          console.log(`🧹 Deleted ${orphanedMsgIds.length} orphaned messages`);
+        } else {
+          console.log('✅ No orphaned messages found');
+        }
+      }
+
+      // Clean orphaned booking_history
+      const { data: allHistory } = await supabase.from('booking_history').select('id, lead_id');
+      if (allHistory) {
+        const orphanedHistIds = allHistory
+          .filter(h => h.lead_id && !leadIdSet.has(h.lead_id))
+          .map(h => h.id);
+        if (orphanedHistIds.length > 0) {
+          for (let i = 0; i < orphanedHistIds.length; i += 50) {
+            await supabase.from('booking_history').delete().in('id', orphanedHistIds.slice(i, i + 50));
+          }
+          console.log(`🧹 Deleted ${orphanedHistIds.length} orphaned booking_history entries`);
+        } else {
+          console.log('✅ No orphaned booking_history found');
+        }
+      }
+
+      console.log('✅ Orphaned data cleanup complete');
+    } catch (cleanupErr) {
+      console.error('⚠️ Orphaned data cleanup failed (non-critical):', cleanupErr.message);
+    }
+
     // DISABLED: Start the message scheduler
     // scheduler.start();
 
