@@ -2107,8 +2107,15 @@ const Calendar = () => {
     const previousEvents = [...events];
 
     // Prepare update data
+    // Exclude transient computed fields that don't exist in the database schema
+    const { 
+      has_received_email, has_received_sms, has_unread_email, has_unread_sms,
+      hasReceivedEmail, hasReceivedSms, hasUnreadEmail, hasUnreadSms,
+      ...leadData 
+    } = selectedEvent.extendedProps.lead;
+    
     let updateData = {
-      ...selectedEvent.extendedProps.lead
+      ...leadData
     };
 
     // For cancellation, set status to Cancelled and clear all booking information
@@ -5212,9 +5219,15 @@ const Calendar = () => {
                     const leadId = selectedEvent.extendedProps?.lead?.id;
                     // Parse time and slot from the combined value
                     const [time, slot] = reviewTime.split('|');
+                    // Exclude transient computed fields that don't exist in the database schema
+                    const { 
+                      has_received_email, has_received_sms, has_unread_email, has_unread_sms,
+                      hasReceivedEmail, hasReceivedSms, hasUnreadEmail, hasUnreadSms,
+                      ...leadData 
+                    } = selectedEvent.extendedProps.lead;
                     // Update lead with review date/time and set status to Review
                     await axios.put(`/api/leads/${leadId}`, {
-                      ...selectedEvent.extendedProps.lead,
+                      ...leadData,
                       review_date: reviewDate,
                       review_time: time,
                       review_slot: parseInt(slot),
