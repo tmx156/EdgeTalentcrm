@@ -5944,6 +5944,26 @@ router.post('/:id/send-sms', auth, async (req, res) => {
     }
 
     if (smsResult.success) {
+      // Insert into messages table so it appears in conversation
+      try {
+        const crypto = require('crypto');
+        await supabase.from('messages').insert({
+          id: crypto.randomUUID(),
+          lead_id: req.params.id,
+          type: 'sms',
+          status: 'sent',
+          sms_body: message,
+          recipient_phone: lead.phone,
+          sent_by: req.user.id,
+          sent_by_name: req.user.name,
+          sent_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      } catch (msgErr) {
+        console.error('Warning: Failed to insert SMS into messages table:', msgErr.message);
+      }
+
       // Add to booking history with provider status and ID
       await addBookingHistoryEntry(
         req.params.id,
@@ -5964,17 +5984,17 @@ router.post('/:id/send-sms', auth, async (req, res) => {
 
         // Mark all received messages as read when user replies
         await markAllReceivedMessagesAsRead(req.params.id);
-        
+
         // Emit socket event to update calendar notifications
         if (req.io) {
-          req.io.emit('lead_updated', { 
+          req.io.emit('lead_updated', {
             leadId: req.params.id,
             type: 'messages_read'
           });
         }
 
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: 'SMS sent successfully',
         sid: smsResult.sid
       });
