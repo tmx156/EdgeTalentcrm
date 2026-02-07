@@ -171,6 +171,41 @@ class SupabaseStorageService {
         }
       } else {
         console.log('✅ Storage initialized successfully - bucket exists');
+        // Update bucket to ensure all MIME types are allowed (including audio)
+        try {
+          await supabase.storage.updateBucket(this.bucketName, {
+            public: true,
+            fileSizeLimit: 50 * 1024 * 1024, // 50MB limit
+            allowedMimeTypes: [
+              'application/pdf',
+              'application/msword',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              'image/jpeg',
+              'image/png',
+              'image/gif',
+              'image/webp',
+              'text/plain',
+              'application/vnd.ms-excel',
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              // Audio formats
+              'audio/wav',
+              'audio/vnd.wave',
+              'audio/x-wav',
+              'audio/mpeg',
+              'audio/mp3',
+              'audio/mp4',
+              'audio/aac',
+              'audio/ogg',
+              'audio/webm',
+              'audio/flac',
+              'audio/x-m4a'
+            ]
+          });
+          console.log('✅ Updated bucket allowed MIME types to include audio formats');
+        } catch (updateError) {
+          console.warn('⚠️ Could not update bucket MIME types:', updateError.message);
+          // Non-critical - continue even if update fails
+        }
         this.initialized = true;
         return { success: true };
       }
