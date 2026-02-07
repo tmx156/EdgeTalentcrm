@@ -17,7 +17,7 @@ const { getSupabaseClient } = require('../config/supabase-client');
 // --- Configuration ---
 // Use singleton Supabase client to prevent connection leaks
 
-const POLL_INTERVAL_MS = parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 600000; // 10 minutes - reduced from 1 min to prevent DB overload
+const POLL_INTERVAL_MS = parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 120000; // 2 minutes
 
 // Account configurations (matching gmailService.js pattern)
 const ACCOUNTS = {
@@ -343,13 +343,9 @@ class GmailPoller {
     }
 
     try {
-      console.log(`📧 [${this.accountConfig.displayName}] Scanning for new messages...`);
-
-      // Query: Get ALL unread emails + recent read emails (last 7 days)
-      // This ensures we catch everything while avoiding scanning entire inbox
-      // Database deduplication prevents reprocessing
-      const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
-      const query = `in:inbox (is:unread OR after:${sevenDaysAgo})`;
+      // Query: Get unread emails + recent emails (last 2 days)
+      const twoDaysAgo = Math.floor(Date.now() / 1000) - (2 * 24 * 60 * 60);
+      const query = `in:inbox (is:unread OR after:${twoDaysAgo})`;
 
       let allMessages = [];
       let pageToken = null;
@@ -370,7 +366,10 @@ class GmailPoller {
         pageToken = response.data.nextPageToken;
         pageCount++;
 
-        console.log(`📧 [${this.accountConfig.displayName}] Page ${pageCount}: Found ${messages.length} messages (total so far: ${allMessages.length})`);
+        // Only log if there are messages beyond page 1
+        if (pageCount > 1) {
+          console.log(`📧 [${this.accountConfig.displayName}] Page ${pageCount}: ${allMessages.length} messages so far`);
+        }
 
         // Safety limit: if we have more than 10,000 messages, something might be wrong
         if (allMessages.length > 10000) {
@@ -379,11 +378,8 @@ class GmailPoller {
         }
       } while (pageToken);
 
-      console.log(`📧 [${this.accountConfig.displayName}] Total messages found: ${allMessages.length}`);
-
       if (allMessages.length === 0) {
-        console.log(`📧 [${this.accountConfig.displayName}] No new messages found`);
-        return;
+        return; // Nothing to process, stay quiet
       }
 
       let processedCount = 0;
@@ -448,9 +444,9 @@ class GmailPoller {
           // Don't mark as processed if all retries failed - we'll retry next poll cycle
         }
 
-        // Progress indicator for large batches
-        if ((i + 1) % 10 === 0) {
-          console.log(`📧 [${this.accountConfig.displayName}] Progress: ${i + 1}/${allMessages.length} messages processed`);
+        // Progress indicator for large batches (every 50)
+        if ((i + 1) % 50 === 0) {
+          console.log(`📧 [${this.accountConfig.displayName}] Progress: ${i + 1}/${allMessages.length}`);
         }
         
         // Rate limiting: Add small delay between messages to avoid hitting Gmail API limits
@@ -459,7 +455,10 @@ class GmailPoller {
         }
       }
 
-      console.log(`📧 [${this.accountConfig.displayName}] Scan complete: ${allMessages.length} messages found, ${processedCount} processed, ${skippedCount} skipped, ${errorCount} errors`);
+      // Only log if something was actually processed or errored
+      if (processedCount > 0 || errorCount > 0) {
+        console.log(`📧 [${this.accountConfig.displayName}] Scan: ${processedCount} new, ${skippedCount} skipped, ${errorCount} errors`);
+      }
 
     } catch (error) {
       console.error(`❌ [${this.accountConfig.displayName}] Error scanning messages:`, error.message);
@@ -513,23 +512,22 @@ class GmailPoller {
       const isBccToUs = bccLower.includes(accountEmail) || bccLower.includes(`<${accountEmail}>`);
       
       if (!isCcToUs && !isBccToUs) {
-        console.log(`📧 [${this.accountConfig.displayName}] Skipping - not addressed to ${accountEmail} (To: ${toEmail})`);
+        // Silently skip - not addressed to us
         return 'skipped'; // Not addressed to this account
       }
     }
 
-    console.log(`📧 [${this.accountConfig.displayName}] Processing: From: ${fromEmail}, To: ${toEmail}, Subject: "${subject}"`);
+    console.log(`📧 [${this.accountConfig.displayName}] New email from ${fromEmail}: "${subject.substring(0, 50)}"`);
 
     // ✅ FIX: Only process emails from existing CRM leads (don't create new leads automatically)
     let lead = await this.findLead(fromEmail);
 
     if (!lead) {
-      // Skip emails from senders not in CRM (prevents processing spam/unrelated emails)
-      console.log(`📧 [${this.accountConfig.displayName}] ⚠️ Skipping email from ${fromEmail} - not a lead in CRM`);
+      // Skip emails from senders not in CRM
       return 'skipped';
     }
 
-    console.log(`📧 [${this.accountConfig.displayName}] ✅ Found lead in CRM: ${lead.name} (${lead.email || fromEmail})`)
+    // Found lead - continue processing
 
     // Check for duplicates in database (more reliable than in-memory check)
     const { data: existingByGmailId, error: gmailIdCheckError } = await this.supabase
@@ -543,7 +541,6 @@ class GmailPoller {
     }
 
     if (existingByGmailId && existingByGmailId.length > 0) {
-      console.log(`📧 [${this.accountConfig.displayName}] Duplicate found by Gmail message ID: ${existingByGmailId[0].id}`);
       return 'duplicate';
     }
 
