@@ -289,22 +289,70 @@ const ContractSigning = () => {
               }
               .page {
                 min-height: auto !important;
+                padding: 20px !important;
               }
-              /* Page 2: Stack confirmation rows vertically for usable signature areas */
-              [data-editable^="confirmation"] {
-                flex-direction: column !important;
-                gap: 10px !important;
+              
+              /* Mobile Responsive Styles */
+              @media (max-width: 640px) {
+                /* Page 2: Stack confirmation rows vertically for usable signature areas */
+                [data-editable^="confirmation"] {
+                  flex-direction: column !important;
+                  gap: 8px !important;
+                  margin-bottom: 20px !important;
+                }
+                /* Make signature boxes full width with larger touch targets */
+                [data-editable^="confirmation"] > [data-signature] {
+                  width: 100% !important;
+                  min-height: 120px !important;
+                  height: 120px !important;
+                  order: 2;
+                  border: 2px solid #333 !important;
+                }
+                /* Text comes first (above signature) */
+                [data-editable^="confirmation"] > div:not([data-signature]) {
+                  order: 1;
+                  padding-top: 0 !important;
+                }
+                /* Reduce font size on mobile for better fit */
+                [data-editable^="confirmation"] p {
+                  font-size: 12px !important;
+                  line-height: 1.4 !important;
+                }
+                /* Page 2 header smaller on mobile */
+                .page > div:first-child p {
+                  font-size: 12px !important;
+                  margin-bottom: 5px !important;
+                }
+                /* Reduce padding on page 2 */
+                .page {
+                  padding: 15px !important;
+                }
+                /* Gap between confirmation boxes */
+                .page > div {
+                  gap: 15px !important;
+                }
+                /* Signature canvas fills container */
+                [data-signature] canvas {
+                  width: 100% !important;
+                  height: 100% !important;
+                }
               }
-              /* Make signature boxes full width instead of 160px */
-              [data-editable^="confirmation"] > [data-signature] {
-                width: 100% !important;
-                min-height: 90px !important;
-                order: 2;
-              }
-              /* Text comes first (above signature) */
-              [data-editable^="confirmation"] > div:not([data-signature]) {
-                order: 1;
-                padding-top: 0 !important;
+              
+              /* Desktop styles - larger signature boxes */
+              @media (min-width: 641px) {
+                [data-editable^="confirmation"] {
+                  flex-direction: row !important;
+                  gap: 25px !important;
+                }
+                [data-editable^="confirmation"] > [data-signature] {
+                  width: 180px !important;
+                  min-height: 90px !important;
+                  order: 0;
+                }
+                [data-editable^="confirmation"] > div:not([data-signature]) {
+                  order: 0;
+                  padding-top: 10px !important;
+                }
               }
             `}</style>
             <div
@@ -320,17 +368,18 @@ const ContractSigning = () => {
           if (!portalTarget) return null;
 
           const isSmall = sigName !== 'main';
-          const sigHeight = isSmall ? 70 : 80;
+          // Larger signature areas on mobile for better usability
+          const sigHeight = isSmall ? (window.innerWidth <= 640 ? 120 : 90) : 80;
 
           return ReactDOM.createPortal(
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', height: '100%' }}>
               {!signatures[sigName] && isSmall && (
                 <div style={{
                   position: 'absolute', inset: 0, display: 'flex',
                   alignItems: 'center', justifyContent: 'center',
                   pointerEvents: 'none', zIndex: 1
                 }}>
-                  <span style={{ color: '#ccc', fontSize: '14px', fontStyle: 'italic' }}>Sign Here</span>
+                  <span style={{ color: '#ccc', fontSize: window.innerWidth <= 640 ? '16px' : '14px', fontStyle: 'italic' }}>Sign Here</span>
                 </div>
               )}
               <SignaturePad

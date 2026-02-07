@@ -31,6 +31,7 @@ const CalendarMessageModal = ({
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
   const [debugInfo, setDebugInfo] = useState({});
+  const [sendSuccess, setSendSuccess] = useState(false);
   const { socket } = useSocket();
 
   // DEBUG: Comprehensive message fetching with logging
@@ -209,6 +210,7 @@ const CalendarMessageModal = ({
     if (!replyText.trim() || sending) return;
 
     setSending(true);
+    setSendSuccess(false);
     try {
       if (channel === 'email') {
         const lastEmail = messages.find(m => m.direction === 'received' || m.direction === 'sent');
@@ -225,6 +227,8 @@ const CalendarMessageModal = ({
 
         if (response.data.success) {
           setReplyText('');
+          setSendSuccess(true);
+          setTimeout(() => setSendSuccess(false), 3000);
           fetchMessages();
         } else {
           alert('Failed to send email: ' + (response.data.message || 'Unknown error'));
@@ -238,6 +242,8 @@ const CalendarMessageModal = ({
 
         if (response.data.success) {
           setReplyText('');
+          setSendSuccess(true);
+          setTimeout(() => setSendSuccess(false), 3000);
           fetchMessages();
         } else {
           alert('Failed to send SMS: ' + (response.data.message || 'Unknown error'));
@@ -460,9 +466,9 @@ const CalendarMessageModal = ({
                       {/* Body */}
                       <div className="px-4 py-3">
                         {channel === 'email' && (message.email_body || message.htmlContent) ? (
-                          <div className={`max-h-64 overflow-y-auto ${isSent ? 'email-sent' : ''}`}>
+                          <div className={`max-h-64 overflow-y-auto bg-white rounded ${isSent ? '' : ''}`}>
                             <GmailEmailRenderer
-                              htmlContent={message.email_body || message.htmlContent}
+                              htmlContent={message.email_body || message.htmlContent || message.content}
                               textContent={message.content}
                               attachments={message.attachments || []}
                               embeddedImages={message.embedded_images || []}
@@ -564,9 +570,15 @@ const CalendarMessageModal = ({
                     )}
                   </button>
                 </div>
-                <div className="mt-2 flex items-center justify-between text-xs text-gray-400">
-                  <span>Press Enter to send, Shift+Enter for new line</span>
-                  <span>Replying to {channel === 'email' ? lead.email : lead.phone}</span>
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className="text-gray-400">Press Enter to send, Shift+Enter for new line</span>
+                  {sendSuccess ? (
+                    <span className="text-green-600 font-medium flex items-center">
+                      <FiCheck className="w-3 h-3 mr-1" /> Sent!
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">Replying to {channel === 'email' ? lead.email : lead.phone}</span>
+                  )}
                 </div>
               </>
             );

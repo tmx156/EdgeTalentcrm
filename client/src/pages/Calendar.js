@@ -22,6 +22,9 @@ import LazyImage from '../components/LazyImage';
 import OptimizedImage from '../components/OptimizedImage';
 import { getOptimizedImageUrl, getCloudinaryUrl, getBlurPlaceholder } from '../utils/imageUtils';
 import { getCurrentUKTime } from '../utils/timeUtils';
+import { decodeEmailContent, isEmailContentEncoded } from '../utils/emailContentDecoder';
+import GmailEmailRenderer from '../components/GmailEmailRenderer';
+import CalendarMessageModal from '../components/CalendarMessageModal';
 import SlotCalendar from '../components/SlotCalendar';
 import WeeklySlotCalendar from '../components/WeeklySlotCalendar';
 import MonthlySlotCalendar from '../components/MonthlySlotCalendar';
@@ -40,6 +43,9 @@ const Calendar = () => {
   const [showMessageHistory, setShowMessageHistory] = useState(false); // Collapsible message history
   // Toggle to expand additional quick status actions
   const [showMoreStatuses, setShowMoreStatuses] = useState(false);
+  // Message modal state (popup for SMS/Email conversation)
+  const [messageModalOpen, setMessageModalOpen] = useState(false);
+  const [messageModalChannel, setMessageModalChannel] = useState('sms');
   // Review modal state
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewDate, setReviewDate] = useState('');
@@ -187,6 +193,7 @@ const Calendar = () => {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [currentInvoice, setCurrentInvoice] = useState(null);
   const [showContractModal, setShowContractModal] = useState(false);
+  const [contractLead, setContractLead] = useState(null);
   const [contractInvoiceData, setContractInvoiceData] = useState(null);
   const [showPresentationGallery, setShowPresentationGallery] = useState(false);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
@@ -3647,8 +3654,8 @@ const Calendar = () => {
         });
         return true;
       })() && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
-          <div className="relative w-full max-w-5xl bg-white rounded-lg shadow-2xl max-h-[95vh] overflow-y-auto calendar-modal-scroll flex flex-col">
+        <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm z-50 flex items-center justify-center p-1 sm:p-2 md:p-4">
+          <div className="relative w-full max-w-sm sm:max-w-2xl md:max-w-4xl lg:max-w-5xl bg-white rounded-lg shadow-2xl max-h-[95vh] overflow-y-auto calendar-modal-scroll flex flex-col">
             {/* Header: Photo and Main Details Top Right */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 p-3 sm:p-4">
               {/* Main Details */}
@@ -3773,7 +3780,7 @@ const Calendar = () => {
               })()}
             </div>
             {/* Main Info Center */}
-            <div className="p-4 flex-1">
+            <div className="p-2 sm:p-3 md:p-4 flex-1">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Left Column - Contact Information */}
                 <div>
@@ -4370,277 +4377,153 @@ const Calendar = () => {
                     if (messages.length === 0) return null;
                     
                     return (
-                      <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
-                        <div className="flex items-start space-x-3">
+                      <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3" style={{ minWidth: 0 }}>
+                        <div className="flex items-start space-x-3" style={{ minWidth: 0 }}>
                           <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center flex-shrink-0">
                             <FiMessageSquare className="h-4 w-4 text-white" />
                           </div>
-                          <div className="flex-1">
-                            {/* Collapsible Messages Section */}
+                          <div className="flex-1 min-w-0">
+                            {/* Sleek Message Preview */}
                             <>
-                                <div 
-                                  className="flex items-center space-x-2 mb-2 cursor-pointer hover:bg-blue-200/50 -mx-2 px-2 py-1 rounded transition-colors"
-                                  onClick={() => setShowAllMessages(!showAllMessages)}
-                                >
+                              {/* Header with counts */}
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
                                   <p className="text-xs font-medium text-gray-600 uppercase tracking-wide">Messages</p>
-                                  <span className="text-xs text-gray-500">({messages.length})</span>
-                                  {showAllMessages ? (
-                                    <FiChevronUp className="h-4 w-4 text-gray-600" />
-                                  ) : (
-                                    <FiChevronDown className="h-4 w-4 text-gray-600" />
-                                  )}
+                                  <span className="text-xs bg-blue-200 text-blue-700 px-2 py-0.5 rounded-full">
+                                    {messages.length}
+                                  </span>
                                 </div>
-                            
-                            {showAllMessages && (
-                              <div 
-                                className="max-h-64 overflow-y-auto space-y-2" 
-                                id="calendar-messages-container"
-                                ref={(el) => {
-                                  if (el && messages.length > 0) {
-                                    setTimeout(() => {
-                                      el.scrollTop = el.scrollHeight;
-                                    }, 50);
-                                  }
-                                }}
-                              >
-                                {messages
-                                  .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-                                  .slice(-8)
-                                  .map((message, idx) => (
-                                  <div
-                                    key={idx}
-                                    className={`flex flex-col ${['SMS_SENT', 'EMAIL_SENT'].includes(message.action) ? 'items-end' : 'items-start'}`}
-                                  >
-                                    {/* Channel label */}
-                                    <span className={`text-[10px] font-medium mb-0.5 px-1.5 py-0.5 rounded ${
-                                      message.action.startsWith('EMAIL') ? 'text-indigo-500 bg-indigo-50' : 'text-blue-500 bg-blue-50'
-                                    }`}>
-                                      {message.action.startsWith('EMAIL') ? 'Email' : 'SMS'}
-                                    </span>
-                                    <div className={`max-w-xs px-3 py-2 rounded-lg ${
-                                      message.action === 'SMS_SENT'
-                                        ? 'bg-blue-500 text-white'
-                                        : message.action === 'EMAIL_SENT'
-                                          ? 'bg-indigo-500 text-white'
-                                          : message.action === 'SMS_FAILED'
-                                            ? 'bg-red-50 border border-red-300 text-red-800'
-                                            : message.action === 'EMAIL_RECEIVED'
-                                              ? 'bg-indigo-100 text-gray-800'
-                                              : 'bg-gray-200 text-gray-800'
-                                    }`}>
-                                      {['EMAIL_SENT', 'EMAIL_RECEIVED'].includes(message.action) && message.details?.subject && (
-                                        <p className="text-xs font-semibold mb-1 opacity-80">{message.details.subject}</p>
+                                {(() => {
+                                  const hasSms = messages.some(m => m.action.startsWith('SMS'));
+                                  const hasEmail = messages.some(m => m.action.startsWith('EMAIL'));
+                                  return (
+                                    <div className="flex items-center space-x-1">
+                                      {hasSms && (
+                                        <span className="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">
+                                          SMS
+                                        </span>
                                       )}
-                                      <p className="text-sm whitespace-pre-wrap">
-                                        {message.details?.body || message.details?.message || 'No content'}
-                                      </p>
-                                      <div className="flex items-center justify-between mt-1">
-                                        <p className={`text-xs ${
-                                          ['SMS_SENT', 'EMAIL_SENT'].includes(message.action) ? 'text-blue-100' : (message.action === 'SMS_FAILED' ? 'text-red-700' : 'text-gray-600')
-                                        }`}>
-                                        {(() => {
-                                          try {
-                                            if (!message.timestamp) return 'Unknown time';
-                                            
-                                            let date;
-                                            if (typeof message.timestamp === 'string') {
-                                              date = new Date(message.timestamp);
-                                            } else if (typeof message.timestamp === 'number') {
-                                              date = new Date(message.timestamp > 1000000000000 ? message.timestamp : message.timestamp * 1000);
-                                            } else {
-                                              date = new Date(message.timestamp);
-                                            }
-                                            
-                                            if (isNaN(date.getTime())) {
-                                              return 'Invalid date';
-                                            }
-                                            
-                                            const now = new Date();
-                                            const diffMs = now - date;
-                                            const diffHours = diffMs / (1000 * 60 * 60);
-                                            
-                                            if (diffHours < 1) {
-                                              const minutes = Math.floor(diffMs / (1000 * 60));
-                                              return minutes <= 0 ? 'Just now' : `${minutes} min ago`;
-                                            } else if (diffHours < 24) {
-                                              return date.toLocaleTimeString([], { 
-                                                hour: '2-digit', 
-                                                minute: '2-digit', 
-                                                hour12: true 
-                                              });
-                                            } else {
-                                              return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { 
-                                                hour: '2-digit', 
-                                                minute: '2-digit', 
-                                                hour12: true 
-                                              });
-                                            }
-                                          } catch (error) {
-                                            console.error('Error formatting timestamp:', error, 'Timestamp:', message.timestamp);
-                                            return 'Unknown time';
-                                          }
-                                        })()}
-                                        {['SMS_SENT', 'EMAIL_SENT'].includes(message.action) && (
-                                          <span className="ml-1">
-                                            {message.details?.status === 'sending' ? (
-                                              <>
-                                                <span className="inline-block w-2 h-2 bg-orange-400 rounded-full animate-pulse mr-1"></span>
-                                                Sending...
-                                              </>
-                                            ) : (
-                                              message.action === 'EMAIL_SENT' ? '• Email Sent' : '• Sent'
-                                            )}
-                                          </span>
-                                        )}
-                                        </p>
-                                        {/* Delivery ticks mirroring MessageModal */}
-                                        {['SMS_SENT', 'EMAIL_SENT'].includes(message.action) && message.details?.status !== 'sending' && (
-                                          <div className="flex items-center space-x-1">
-                                            <svg viewBox="0 0 24 24" className="h-3 w-3 text-blue-100 fill-current"><path d="M20.285 6.708a1 1 0 010 1.414l-9.193 9.193a1 1 0 01-1.414 0l-5.657-5.657a1 1 0 111.414-1.414l4.95 4.95 8.486-8.486a1 1 0 011.414 0z"/></svg>
-                                            <svg viewBox="0 0 24 24" className="h-3 w-3 text-blue-100 fill-current"><path d="M20.285 6.708a1 1 0 010 1.414l-9.193 9.193a1 1 0 01-1.414 0l-5.657-5.657a1 1 0 111.414-1.414l4.95 4.95 8.486-8.486a1 1 0 011.414 0z"/></svg>
-                                          </div>
-                                        )}
-                                        {message.action === 'SMS_RECEIVED' && (
-                                          <div className="flex items-center"><svg viewBox="0 0 24 24" className="h-3 w-3 text-gray-500 fill-current"><path d="M20.285 6.708a1 1 0 010 1.414l-9.193 9.193a1 1 0 01-1.414 0l-5.657-5.657a1 1 0 111.414-1.414l4.95 4.95 8.486-8.486a1 1 0 011.414 0z"/></svg></div>
-                                        )}
-                                        {message.action === 'SMS_FAILED' && (
-                                          <div className="flex items-center text-red-600" title={message.details?.error_message || 'SMS send failed'}>
-                                            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 5v6h-2V7h2zm0 8v2h-2v-2h2z"/></svg>
-                                          </div>
+                                      {hasEmail && (
+                                        <span className="text-[10px] bg-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded">
+                                          Email
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            
+                            {/* Latest message preview card */}
+                            {(() => {
+                              const latestMessage = messages[messages.length - 1];
+                              const hasSms = messages.some(m => m.action.startsWith('SMS'));
+                              const hasEmail = messages.some(m => m.action.startsWith('EMAIL'));
+                              
+                              return (
+                                <>
+                                  {/* Preview card */}
+                                  <div 
+                                    onClick={() => {
+                                      setMessageModalChannel(hasSms && !hasEmail ? 'sms' : (hasEmail ? 'email' : 'sms'));
+                                      setMessageModalOpen(true);
+                                    }}
+                                    className="cursor-pointer bg-white rounded-lg p-2 md:p-3 shadow-sm border border-blue-200 hover:border-blue-400 hover:shadow-md transition-all group w-full overflow-hidden"
+                                    style={{ maxWidth: '100%', minWidth: 0 }}
+                                  >
+                                    <div className="flex items-start space-x-2 overflow-hidden">
+                                      <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                        ['SMS_SENT', 'EMAIL_SENT'].includes(latestMessage.action) 
+                                          ? 'bg-blue-100 text-blue-600' 
+                                          : 'bg-gray-100 text-gray-600'
+                                      }`}>
+                                        {['SMS_SENT', 'EMAIL_SENT'].includes(latestMessage.action) ? (
+                                          <span className="text-xs font-bold">Y</span>
+                                        ) : (
+                                          <FiUser className="w-3 h-3" />
                                         )}
                                       </div>
+                                      <div className="flex-1 min-w-0" style={{ maxWidth: 'calc(100% - 2rem)' }}>
+                                        <div className="flex items-center space-x-2 mb-1 overflow-hidden">
+                                          <span className="text-xs font-medium text-gray-700 truncate block max-w-[80px]">
+                                            {['SMS_SENT', 'EMAIL_SENT'].includes(latestMessage.action) ? 'You' : selectedEvent.extendedProps?.lead?.name || 'Customer'}
+                                          </span>
+                                          <span className={`text-[10px] flex-shrink-0 ${
+                                            latestMessage.action.startsWith('EMAIL') ? 'text-indigo-500' : 'text-blue-500'
+                                          }`}>
+                                            {latestMessage.action.startsWith('EMAIL') ? 'Email' : 'SMS'}
+                                          </span>
+                                        </div>
+                                        <p 
+                                          className="text-xs text-gray-600 group-hover:text-gray-800 transition-colors truncate block"
+                                          style={{ 
+                                            display: 'block',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                            maxWidth: '100%'
+                                          }}
+                                        >
+                                          {decodeEmailContent(latestMessage.details?.body || latestMessage.details?.message || 'No content')}
+                                        </p>
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            
-                            {/* Quick Reply Section - SMS or Email */}
-                            {user?.role !== 'viewer' && (selectedEvent.extendedProps?.lead?.phone || selectedEvent.extendedProps?.lead?.email) && showAllMessages && (() => {
-                              const hasPhone = !!selectedEvent.extendedProps?.lead?.phone;
-                              const hasEmail = !!selectedEvent.extendedProps?.lead?.email;
-                              const channel = hasPhone && hasEmail ? replyChannel : (hasPhone ? 'sms' : 'email');
-                              return (
-                              <div className="mt-3 p-3 bg-white rounded-lg border border-blue-200">
-                                {/* Channel Toggle - only show if lead has both */}
-                                {hasPhone && hasEmail && (
-                                  <div className="flex mb-2 bg-gray-100 rounded-lg p-0.5" onClick={(e) => e.stopPropagation()}>
-                                    <button
-                                      type="button"
-                                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setReplyChannel('sms'); }}
-                                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                        channel === 'sms' ? 'bg-blue-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
-                                      }`}
-                                    >
-                                      <FiMessageSquare className="w-3 h-3" /> SMS
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setReplyChannel('email'); }}
-                                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                        channel === 'email' ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800 hover:bg-gray-200'
-                                      }`}
-                                    >
-                                      <FiMail className="w-3 h-3" /> Email
-                                    </button>
-                                  </div>
-                                )}
-
-                                {/* SMS Reply */}
-                                {channel === 'sms' && (
-                                  <div>
-                                    <div className="flex space-x-2">
-                                      <input
-                                        type="text"
-                                        placeholder={`SMS to ${selectedEvent.extendedProps.lead.phone}...`}
-                                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                        onKeyDown={async (e) => {
-                                          if (e.key === 'Enter' && e.target.value.trim()) {
-                                            const msg = e.target.value.trim();
-                                            const leadId = selectedEvent.extendedProps.lead.id;
-                                            e.target.value = '';
-                                            const optimistic = { action: 'SMS_SENT', timestamp: new Date().toISOString(), details: { body: msg, message: msg, status: 'sending' } };
-                                            const prev = selectedEvent.extendedProps.lead.bookingHistory || [];
-                                            setSelectedEvent(p => p ? ({ ...p, extendedProps: { ...p.extendedProps, lead: { ...p.extendedProps.lead, bookingHistory: [...prev, optimistic] } } }) : p);
-                                            try {
-                                              const r = await fetch(`/api/leads/${leadId}/send-sms`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }, body: JSON.stringify({ message: msg, type: 'custom' }) });
-                                              if (r.ok) { optimistic.details.status = 'sent'; setSelectedEvent(p => p ? ({ ...p }) : p); setTimeout(() => debouncedFetchEvents(), 1000); }
-                                              else { setSelectedEvent(p => p ? ({ ...p, extendedProps: { ...p.extendedProps, lead: { ...p.extendedProps.lead, bookingHistory: prev } } }) : p); alert('Failed to send SMS'); }
-                                            } catch { setSelectedEvent(p => p ? ({ ...p, extendedProps: { ...p.extendedProps, lead: { ...p.extendedProps.lead, bookingHistory: prev } } }) : p); alert('Error sending SMS'); }
-                                          }
-                                        }}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={async (e) => {
-                                          const input = e.target.closest('div').parentElement.querySelector('input');
-                                          const msg = input?.value?.trim();
-                                          if (!msg) return;
-                                          const leadId = selectedEvent.extendedProps.lead.id;
-                                          input.value = '';
-                                          const optimistic = { action: 'SMS_SENT', timestamp: new Date().toISOString(), details: { body: msg, message: msg, status: 'sending' } };
-                                          const prev = selectedEvent.extendedProps.lead.bookingHistory || [];
-                                          setSelectedEvent(p => p ? ({ ...p, extendedProps: { ...p.extendedProps, lead: { ...p.extendedProps.lead, bookingHistory: [...prev, optimistic] } } }) : p);
+                                    
+                                    {/* View all button */}
+                                    <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between">
+                                      <span className="text-xs text-gray-400">
+                                        {(() => {
                                           try {
-                                            const r = await fetch(`/api/leads/${leadId}/send-sms`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }, body: JSON.stringify({ message: msg, type: 'custom' }) });
-                                            if (r.ok) { optimistic.details.status = 'sent'; setSelectedEvent(p => p ? ({ ...p }) : p); setTimeout(() => debouncedFetchEvents(), 1000); }
-                                            else { setSelectedEvent(p => p ? ({ ...p, extendedProps: { ...p.extendedProps, lead: { ...p.extendedProps.lead, bookingHistory: prev } } }) : p); alert('Failed to send SMS'); }
-                                          } catch { setSelectedEvent(p => p ? ({ ...p, extendedProps: { ...p.extendedProps, lead: { ...p.extendedProps.lead, bookingHistory: prev } } }) : p); alert('Error sending SMS'); }
-                                        }}
-                                        className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors flex items-center"
-                                      >
-                                        <FiSend className="w-4 h-4" />
-                                      </button>
+                                            if (!latestMessage.timestamp) return '';
+                                            const date = new Date(latestMessage.timestamp);
+                                            if (isNaN(date.getTime())) return '';
+                                            const now = new Date();
+                                            const diffHours = (now - date) / (1000 * 60 * 60);
+                                            if (diffHours < 1) {
+                                              const mins = Math.floor((now - date) / (1000 * 60));
+                                              return mins <= 0 ? 'Just now' : `${mins}m ago`;
+                                            } else if (diffHours < 24) {
+                                              return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                            } else {
+                                              return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+                                            }
+                                          } catch { return ''; }
+                                        })()}
+                                      </span>
+                                      <span className="text-xs font-medium text-blue-600 group-hover:text-blue-700 flex items-center">
+                                        View all messages
+                                        <FiChevronRight className="w-3 h-3 ml-0.5" />
+                                      </span>
                                     </div>
-                                    <div className="text-xs text-gray-400 mt-1">Press Enter or click Send</div>
                                   </div>
-                                )}
-
-                                {/* Email Reply */}
-                                {channel === 'email' && (
-                                  <div className="space-y-2">
-                                    <input
-                                      type="text"
-                                      placeholder="Subject..."
-                                      id="modal-email-subject"
-                                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                    />
-                                    <textarea
-                                      placeholder="Type email reply..."
-                                      rows="3"
-                                      id="modal-email-body"
-                                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-                                    />
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-xs text-gray-400">To: {selectedEvent.extendedProps.lead.email}</span>
+                                  
+                                  {/* Quick reply buttons */}
+                                  <div className="mt-2 flex space-x-2">
+                                    {selectedEvent.extendedProps?.lead?.phone && (
                                       <button
-                                        type="button"
-                                        onClick={async () => {
-                                          const subjectEl = document.getElementById('modal-email-subject');
-                                          const bodyEl = document.getElementById('modal-email-body');
-                                          const subject = subjectEl?.value?.trim();
-                                          const emailBody = bodyEl?.value?.trim();
-                                          if (!subject || !emailBody) { alert('Subject and message are required'); return; }
-                                          const leadId = selectedEvent.extendedProps.lead.id;
-                                          const optimistic = { action: 'EMAIL_SENT', timestamp: new Date().toISOString(), details: { body: emailBody, message: emailBody, subject, status: 'sending' } };
-                                          const prev = selectedEvent.extendedProps.lead.bookingHistory || [];
-                                          setSelectedEvent(p => p ? ({ ...p, extendedProps: { ...p.extendedProps, lead: { ...p.extendedProps.lead, bookingHistory: [...prev, optimistic] } } }) : p);
-                                          subjectEl.value = '';
-                                          bodyEl.value = '';
-                                          try {
-                                            const r = await fetch(`/api/leads/${leadId}/send-email`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` }, body: JSON.stringify({ subject, body: emailBody }) });
-                                            if (r.ok) { optimistic.details.status = 'sent'; setSelectedEvent(p => p ? ({ ...p }) : p); setTimeout(() => debouncedFetchEvents(), 1000); }
-                                            else { setSelectedEvent(p => p ? ({ ...p, extendedProps: { ...p.extendedProps, lead: { ...p.extendedProps.lead, bookingHistory: prev } } }) : p); alert('Failed to send email'); }
-                                          } catch { setSelectedEvent(p => p ? ({ ...p, extendedProps: { ...p.extendedProps, lead: { ...p.extendedProps.lead, bookingHistory: prev } } }) : p); alert('Error sending email'); }
+                                        onClick={() => {
+                                          setMessageModalChannel('sms');
+                                          setMessageModalOpen(true);
                                         }}
-                                        className="px-4 py-2 bg-indigo-500 text-white text-sm rounded-lg hover:bg-indigo-600 transition-colors flex items-center gap-1.5"
+                                        className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-600 transition-colors"
                                       >
-                                        <FiSend className="w-3.5 h-3.5" /> Send Email
+                                        <FiMessageSquare className="w-3 h-3" />
+                                        <span>Reply SMS</span>
                                       </button>
-                                    </div>
+                                    )}
+                                    {selectedEvent.extendedProps?.lead?.email && (
+                                      <button
+                                        onClick={() => {
+                                          setMessageModalChannel('email');
+                                          setMessageModalOpen(true);
+                                        }}
+                                        className="flex-1 flex items-center justify-center space-x-1 px-3 py-2 bg-indigo-500 text-white text-xs font-medium rounded-lg hover:bg-indigo-600 transition-colors"
+                                      >
+                                        <FiMail className="w-3 h-3" />
+                                        <span>Reply Email</span>
+                                      </button>
+                                    )}
                                   </div>
-                                )}
-                              </div>
+                                </>
                               );
                             })()}
                             </>
@@ -5199,6 +5082,16 @@ const Calendar = () => {
         </div>
       )}
 
+      {/* Message Modal - Popup for SMS/Email conversation */}
+      {messageModalOpen && selectedEvent?.extendedProps?.lead && (
+        <CalendarMessageModal
+          isOpen={messageModalOpen}
+          onClose={() => setMessageModalOpen(false)}
+          lead={selectedEvent.extendedProps.lead}
+          initialChannel={messageModalChannel}
+        />
+      )}
+
       {/* Sale Modal (Legacy Quick Sale) */}
       {showSaleModal && selectedEvent && selectedEvent.extendedProps?.lead && (
         <SaleModal
@@ -5393,6 +5286,7 @@ const Calendar = () => {
               total: data.totals.total
             });
             setShowPackageModal(false);
+            setContractLead(selectedEvent?.extendedProps?.lead); // Capture lead independently
             setShowContractModal(true);
           }}
         />
@@ -5457,22 +5351,23 @@ const Calendar = () => {
         />
       )}
 
-      {/* Send Invoice Modal */}
-      {showContractModal && selectedEvent?.extendedProps?.lead && selectedPackage && (
+      {/* Send Invoice Modal - uses contractLead so it never unmounts from selectedEvent changes */}
+      {showContractModal && contractLead && selectedPackage && (
         <SendContractModal
           isOpen={showContractModal}
           onClose={() => {
             setShowContractModal(false);
+            setContractLead(null);
             setContractInvoiceData(null);
           }}
-          lead={selectedEvent.extendedProps.lead}
+          lead={contractLead}
           packageData={selectedPackage}
           invoiceData={contractInvoiceData}
           selectedPhotoIds={selectedPhotoIds}
           onContractSent={(contract) => {
             console.log('Contract sent:', contract);
             // Clear saved photo selection from localStorage since contract is now sent
-            const leadId = selectedEvent?.extendedProps?.lead?.id;
+            const leadId = contractLead?.id;
             if (leadId) {
               localStorage.removeItem(`selectedPhotos_${leadId}`);
             }
@@ -5481,12 +5376,14 @@ const Calendar = () => {
           onBackToPackages={() => {
             // Close contract modal and go back to package selection
             setShowContractModal(false);
+            setContractLead(null);
             setContractInvoiceData(null);
             setShowPackageModal(true);
           }}
           onBackToPhotos={() => {
             // Close contract modal and go back to photo selection
             setShowContractModal(false);
+            setContractLead(null);
             setContractInvoiceData(null);
             setImageSelectionMode(true);
             setShowPresentationGallery(true);

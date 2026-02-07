@@ -358,8 +358,8 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
         <!-- Box 1 -->
         <div data-editable="confirmation1" style="display: flex; gap: 25px; align-items: flex-start;">
-          <div data-signature="notAgency" style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
-            ${contractData.signatures?.notAgency ? `<img src="${contractData.signatures.notAgency}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
+          <div data-signature="notAgency" style="width: 180px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 90px;">
+            ${contractData.signatures?.notAgency ? `<img src="${contractData.signatures.notAgency}" style="max-height: 80px; max-width: 170px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 30px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
@@ -370,8 +370,8 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
         <!-- Box 2 -->
         <div data-editable="confirmation2" style="display: flex; gap: 25px; align-items: flex-start;">
-          <div data-signature="noCancel" style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
-            ${contractData.signatures?.noCancel ? `<img src="${contractData.signatures.noCancel}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
+          <div data-signature="noCancel" style="width: 180px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 90px;">
+            ${contractData.signatures?.noCancel ? `<img src="${contractData.signatures.noCancel}" style="max-height: 80px; max-width: 170px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 30px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
@@ -382,8 +382,8 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
         <!-- Box 3 -->
         <div data-editable="confirmation3" style="display: flex; gap: 25px; align-items: flex-start;">
-          <div data-signature="passDetails" style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
-            ${contractData.signatures?.passDetails ? `<img src="${contractData.signatures.passDetails}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
+          <div data-signature="passDetails" style="width: 180px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 90px;">
+            ${contractData.signatures?.passDetails ? `<img src="${contractData.signatures.passDetails}" style="max-height: 80px; max-width: 170px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 30px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
@@ -394,8 +394,8 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
         <!-- Box 4 -->
         <div data-editable="confirmation4" style="display: flex; gap: 25px; align-items: flex-start;">
-          <div data-signature="happyPurchase" style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
-            ${contractData.signatures?.happyPurchase ? `<img src="${contractData.signatures.happyPurchase}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
+          <div data-signature="happyPurchase" style="width: 180px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 90px;">
+            ${contractData.signatures?.happyPurchase ? `<img src="${contractData.signatures.happyPurchase}" style="max-height: 80px; max-width: 170px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 30px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
