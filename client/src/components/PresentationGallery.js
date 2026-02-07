@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   FiX, FiChevronLeft, FiChevronRight, FiPlay, FiPause,
   FiCheck, FiPlus, FiShoppingBag, FiImage, FiCheckSquare, FiSquare,
-  FiMaximize, FiMinimize, FiLoader
+  FiMaximize, FiMinimize, FiLoader, FiTrash2
 } from 'react-icons/fi';
 import { getCloudinaryUrl, getBlurPlaceholder } from '../utils/imageUtils';
 import OptimizedImage from './OptimizedImage';
@@ -30,7 +30,8 @@ const PresentationGallery = ({
   onProceedToPackage,
   initialSelectedIds = [],
   imageLimit = null, // null = unlimited, number = max allowed
-  selectionMode = false // true when selecting after package chosen
+  selectionMode = false, // true when selecting after package chosen
+  onDeletePhoto = null // callback to delete a photo (photoId, event) => void
 }) => {
   // State
   const [allPhotos, setAllPhotos] = useState(initialPhotos); // All fetched photos
@@ -405,6 +406,21 @@ const PresentationGallery = ({
     });
   };
 
+  // Handle photo deletion - calls parent callback and removes from local state
+  const handleDeletePhoto = async (photoId, e) => {
+    if (!onDeletePhoto) return;
+    // Call parent's delete handler (which does the API call + confirmation)
+    await onDeletePhoto(photoId, e);
+    // Remove from local gallery state
+    setAllPhotos(prev => prev.filter(p => p.id !== photoId));
+    // Remove from selection if selected
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(photoId);
+      return newSet;
+    });
+  };
+
   // Check if at selection limit
   const atLimit = imageLimit !== null && selectedIds.size >= imageLimit;
 
@@ -675,7 +691,7 @@ const PresentationGallery = ({
                 <button
                   key={photo.id}
                   onClick={() => { goToPhoto(index, true); setIsPlaying(false); }}
-                  className={`relative flex-shrink-0 w-16 h-16 overflow-hidden transition-all duration-300 ${
+                  className={`group/thumb relative flex-shrink-0 w-16 h-16 overflow-hidden transition-all duration-300 ${
                     isCurrent
                       ? 'ring-2 ring-white opacity-100'
                       : isSelected
@@ -695,6 +711,18 @@ const PresentationGallery = ({
                     <div className="absolute top-1 right-1 bg-purple-600 rounded-full p-0.5 z-10">
                       <FiCheck className="w-3 h-3 text-white" />
                     </div>
+                  )}
+                  {onDeletePhoto && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeletePhoto(photo.id, e);
+                      }}
+                      className="absolute top-0.5 left-0.5 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover/thumb:opacity-100 transition-opacity z-20 hover:bg-red-600"
+                      title="Delete photo"
+                    >
+                      <FiTrash2 className="w-2.5 h-2.5" />
+                    </button>
                   )}
                 </button>
               );

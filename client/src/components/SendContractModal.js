@@ -177,7 +177,12 @@ const SendContractModal = ({
     authCode: '',
     // Finance-specific fields
     depositAmount: 0,
-    financeAmount: 0
+    financeAmount: 0,
+    // Finance agreement configuration (for auto-creating finance agreements)
+    financeFrequency: 'monthly',
+    financeStartDate: '',
+    financeDueDay: 1,
+    financeDuration: 12  // Number of payments (months by default)
   });
 
   // Initialize contract details from lead and package data
@@ -272,7 +277,20 @@ const SendContractModal = ({
         vatAmount: vatAmount,
         total: total,
         paymentMethod: invoiceData?.paymentMethod || 'card',
-        authCode: invoiceData?.authCode || ''
+        authCode: invoiceData?.authCode || '',
+        // Finance agreement configuration (default if finance/payl8r selected)
+        financeFrequency: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r') 
+          ? (invoiceData?.financeFrequency || 'monthly') 
+          : 'monthly',
+        financeStartDate: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r')
+          ? (invoiceData?.financeStartDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+          : '',
+        financeDueDay: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r')
+          ? (invoiceData?.financeDueDay || 1)
+          : 1,
+        financeDuration: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r')
+          ? (invoiceData?.financeDuration || 12)
+          : 12
       });
 
       // Fetch invoice number after setting initial state
@@ -1102,11 +1120,29 @@ const SendContractModal = ({
                       <select
                         value={contractDetails.paymentMethod}
                         onChange={(e) => {
-                          updateField('paymentMethod', e.target.value);
-                          // Reset finance fields when switching away from finance
-                          if (e.target.value !== 'finance') {
+                          const newMethod = e.target.value;
+                          updateField('paymentMethod', newMethod);
+                          
+                          // When switching TO finance/payl8r, set default start date (+30 days)
+                          if ((newMethod === 'finance' || newMethod === 'payl8r') && 
+                              contractDetails.paymentMethod !== 'finance' && 
+                              contractDetails.paymentMethod !== 'payl8r') {
+                            const defaultStartDate = new Date();
+                            defaultStartDate.setDate(defaultStartDate.getDate() + 30);
+                            updateField('financeStartDate', defaultStartDate.toISOString().split('T')[0]);
+                            updateField('financeFrequency', 'monthly');
+                            updateField('financeDueDay', 1);
+                            updateField('financeDuration', 12);
+                          }
+                          
+                          // Reset finance fields when switching away from finance/payl8r
+                          if (newMethod !== 'finance' && newMethod !== 'payl8r') {
                             updateField('depositAmount', 0);
                             updateField('financeAmount', 0);
+                            updateField('financeStartDate', '');
+                            updateField('financeFrequency', 'monthly');
+                            updateField('financeDueDay', 1);
+                            updateField('financeDuration', 12);
                           }
                         }}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -1114,10 +1150,11 @@ const SendContractModal = ({
                         <option value="card">Card</option>
                         <option value="cash">Cash</option>
                         <option value="finance">Finance</option>
+                        <option value="payl8r">Payl8er</option>
                       </select>
                     </div>
-                    {/* Show Auth Code for card/cash, hide for finance */}
-                    {contractDetails.paymentMethod !== 'finance' && (
+                    {/* Show Auth Code for card/cash, hide for finance/payl8r */}
+                    {contractDetails.paymentMethod !== 'finance' && contractDetails.paymentMethod !== 'payl8r' && (
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Auth Code (if applicable)</label>
                         <input
@@ -1131,14 +1168,14 @@ const SendContractModal = ({
                     )}
                   </div>
 
-                  {/* DYNAMIC: Finance Fields - Only shown when Finance is selected */}
-                  {contractDetails.paymentMethod === 'finance' && (
+                  {/* DYNAMIC: Finance/Payl8r Fields - Only shown when Finance or Payl8r is selected */}
+                  {(contractDetails.paymentMethod === 'finance' || contractDetails.paymentMethod === 'payl8r') && (
                     <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <h4 className="text-xs font-semibold text-amber-800 mb-3 flex items-center">
                         <PoundSterling className="w-3 h-3 mr-1" />
-                        FINANCE BREAKDOWN
+                        {contractDetails.paymentMethod === 'payl8r' ? 'PAYL8R BREAKDOWN' : 'FINANCE BREAKDOWN'}
                       </h4>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
                           <label className="block text-xs font-medium text-amber-700 mb-1">Deposit Amount</label>
                           <div className="relative">
@@ -1174,6 +1211,66 @@ const SendContractModal = ({
                           <p className="text-xs text-amber-600 mt-1">Auto-calculated: Total - Deposit</p>
                         </div>
                       </div>
+                      
+                      {/* Finance Agreement Configuration - ONLY for Finance (not Payl8r) */}
+                      {contractDetails.paymentMethod === 'finance' && (
+                      <div className="border-t border-amber-200 pt-3 mt-3">
+                        <h5 className="text-xs font-semibold text-amber-800 mb-2">
+                          Finance Agreement Settings
+                        </h5>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Payment Frequency</label>
+                            <select
+                              value={contractDetails.financeFrequency || 'monthly'}
+                              onChange={(e) => updateField('financeFrequency', e.target.value)}
+                              className="w-full px-2 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 bg-white"
+                            >
+                              <option value="weekly">Weekly</option>
+                              <option value="bi-weekly">Bi-weekly</option>
+                              <option value="monthly">Monthly</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">First Payment Date</label>
+                            <input
+                              type="date"
+                              value={contractDetails.financeStartDate || ''}
+                              onChange={(e) => updateField('financeStartDate', e.target.value)}
+                              className="w-full px-2 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Start Day</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="31"
+                              value={contractDetails.financeDueDay || 1}
+                              onChange={(e) => updateField('financeDueDay', parseInt(e.target.value) || 1)}
+                              className="w-full px-2 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Duration (# of payments)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="60"
+                              value={contractDetails.financeDuration || 12}
+                              onChange={(e) => {
+                                const duration = parseInt(e.target.value) || 12;
+                                updateField('financeDuration', duration);
+                              }}
+                              className="w-full px-2 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 bg-white"
+                            />
+                            <p className="text-xs text-amber-600 mt-1">
+                              {contractDetails.financeDuration || 12} {contractDetails.financeFrequency === 'weekly' ? 'weekly' : contractDetails.financeFrequency === 'bi-weekly' ? 'bi-weekly' : 'monthly'} payments of {formatCurrency((contractDetails.financeAmount || 0) / (contractDetails.financeDuration || 12))}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1272,17 +1369,42 @@ const SendContractModal = ({
                     <span className="capitalize">{contractDetails.paymentMethod}</span>
                     {contractDetails.authCode && <span className="text-gray-400 ml-2">(Auth: {contractDetails.authCode})</span>}
                   </div>
-                  {/* DYNAMIC: Finance breakdown in review */}
-                  {contractDetails.paymentMethod === 'finance' && (
+                  {/* DYNAMIC: Finance/Payl8r breakdown in review */}
+                  {(contractDetails.paymentMethod === 'finance' || contractDetails.paymentMethod === 'payl8r') && (
                     <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
                       <div className="flex justify-between text-sm">
                         <span className="text-amber-700">Deposit Paid:</span>
                         <span className="font-medium text-amber-800">{formatCurrency(contractDetails.depositAmount)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-amber-700">Finance Amount:</span>
+                        <span className="text-amber-700">{contractDetails.paymentMethod === 'payl8r' ? 'Payl8r Amount' : 'Finance Amount'}:</span>
                         <span className="font-semibold text-amber-800">{formatCurrency(contractDetails.financeAmount)}</span>
                       </div>
+                      {/* Agreement Settings - ONLY for Finance (not Payl8r) */}
+                      {contractDetails.paymentMethod === 'finance' && (
+                      <div className="mt-2 pt-2 border-t border-amber-200 text-xs text-amber-700">
+                        <div className="flex justify-between">
+                          <span>Payment Frequency:</span>
+                          <span className="capitalize font-medium">{contractDetails.financeFrequency || 'monthly'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Duration:</span>
+                          <span className="font-medium">{contractDetails.financeDuration || 12} {contractDetails.financeFrequency === 'weekly' ? 'weekly' : contractDetails.financeFrequency === 'bi-weekly' ? 'bi-weekly' : 'monthly'} payments</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Payment Amount:</span>
+                          <span className="font-medium">{formatCurrency((contractDetails.financeAmount || 0) / (contractDetails.financeDuration || 12))}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>First Payment:</span>
+                          <span className="font-medium">{contractDetails.financeStartDate ? new Date(contractDetails.financeStartDate).toLocaleDateString('en-GB') : 'Not set'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Start Day:</span>
+                          <span className="font-medium">{contractDetails.financeDueDay || 1}</span>
+                        </div>
+                      </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -276,19 +276,33 @@ const updateUserStatistics = async (userId, statusChange) => {
 // Helper function to mark all received messages as read when user replies
 const markAllReceivedMessagesAsRead = async (leadId) => {
   try {
+    // Mark in messages table (primary source for calendar badges)
+    const { error: msgErr } = await supabase
+      .from('messages')
+      .update({ read_status: true })
+      .eq('lead_id', leadId)
+      .in('status', ['received', 'delivered'])
+      .eq('read_status', false);
+
+    if (msgErr) {
+      console.warn('⚠️ Failed to mark messages as read in messages table:', msgErr.message);
+    } else {
+      console.log(`📖 Marked all received messages as read for lead ${leadId}`);
+    }
+
+    // Also update legacy booking_history field on leads table
     const lead = await dbManager.query('leads', {
       select: 'booking_history',
       eq: { id: leadId }
     });
-    
+
     if (!lead || lead.length === 0 || !lead[0].booking_history) {
       return;
     }
-    
+
     const history = JSON.parse(lead[0].booking_history);
     let hasChanges = false;
-    
-    // Mark all received messages as read
+
     const updatedHistory = history.map(entry => {
       if (entry.action === 'SMS_RECEIVED' && !entry.details?.read) {
         hasChanges = true;
@@ -302,15 +316,12 @@ const markAllReceivedMessagesAsRead = async (leadId) => {
       }
       return entry;
     });
-    
-    // Only update if there were changes
+
     if (hasChanges) {
-      await dbManager.update('leads', { 
+      await dbManager.update('leads', {
         booking_history: JSON.stringify(updatedHistory),
         updated_at: new Date().toISOString()
       }, { id: leadId });
-      
-      console.log(`📖 Marked all received messages as read for lead ${leadId}`);
     }
   } catch (error) {
     console.error('Error marking messages as read:', error);
@@ -413,13 +424,19 @@ const looksLikeNames = (values) => {
 // @access  Private
 router.get('/', auth, async (req, res) => {
   try {
-    const { page = 1, limit = 50, status, booker, search, created_at_start, created_at_end, assigned_at_start, assigned_at_end } = req.query;
+    const { page = 1, limit = 50, status, booker, search, created_at_start, created_at_end, assigned_at_start, assigned_at_end, status_changed_at_start, status_changed_at_end } = req.query;
 
     // Validate and cap limit to prevent performance issues
     const validatedLimit = Math.min(parseInt(limit) || 50, 100);
     const pageInt = Math.max(parseInt(page) || 1, 1);
     const from = (pageInt - 1) * validatedLimit;
     const to = from + validatedLimit - 1;
+    
+    // Check if filtering by status change date (for call_status filters)
+    const hasStatusChangeDateFilter = status_changed_at_start && status_changed_at_end;
+    if (hasStatusChangeDateFilter) {
+      console.log(`📅 Status change date filter: ${status_changed_at_start} to ${status_changed_at_end}`);
+    }
 
     // Check if we're filtering by call_status (requires JavaScript filtering)
     // Note: Case-sensitive mapping - must match exactly what's in custom_fields.call_status
@@ -693,13 +710,47 @@ router.get('/', auth, async (req, res) => {
       // Filter by call_status BUT exclude leads that have progressed beyond "Assigned"
       // Once a lead is Booked, Attended, Cancelled, etc. it should only appear in that folder
       const progressedStatuses = ['Booked', 'Attended', 'Cancelled', 'Rejected', 'Sale'];
+      
+      // Helper function to check if status was changed on a specific date
+      const wasStatusChangedOnDate = (lead, targetStatus, startDate, endDate) => {
+        if (!lead.booking_history) return false;
+        try {
+          const history = typeof lead.booking_history === 'string' 
+            ? JSON.parse(lead.booking_history) 
+            : lead.booking_history;
+          
+          if (!Array.isArray(history)) return false;
+          
+          return history.some(entry => {
+            if (entry.action !== 'CALL_STATUS_UPDATE') return false;
+            if (entry.details?.callStatus !== targetStatus) return false;
+            
+            const entryDate = new Date(entry.timestamp);
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            
+            return entryDate >= start && entryDate <= end;
+          });
+        } catch (e) {
+          return false;
+        }
+      };
+      
       allFilteredLeadsForCount = (leads || []).filter(lead => {
         const hasMatchingCallStatus = getCallStatus(lead) === callStatusValue;
         const hasProgressed = progressedStatuses.includes(lead.status);
+        
+        // If filtering by status change date, check booking_history
+        if (hasStatusChangeDateFilter && hasMatchingCallStatus) {
+          const wasChangedOnDate = wasStatusChangedOnDate(lead, callStatusValue, status_changed_at_start, status_changed_at_end);
+          // Only include if call_status matches AND was changed on the specified date AND hasn't progressed
+          return wasChangedOnDate && !hasProgressed;
+        }
+        
         // Only include if call_status matches AND lead hasn't progressed to a final status
         return hasMatchingCallStatus && !hasProgressed;
       });
-      console.log(`📊 Filtered ${allFilteredLeadsForCount.length} leads by call_status: ${callStatusValue} (excluded progressed leads)`);
+      console.log(`📊 Filtered ${allFilteredLeadsForCount.length} leads by call_status: ${callStatusValue} ${hasStatusChangeDateFilter ? '(with status change date filter)' : ''} (excluded progressed leads)`);
 
       // Apply pagination to filtered results
       filteredLeads = allFilteredLeadsForCount.slice(from, to + 1);
@@ -990,6 +1041,45 @@ router.get('/calendar', auth, async (req, res) => {
         } else {
           console.warn('⚠️ Calendar API: Failed to fetch booker names:', usersError?.message);
         }
+      }
+    }
+
+    // Lightweight query: get lead IDs with received SMS/email for calendar badges
+    // Two states: unread (flashing) and read (static opened icon)
+    if (leads && leads.length > 0) {
+      try {
+        const leadIds = leads.map(l => l.id);
+        const { data: receivedRows, error: recvErr } = await supabase
+          .from('messages')
+          .select('lead_id, type, read_status')
+          .in('lead_id', leadIds)
+          .in('type', ['sms', 'email'])
+          .in('status', ['received', 'delivered']);
+
+        if (!recvErr && receivedRows) {
+          const unreadSmsLeadIds = new Set();
+          const unreadEmailLeadIds = new Set();
+          const readSmsLeadIds = new Set();
+          const readEmailLeadIds = new Set();
+          receivedRows.forEach(r => {
+            if (r.type === 'sms') {
+              if (!r.read_status) unreadSmsLeadIds.add(r.lead_id);
+              readSmsLeadIds.add(r.lead_id); // any received = has messages
+            }
+            if (r.type === 'email') {
+              if (!r.read_status) unreadEmailLeadIds.add(r.lead_id);
+              readEmailLeadIds.add(r.lead_id);
+            }
+          });
+          leads.forEach(lead => {
+            lead.has_unread_sms = unreadSmsLeadIds.has(lead.id);
+            lead.has_unread_email = unreadEmailLeadIds.has(lead.id);
+            lead.has_received_sms = readSmsLeadIds.has(lead.id);
+            lead.has_received_email = readEmailLeadIds.has(lead.id);
+          });
+        }
+      } catch (e) {
+        console.warn('⚠️ Calendar API: Failed to check unread messages:', e.message);
       }
     }
 
@@ -3206,7 +3296,27 @@ router.delete('/:id([0-9a-fA-F-]{36})', auth, adminAuth, async (req, res) => {
       eq: { lead_id: req.params.id }
     });
     console.log(`🗑️ Deleted ${salesDeleteResult ? salesDeleteResult.length : 0} related sales for lead ${req.params.id}`);
-    
+
+    // Delete related messages (SMS/email history) using Supabase
+    try {
+      await dbManager.delete('messages', {
+        eq: { lead_id: req.params.id }
+      });
+      console.log(`🗑️ Deleted messages for lead ${req.params.id}`);
+    } catch (msgErr) {
+      console.error('Failed to delete related messages:', msgErr.message);
+    }
+
+    // Delete related booking_history entries using Supabase
+    try {
+      await dbManager.delete('booking_history', {
+        eq: { lead_id: req.params.id }
+      });
+      console.log(`🗑️ Deleted booking_history for lead ${req.params.id}`);
+    } catch (bhErr) {
+      console.error('Failed to delete related booking_history:', bhErr.message);
+    }
+
     // Delete the lead using Supabase
     const deleteResult = await dbManager.delete('leads', {
       eq: { id: req.params.id }
@@ -3376,6 +3486,26 @@ router.delete('/bulk', auth, adminAuth, async (req, res) => {
     } catch (error) {
       console.error('Failed to delete related sales:', error);
       // Continue with lead deletion even if sales deletion fails
+    }
+
+    // Delete related messages (SMS/email history) using Supabase
+    try {
+      await dbManager.delete('messages', {
+        in: { lead_id: foundLeadIds }
+      });
+      console.log(`🗑️ Deleted messages for ${foundLeadIds.length} leads`);
+    } catch (error) {
+      console.error('Failed to delete related messages:', error);
+    }
+
+    // Delete related booking_history entries using Supabase
+    try {
+      await dbManager.delete('booking_history', {
+        in: { lead_id: foundLeadIds }
+      });
+      console.log(`🗑️ Deleted booking_history for ${foundLeadIds.length} leads`);
+    } catch (error) {
+      console.error('Failed to delete related booking_history:', error);
     }
 
     // Delete all found leads using Supabase
@@ -5706,6 +5836,66 @@ router.patch('/:id/reject', auth, async (req, res) => {
     res.json({ success: true, lead: updatedLead });
   } catch (error) {
     console.error('Reject lead error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/leads/:id/messages
+// @desc    Get SMS/email messages for a specific lead (also marks received as read)
+// @access  Private
+router.get('/:id/messages', auth, async (req, res) => {
+  try {
+    const { data: messages, error } = await supabase
+      .from('messages')
+      .select('id, lead_id, type, status, sms_body, content, subject, email_body, sent_by, sent_by_name, read_status, sent_at, created_at')
+      .eq('lead_id', req.params.id)
+      .order('created_at', { ascending: true })
+      .limit(50);
+
+    // Side-effect: mark all received messages as read when user opens the conversation
+    supabase
+      .from('messages')
+      .update({ read_status: true })
+      .eq('lead_id', req.params.id)
+      .in('status', ['received', 'delivered'])
+      .eq('read_status', false)
+      .then(() => {})
+      .catch(() => {});
+
+    if (error) {
+      console.error('Error fetching lead messages:', error);
+      return res.status(500).json({ message: 'Failed to fetch messages' });
+    }
+
+    // Convert to bookingHistory format for frontend compatibility
+    // Note: inbound emails may have status 'received' or 'delivered' (gmailPoller uses 'delivered')
+    const history = (messages || []).map(msg => {
+      const isEmail = msg.type === 'email';
+      const isInbound = msg.status === 'received' || msg.status === 'delivered';
+      const bodyText = isEmail
+        ? (msg.email_body || msg.content || msg.subject || '')
+        : (msg.sms_body || msg.content || '');
+      return {
+        action: msg.type === 'sms'
+          ? (isInbound ? 'SMS_RECEIVED' : 'SMS_SENT')
+          : (isInbound ? 'EMAIL_RECEIVED' : 'EMAIL_SENT'),
+        timestamp: msg.sent_at || msg.created_at,
+        performed_by: msg.sent_by,
+        performed_by_name: msg.sent_by_name,
+        details: {
+          body: bodyText,
+          message: bodyText,
+          subject: msg.subject || '',
+          read: msg.read_status || false,
+          status: msg.status,
+          direction: isInbound ? 'received' : 'sent'
+        }
+      };
+    });
+
+    res.json({ messages: history });
+  } catch (err) {
+    console.error('Error fetching lead messages:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

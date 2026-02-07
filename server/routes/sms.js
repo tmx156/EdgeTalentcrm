@@ -336,7 +336,7 @@ router.post('/webhook', async (req, res) => {
     // Support multiple webhook formats: The SMS Works, BulkSMS, Twilio, etc.
     const text = body.text || body.Body || body.message || body.messageText || body.sms || body.content || body.body;
     const sender = body.sender || body.From || body.from || body.phone || body.msisdn || body.source;
-    const providerId = body.messageId || body.id || body.message_id || body.MessageSid || body.sid; // accept Twilio-style too
+    const providerId = body.messageId || body.messageid || body.id || body.message_id || body.MessageSid || body.sid;
     const timestamp = body.timestamp || body.receivedAt || body.createdAt || body.dateTime || body.date || body.SmsTimestamp || body.received_at;
 
     console.log('📱 SMS Webhook extracted:', {

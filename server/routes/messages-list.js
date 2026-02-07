@@ -1228,7 +1228,47 @@ router.post('/cleanup-orphaned', auth, async (req, res) => {
       }
     }
 
-    // Step 5: Emit realtime event for UI cleanup
+    // Step 5: Clean up orphaned booking_history entries
+    let orphanedHistoryCount = 0;
+    let deletedHistoryCount = 0;
+    try {
+      const { data: allHistory, error: historyError } = await supabase
+        .from('booking_history')
+        .select('id, lead_id')
+        .order('created_at', { ascending: false });
+
+      if (!historyError && allHistory && allHistory.length > 0) {
+        const orphanedHistory = allHistory.filter(
+          entry => !entry.lead_id || !existingLeadIds.has(entry.lead_id)
+        );
+        orphanedHistoryCount = orphanedHistory.length;
+        console.log(`🗑️ Found ${orphanedHistoryCount} orphaned booking_history entries to delete`);
+
+        if (orphanedHistory.length > 0) {
+          const batchSize = 50;
+          for (let i = 0; i < orphanedHistory.length; i += batchSize) {
+            const batch = orphanedHistory.slice(i, i + batchSize);
+            const idsToDelete = batch.map(entry => entry.id);
+
+            const { error: deleteHistoryError } = await supabase
+              .from('booking_history')
+              .delete()
+              .in('id', idsToDelete);
+
+            if (deleteHistoryError) {
+              console.error('❌ Error deleting booking_history batch:', deleteHistoryError);
+            } else {
+              deletedHistoryCount += idsToDelete.length;
+            }
+          }
+          console.log(`✅ Deleted ${deletedHistoryCount} orphaned booking_history entries`);
+        }
+      }
+    } catch (bhErr) {
+      console.error('⚠️ booking_history cleanup error (non-critical):', bhErr.message);
+    }
+
+    // Step 6: Emit realtime event for UI cleanup
     try {
       const io = req.app.get('io');
       if (io) {
@@ -1236,16 +1276,18 @@ router.post('/cleanup-orphaned', auth, async (req, res) => {
       }
     } catch {}
 
-    console.log(`🧹 Cleanup complete! Removed ${deletedCount} orphaned messages`);
+    console.log(`🧹 Cleanup complete! Removed ${deletedCount} orphaned messages and ${deletedHistoryCount} orphaned booking_history entries`);
 
     return res.json({
       success: true,
-      message: `Successfully cleaned up orphaned messages`,
+      message: `Successfully cleaned up orphaned data`,
       totalMessages,
       totalLeads,
       orphanedMessages: orphanedCount,
       validMessages: validCount,
-      deletedCount
+      deletedCount,
+      orphanedHistoryCount,
+      deletedHistoryCount
     });
 
   } catch (error) {

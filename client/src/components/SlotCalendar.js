@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { FiCheckCircle, FiClock, FiUser } from 'react-icons/fi';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { FiCheckCircle, FiClock, FiUser, FiMessageSquare, FiMail } from 'react-icons/fi';
 
 // Time slots configuration matching the visual design
 // Striped pattern for child/male slots: bg-gradient-to-r from-yellow-100 to-blue-100
@@ -62,22 +62,47 @@ const TIME_SLOTS = [
 ];
 
 const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, onEventClick }) => {
-  // PERFORMANCE: Index events by date+time+slot once per render
+  const [overflowDropdown, setOverflowDropdown] = useState(null); // { time, slot }
+  const dropdownRef = useRef(null);
+
+  // Close dropdown on click-outside or Escape
+  useEffect(() => {
+    if (!overflowDropdown) return;
+    const handleClick = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOverflowDropdown(null);
+      }
+    };
+    const handleKey = (e) => {
+      if (e.key === 'Escape') setOverflowDropdown(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [overflowDropdown]);
+
+  // PERFORMANCE: Index events by date+time+slot once per render — stores ARRAYS
   const eventsBySlot = useMemo(() => {
     if (!events || events.length === 0) return new Map();
-    
+
     const dateStr = selectedDate.toISOString().split('T')[0];
     const index = new Map();
-    
+
     events.forEach(event => {
       if (!event.date_booked) return;
       const eventDateStr = new Date(event.date_booked).toISOString().split('T')[0];
       if (eventDateStr !== dateStr) return;
-      
+
       const key = `${event.time_booked || ''}_${event.booking_slot || 1}`;
-      index.set(key, event);
+      if (!index.has(key)) {
+        index.set(key, []);
+      }
+      index.get(key).push(event);
     });
-    
+
     return index;
   }, [events, selectedDate]);
 
@@ -130,10 +155,16 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
     });
   };
 
-  // Group events by time and slot - OPTIMIZED: Use pre-indexed map
-  const getEventForSlot = (time, slot) => {
+  // Get all events for a slot (returns array)
+  const getEventsForSlot = (time, slot) => {
     const key = `${time}_${slot}`;
-    return eventsBySlot.get(key) || null;
+    return eventsBySlot.get(key) || [];
+  };
+
+  // Get primary (first) event for a slot — keeps existing rendering unchanged
+  const getEventForSlot = (time, slot) => {
+    const arr = getEventsForSlot(time, slot);
+    return arr.length > 0 ? arr[0] : null;
   };
 
   // Get status indicator - LARGER AND MORE VISIBLE
@@ -281,10 +312,14 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
         {TIME_SLOTS.map((slotConfig, index) => {
           const slot1Event = getEventForSlot(slotConfig.time, 1);
           const slot2Event = getEventForSlot(slotConfig.time, 2);
+          const slot1All = getEventsForSlot(slotConfig.time, 1);
+          const slot2All = getEventsForSlot(slotConfig.time, 2);
+          const slot1Overflow = slot1All.length > 1 ? slot1All.slice(1) : [];
+          const slot2Overflow = slot2All.length > 1 ? slot2All.slice(1) : [];
 
           return (
-            <div 
-              key={slotConfig.time} 
+            <div
+              key={slotConfig.time}
               className={`grid grid-cols-3 border-b border-gray-200 ${index === TIME_SLOTS.length - 1 ? 'border-b-0' : ''}`}
             >
               {/* Time Column */}
@@ -294,9 +329,9 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
 
               {/* Slot 1 */}
               <div
-                className={`p-4 border-r border-gray-300 ${getCellBackground(slotConfig, slot1Event, slotConfig.time, 1)} ${slotConfig.slot1BorderColor} ${isSlotBlocked(slotConfig.time, 1) || slotConfig.slot1Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center`}
+                className={`p-4 border-r border-gray-300 ${getCellBackground(slotConfig, slot1Event, slotConfig.time, 1)} ${slotConfig.slot1BorderColor} ${isSlotBlocked(slotConfig.time, 1) || slotConfig.slot1Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center relative`}
                 onClick={() => {
-                  if (isSlotBlocked(slotConfig.time, 1) || slotConfig.slot1Type === 'blank') return; // Don't allow clicks on blocked/blank slots
+                  if (isSlotBlocked(slotConfig.time, 1) || slotConfig.slot1Type === 'blank') return;
                   slot1Event ? onEventClick(slot1Event) : onSlotClick(slotConfig.time, 1, slotConfig);
                 }}
               >
@@ -317,6 +352,27 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                     <div className="font-semibold text-gray-800 flex items-center justify-center">
                       {getStatusIndicator(slot1Event)}
                       <span className="truncate">{slot1Event.name}</span>
+                      {/* Unread received message - flashing icon */}
+                      {(slot1Event.hasUnreadSms || slot1Event.hasUnreadEmail) ? (
+                        <span className="relative ml-1.5 flex-shrink-0 animate-pulse">
+                          {slot1Event.hasUnreadSms ? (
+                            <FiMessageSquare className="inline-block w-4 h-4 text-green-500" />
+                          ) : (
+                            <FiMail className="inline-block w-4 h-4 text-blue-500" />
+                          )}
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white animate-ping" style={{animationDuration: '1.5s'}} />
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
+                        </span>
+                      ) : (slot1Event.hasReceivedSms || slot1Event.hasReceivedEmail) ? (
+                        /* Read received message - static opened icon */
+                        <span className="ml-1.5 flex-shrink-0">
+                          {slot1Event.hasReceivedSms ? (
+                            <FiMessageSquare className="inline-block w-3.5 h-3.5 text-gray-400" />
+                          ) : (
+                            <FiMail className="inline-block w-3.5 h-3.5 text-gray-400" />
+                          )}
+                        </span>
+                      ) : null}
                     </div>
                     {slot1Event.phone && (
                       <div className="text-xs text-gray-600 mt-1">{slot1Event.phone}</div>
@@ -327,13 +383,53 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                     Click to Book
                   </div>
                 )}
+                {/* Overflow badge */}
+                {slot1Overflow.length > 0 && (
+                  <div className="absolute top-1 right-1" ref={overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 1 ? dropdownRef : null}>
+                    <button
+                      className="bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOverflowDropdown(
+                          overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 1
+                            ? null
+                            : { time: slotConfig.time, slot: 1 }
+                        );
+                      }}
+                      title={`${slot1Overflow.length} more booking(s)`}
+                    >
+                      +{slot1Overflow.length}
+                    </button>
+                    {overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 1 && (
+                      <div className="absolute top-7 right-0 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[180px] py-1">
+                        <div className="px-3 py-1 text-xs font-semibold text-gray-500 border-b border-gray-200">
+                          +{slot1Overflow.length} more booking{slot1Overflow.length > 1 ? 's' : ''}
+                        </div>
+                        {slot1Overflow.map((evt, i) => (
+                          <button
+                            key={evt.id || i}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOverflowDropdown(null);
+                              onEventClick(evt);
+                            }}
+                          >
+                            {getStatusIndicator(evt)}
+                            <span className="truncate font-medium">{evt.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Slot 2 */}
               <div
-                className={`p-4 ${getCellBackground(slotConfig, slot2Event, slotConfig.time, 2)} ${slotConfig.slot2BorderColor} ${isSlotBlocked(slotConfig.time, 2) || slotConfig.slot2Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center`}
+                className={`p-4 ${getCellBackground(slotConfig, slot2Event, slotConfig.time, 2)} ${slotConfig.slot2BorderColor} ${isSlotBlocked(slotConfig.time, 2) || slotConfig.slot2Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center relative`}
                 onClick={() => {
-                  if (isSlotBlocked(slotConfig.time, 2) || slotConfig.slot2Type === 'blank') return; // Don't allow clicks on blocked/blank slots
+                  if (isSlotBlocked(slotConfig.time, 2) || slotConfig.slot2Type === 'blank') return;
                   slot2Event ? onEventClick(slot2Event) : onSlotClick(slotConfig.time, 2, slotConfig);
                 }}
               >
@@ -354,6 +450,27 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                     <div className="font-semibold text-gray-800 flex items-center justify-center">
                       {getStatusIndicator(slot2Event)}
                       <span className="truncate">{slot2Event.name}</span>
+                      {/* Unread received message - flashing icon */}
+                      {(slot2Event.hasUnreadSms || slot2Event.hasUnreadEmail) ? (
+                        <span className="relative ml-1.5 flex-shrink-0 animate-pulse">
+                          {slot2Event.hasUnreadSms ? (
+                            <FiMessageSquare className="inline-block w-4 h-4 text-green-500" />
+                          ) : (
+                            <FiMail className="inline-block w-4 h-4 text-blue-500" />
+                          )}
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white animate-ping" style={{animationDuration: '1.5s'}} />
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
+                        </span>
+                      ) : (slot2Event.hasReceivedSms || slot2Event.hasReceivedEmail) ? (
+                        /* Read received message - static opened icon */
+                        <span className="ml-1.5 flex-shrink-0">
+                          {slot2Event.hasReceivedSms ? (
+                            <FiMessageSquare className="inline-block w-3.5 h-3.5 text-gray-400" />
+                          ) : (
+                            <FiMail className="inline-block w-3.5 h-3.5 text-gray-400" />
+                          )}
+                        </span>
+                      ) : null}
                     </div>
                     {slot2Event.phone && (
                       <div className="text-xs text-gray-600 mt-1">{slot2Event.phone}</div>
@@ -362,6 +479,46 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                 ) : (
                   <div className="text-gray-400 text-sm text-center">
                     Click to Book
+                  </div>
+                )}
+                {/* Overflow badge */}
+                {slot2Overflow.length > 0 && (
+                  <div className="absolute top-1 right-1" ref={overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 2 ? dropdownRef : null}>
+                    <button
+                      className="bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOverflowDropdown(
+                          overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 2
+                            ? null
+                            : { time: slotConfig.time, slot: 2 }
+                        );
+                      }}
+                      title={`${slot2Overflow.length} more booking(s)`}
+                    >
+                      +{slot2Overflow.length}
+                    </button>
+                    {overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 2 && (
+                      <div className="absolute top-7 right-0 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[180px] py-1">
+                        <div className="px-3 py-1 text-xs font-semibold text-gray-500 border-b border-gray-200">
+                          +{slot2Overflow.length} more booking{slot2Overflow.length > 1 ? 's' : ''}
+                        </div>
+                        {slot2Overflow.map((evt, i) => (
+                          <button
+                            key={evt.id || i}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOverflowDropdown(null);
+                              onEventClick(evt);
+                            }}
+                          >
+                            {getStatusIndicator(evt)}
+                            <span className="truncate font-medium">{evt.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -11,7 +11,7 @@ const config = require('../config');
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
-const { generateContractPDF, buildContractData, getActiveTemplate } = require('../utils/contractGenerator');
+const { generateContractPDF, generateContractHTML, buildContractData, getActiveTemplate } = require('../utils/contractGenerator');
 const { uploadToS3 } = require('../utils/s3Service');
 const { sendEmail } = require('../utils/emailService');
 const { sendSMS } = require('../utils/smsService');
@@ -655,7 +655,10 @@ router.get('/verify/:token', async (req, res) => {
     const template = await getActiveTemplate();
     console.log('📋 Verify endpoint - returning template:', template?.id ? `DB template (${template.id})` : 'DEFAULT');
 
-    // Return contract data AND template for signing page
+    // Generate contract HTML for the signing page to render
+    const contractHTML = generateContractHTML(contract.contract_data, template);
+
+    // Return contract data, template, AND pre-rendered HTML for signing page
     res.json({
       success: true,
       contract: {
@@ -664,7 +667,8 @@ router.get('/verify/:token', async (req, res) => {
         expiresAt: contract.expires_at,
         data: contract.contract_data
       },
-      template: template
+      template: template,
+      html: contractHTML
     });
   } catch (error) {
     console.error('Error verifying contract:', error);
@@ -926,7 +930,78 @@ router.post('/sign/:token', async (req, res) => {
       console.error('Error creating sale:', saleError);
     }
 
-    // 3. Send email with signed PDF and images attached
+    // 3. Create Finance Agreement for Finance/Payl8r payment methods
+    if (signedContractData.paymentMethod === 'finance' || signedContractData.paymentMethod === 'payl8r') {
+      try {
+        console.log(`🏦 Creating finance agreement for ${signedContractData.paymentMethod} contract ${contract.id}...`);
+        
+        const financeAgreementId = uuidv4();
+        const financeAmount = parseFloat(signedContractData.financeAmount) || 0;
+        const depositAmount = parseFloat(signedContractData.depositAmount) || 0;
+        const totalAmount = parseFloat(signedContractData.total) || 0;
+        
+        // Skip if no finance amount (deposit paid in full)
+        if (financeAmount <= 0) {
+          console.log(`⚠️ Skipping finance agreement - no remaining finance amount`);
+        } else {
+          // Get finance configuration from contract data
+          const frequency = signedContractData.financeFrequency || 'monthly';
+          const startDate = signedContractData.financeStartDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          const dueDay = parseInt(signedContractData.financeDueDay) || 1;
+          const duration = parseInt(signedContractData.financeDuration) || 12;
+          
+          // Calculate payment amount based on user's chosen duration
+          const paymentAmount = financeAmount / duration;
+          
+          // Calculate term months based on frequency and duration
+          // Convert duration (number of payments) to months
+          const termMonthsMap = {
+            'weekly': Math.ceil(duration / 4.33),  // ~4.33 weeks per month
+            'bi-weekly': Math.ceil(duration / 2.17),  // ~2.17 bi-weeks per month
+            'monthly': duration
+          };
+          const termMonths = termMonthsMap[frequency] || duration;
+          
+          const financeAgreementData = {
+            id: financeAgreementId,
+            lead_id: contract.lead_id,
+            sale_id: saleRecord?.id || null,
+            agreement_number: `FIN-${Date.now().toString().slice(-8)}`,
+            total_amount: totalAmount,
+            deposit_amount: depositAmount,
+            monthly_payment: paymentAmount,
+            payment_frequency: frequency,
+            term_months: termMonths,
+            interest_rate: 0,
+            start_date: startDate,
+            next_payment_date: startDate,
+            status: 'active',
+            remaining_balance: financeAmount,
+            total_paid: depositAmount, // Deposit counts as amount paid
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          
+          const { data: insertedFinance, error: financeError } = await supabase
+            .from('finance')
+            .insert(financeAgreementData)
+            .select()
+            .single();
+          
+          if (!financeError && insertedFinance) {
+            console.log(`✅ Finance agreement ${financeAgreementId} auto-created for ${signedContractData.paymentMethod}`);
+            console.log(`   Total: ${totalAmount}, Deposit: ${depositAmount}, Finance: ${financeAmount}, Payment: ${paymentAmount.toFixed(2)} ${frequency}`);
+          } else {
+            console.error('❌ Failed to create finance agreement:', financeError);
+          }
+        }
+      } catch (financeCreateError) {
+        console.error('❌ Error creating finance agreement:', financeCreateError);
+        // Don't fail the contract signing if finance creation fails
+      }
+    }
+
+    // 4. Send email with signed PDF and images attached
     try {
       const customerEmail = signedContractData.email;
       const customerName = signedContractData.customerName || 'Customer';

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { useParams } from 'react-router-dom';
-import { Check, RotateCcw, Loader, AlertTriangle, CheckCircle, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, RotateCcw, Loader, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 
 /**
  * ContractSigning - Public page for customers to sign contracts
- * Mobile-responsive design for all screen sizes
+ * Renders the same HTML as the contract editor/PDF generator,
+ * with interactive signature pads injected via React portals.
  */
 const ContractSigning = () => {
   const { token } = useParams();
@@ -13,10 +15,13 @@ const ContractSigning = () => {
   const [error, setError] = useState(null);
   const [contract, setContract] = useState(null);
   const [template, setTemplate] = useState(null);
+  const [contractHTML, setContractHTML] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [scale, setScale] = useState(1);
+  const [scaledHeight, setScaledHeight] = useState('auto');
 
   // Signature states
   const [signatures, setSignatures] = useState({
@@ -26,6 +31,15 @@ const ContractSigning = () => {
     passDetails: null,
     happyPurchase: null
   });
+
+  // Refs for signature portal targets
+  const [signaturePortals, setSignaturePortals] = useState({});
+  const previewRef = useRef(null);
+  const innerRef = useRef(null);
+  const containerRef = useRef(null);
+
+  // A4 width in pixels at 96dpi ≈ 794px (210mm)
+  const A4_WIDTH = 794;
 
   // Fetch contract data
   useEffect(() => {
@@ -41,6 +55,7 @@ const ContractSigning = () => {
 
         setContract(data.contract);
         setTemplate(data.template);
+        setContractHTML(data.html || '');
       } catch (err) {
         setError(err.message);
       } finally {
@@ -52,6 +67,81 @@ const ContractSigning = () => {
       fetchContract();
     }
   }, [token]);
+
+  // Parse HTML into individual pages (same pattern as ContractEditor.js)
+  const getPageHTML = useCallback((pageNum) => {
+    if (!contractHTML) return '';
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(contractHTML, 'text/html');
+    const pages = doc.querySelectorAll('.page');
+
+    // Get styles from head
+    const styles = doc.querySelector('style');
+    const styleHTML = styles ? styles.outerHTML : '';
+
+    if (pages.length >= pageNum) {
+      return styleHTML + pages[pageNum - 1].outerHTML;
+    }
+    return '';
+  }, [contractHTML]);
+
+  // After HTML renders, find [data-signature] elements and store DOM refs for portals
+  useEffect(() => {
+    if (!previewRef.current || !contractHTML) return;
+
+    // Small delay to ensure DOM has rendered
+    const timer = setTimeout(() => {
+      const sigElements = previewRef.current.querySelectorAll('[data-signature]');
+      const portals = {};
+
+      sigElements.forEach((el) => {
+        const sigName = el.getAttribute('data-signature');
+        if (sigName) {
+          // Clear existing content (the "Sign Here" placeholder or img)
+          el.innerHTML = '';
+          portals[sigName] = el;
+        }
+      });
+
+      setSignaturePortals(portals);
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [contractHTML, currentPage]);
+
+  // Calculate mobile scale based on container width
+  useEffect(() => {
+    const updateScale = () => {
+      if (containerRef.current) {
+        const containerWidth = containerRef.current.offsetWidth;
+        const newScale = Math.min(1, containerWidth / A4_WIDTH);
+        setScale(newScale);
+      }
+    };
+
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, []);
+
+  // Measure actual content height and set wrapper height = contentHeight * scale
+  // This collapses the dead space caused by transform: scale() not affecting layout
+  useEffect(() => {
+    const measure = () => {
+      if (!innerRef.current) return;
+      const contentH = innerRef.current.scrollHeight;
+      setScaledHeight(Math.ceil(contentH * scale));
+    };
+
+    // Measure after portals have rendered
+    const timer = setTimeout(measure, 100);
+    window.addEventListener('resize', measure);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', measure);
+    };
+  }, [scale, contractHTML, currentPage, signaturePortals]);
 
   // Handle signature submission
   const handleSubmit = async () => {
@@ -86,9 +176,6 @@ const ContractSigning = () => {
       setSubmitting(false);
     }
   };
-
-  const formatCurrency = (amount) => `£${parseFloat(amount || 0).toFixed(2)}`;
-  const formatDate = (date) => new Date(date || new Date()).toLocaleDateString('en-GB');
 
   // Loading state
   if (loading) {
@@ -141,9 +228,14 @@ const ContractSigning = () => {
   const contractData = contract?.data || {};
   const signatureCount = Object.values(signatures).filter(Boolean).length;
 
+  // Which signatures are on which page
+  const page1Signatures = ['main'];
+  const page2Signatures = ['notAgency', 'noCancel', 'passDetails', 'happyPurchase'];
+  const currentPageSignatures = currentPage === 1 ? page1Signatures : page2Signatures;
+
   return (
     <div className="min-h-screen bg-gray-800 py-2 px-1 sm:py-4 sm:px-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-4xl mx-auto" ref={containerRef}>
 
         {/* Progress Header */}
         <div className="bg-white rounded-t-lg p-3 sm:p-4 flex items-center justify-between border-b">
@@ -171,14 +263,87 @@ const ContractSigning = () => {
           </button>
         </div>
 
-        {/* Contract Content */}
-        <div className="bg-white shadow-2xl overflow-x-auto">
-          {currentPage === 1 ? (
-            <Page1Content contractData={contractData} signatures={signatures} setSignatures={setSignatures} formatCurrency={formatCurrency} formatDate={formatDate} template={template} />
-          ) : (
-            <Page2Content contractData={contractData} signatures={signatures} setSignatures={setSignatures} formatDate={formatDate} template={template} />
-          )}
+        {/* Contract Content - Server-rendered HTML with mobile scaling */}
+        <div className="bg-white shadow-2xl overflow-hidden" style={{ height: scaledHeight !== 'auto' ? `${scaledHeight}px` : 'auto' }}>
+          <div
+            ref={innerRef}
+            style={{
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left',
+              width: `${A4_WIDTH}px`
+            }}
+          >
+            <style>{`
+              [data-signature] {
+                cursor: pointer;
+                position: relative;
+                transition: outline 0.2s;
+              }
+              [data-signature]:hover {
+                outline: 3px solid #22c55e;
+                outline-offset: 2px;
+                border-radius: 4px;
+              }
+              [data-editable]:hover {
+                outline: none !important;
+              }
+              .page {
+                min-height: auto !important;
+              }
+              /* Page 2: Stack confirmation rows vertically for usable signature areas */
+              [data-editable^="confirmation"] {
+                flex-direction: column !important;
+                gap: 10px !important;
+              }
+              /* Make signature boxes full width instead of 160px */
+              [data-editable^="confirmation"] > [data-signature] {
+                width: 100% !important;
+                min-height: 90px !important;
+                order: 2;
+              }
+              /* Text comes first (above signature) */
+              [data-editable^="confirmation"] > div:not([data-signature]) {
+                order: 1;
+                padding-top: 0 !important;
+              }
+            `}</style>
+            <div
+              ref={previewRef}
+              dangerouslySetInnerHTML={{ __html: getPageHTML(currentPage) }}
+            />
+          </div>
         </div>
+
+        {/* Render signature pads via portals into [data-signature] elements */}
+        {currentPageSignatures.map((sigName) => {
+          const portalTarget = signaturePortals[sigName];
+          if (!portalTarget) return null;
+
+          const isSmall = sigName !== 'main';
+          const sigHeight = isSmall ? 70 : 80;
+
+          return ReactDOM.createPortal(
+            <div style={{ position: 'relative' }}>
+              {!signatures[sigName] && isSmall && (
+                <div style={{
+                  position: 'absolute', inset: 0, display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                  pointerEvents: 'none', zIndex: 1
+                }}>
+                  <span style={{ color: '#ccc', fontSize: '14px', fontStyle: 'italic' }}>Sign Here</span>
+                </div>
+              )}
+              <SignaturePad
+                onSignatureChange={(data) => setSignatures(prev => ({ ...prev, [sigName]: data }))}
+                signature={signatures[sigName]}
+                height={sigHeight}
+                small={isSmall}
+                parentScale={scale}
+              />
+            </div>,
+            portalTarget
+          );
+        })}
 
         {/* Submit Footer */}
         <div className="bg-white rounded-b-lg p-3 sm:p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-2">
@@ -202,331 +367,23 @@ const ContractSigning = () => {
 };
 
 /**
- * Page 1 - Invoice & Order Form (Mobile Responsive)
- */
-const Page1Content = ({ contractData, signatures, setSignatures, formatCurrency, formatDate, template }) => {
-  // Use template values directly from server (no hardcoded fallbacks)
-  // Server always returns complete template from database or defaults
-  const t = {
-    company_name: template?.company_name || '',
-    company_website: template?.company_website || '',
-    company_address: template?.company_address || '',
-    form_title: template?.form_title || '',
-    form_subtitle: template?.form_subtitle || '',
-    form_contact_info: template?.form_contact_info || '',
-    terms_and_conditions: template?.terms_and_conditions || '',
-    signature_instruction: template?.signature_instruction || '',
-    image_permission_text: template?.image_permission_text || 'give permission for Edge Talent to use my images',
-    // Finance section labels (dynamic - only shown when finance selected)
-    finance_deposit_label: template?.finance_deposit_label || '',
-    finance_amount_label: template?.finance_amount_label || '',
-    finance_provider_text: template?.finance_provider_text || '',
-    finance_info_text: template?.finance_info_text || ''
-  };
-
-  return (
-    <div className="p-3 sm:p-6 text-xs sm:text-sm">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
-        <p className="text-xs hidden sm:block">{t.company_website}</p>
-        <div className="text-center">
-          <h1 className="text-xl sm:text-3xl font-bold tracking-wider sm:tracking-widest">{t.company_name}</h1>
-          <p className="text-xs">{t.company_address}</p>
-        </div>
-        <div className="border border-black px-3 py-1 sm:px-4 sm:py-2">
-          <span className="text-xs">Date: </span>
-          <span className="font-medium text-xs sm:text-sm">{formatDate(contractData.date)}</span>
-        </div>
-      </div>
-
-      {/* Title */}
-      <div className="text-center mb-4">
-        <h2 className="text-base sm:text-xl font-bold mb-1">{t.form_title}</h2>
-        <p className="text-xs hidden sm:block">{t.form_subtitle}</p>
-        <p className="text-xs hidden sm:block">{t.form_contact_info}</p>
-      </div>
-
-      {/* Info Row - Stacked on mobile */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 border border-black mb-4 text-xs">
-        <div className="p-2 border-b sm:border-b-0 sm:border-r border-black">
-          <span className="text-gray-600">Customer Nos.</span><br/>
-          <span className="font-medium">{contractData.customerNumber || '-'}</span>
-        </div>
-        <div className="p-2 border-b sm:border-b-0 sm:border-r border-black">
-          <span className="text-gray-600">Studio no.</span><br/>
-          <span className="font-medium">{contractData.studioNumber || '-'}</span>
-        </div>
-        <div className="p-2 sm:border-r border-black">
-          <span className="text-gray-600">Photographer</span><br/>
-          <span className="font-medium">{contractData.photographer || '-'}</span>
-        </div>
-        <div className="p-2">
-          <span className="text-gray-600">Invoice no.</span><br/>
-          <span className="font-medium break-all">{contractData.invoiceNumber || '-'}</span>
-        </div>
-      </div>
-
-      {/* Customer Details */}
-      <h3 className="font-bold mb-1 text-sm">CUSTOMER DETAILS</h3>
-      <div className="border border-black mb-4 text-xs">
-        <div className="flex border-b border-black">
-          <div className="flex-1 p-2">
-            <span className="text-gray-600">NAME OF PERSON IN DIARY</span><br/>
-            <span className="font-medium">{contractData.customerName || ''}</span>
-          </div>
-          <div className="border-l border-black p-2 text-center w-16 sm:w-24">
-            <span className="text-gray-600">VIP?</span><br/>
-            <span className="font-medium">{contractData.isVip ? 'YES' : 'NO'}</span>
-          </div>
-        </div>
-        <div className="p-2 border-b border-black">
-          <span className="text-gray-600">NAME OF CLIENT IF DIFFERENT</span><br/>
-          <span className="font-medium">{contractData.clientNameIfDifferent || '-'}</span>
-        </div>
-        <div className="p-2 border-b border-black">
-          <span className="text-gray-600">ADDRESS</span><br/>
-          <span className="font-medium">{contractData.address || '-'}</span>
-        </div>
-        <div className="p-2 border-b border-black">
-          <span className="text-gray-600">POSTCODE: </span>
-          <span className="font-medium">{contractData.postcode || '-'}</span>
-        </div>
-        <div className="flex flex-col sm:flex-row">
-          <div className="p-2 flex-1 border-b sm:border-b-0 sm:border-r border-black">
-            <span className="text-gray-600">PHONE/MOBILE NO.</span><br/>
-            <span className="font-medium">{contractData.phone || '-'}</span>
-          </div>
-          <div className="p-2 flex-1">
-            <span className="text-gray-600">EMAIL:</span><br/>
-            <span className="font-medium break-all">{contractData.email || '-'}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Order Details - Stacked on mobile */}
-      <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mb-3">
-        <div className="flex-1">
-          <h3 className="font-bold mb-1 text-sm">ORDER DETAILS</h3>
-          <div className="border border-black text-xs">
-            <div className="flex border-b border-black">
-              <div className="p-2 flex-1">DIGITAL IMAGES?</div>
-              <div className="border-l border-black p-2 w-14 text-center">{contractData.digitalImages ? 'YES' : 'NO'}</div>
-              <div className="border-l border-black p-2 flex-1">QTY: <span className="font-medium">{contractData.digitalImagesQty || '-'}</span></div>
-            </div>
-            <div className="flex border-b border-black">
-              <div className="p-2 flex-1">DIGITAL Z-CARD?</div>
-              <div className="border-l border-black p-2 w-14 text-center">{contractData.digitalZCard ? 'YES' : 'NO'}</div>
-              <div className="border-l border-black p-2 flex-1 text-gray-500">DIGITAL PDF</div>
-            </div>
-            <div className="flex border-b border-black">
-              <div className="p-2 flex-1">EFOLIO?</div>
-              <div className="border-l border-black p-2 w-14 text-center">{contractData.efolio ? 'YES' : 'NO'}</div>
-              <div className="border-l border-black p-2 flex-1 truncate">URL: {contractData.efolioUrl || '-'}</div>
-            </div>
-            <div className="flex border-b border-black">
-              <div className="p-2 flex-1">PROJECT INFLUENCER?</div>
-              <div className="border-l border-black p-2 w-14 text-center">{contractData.projectInfluencer ? 'YES' : 'NO'}</div>
-              <div className="border-l border-black p-2 flex-1">-</div>
-            </div>
-            <div className="p-2 border-b border-black">
-              I <span className="font-bold">{contractData.allowImageUse ? 'DO' : 'DO NOT'}</span> {t.image_permission_text}
-            </div>
-            <div className="flex">
-              <div className="p-2 flex-1">Digital Images checked & received?</div>
-              <div className="border-l border-black p-2 w-20 text-center">N.A</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Totals Box */}
-        <div className="w-full sm:w-28">
-          <div className="border border-black text-xs h-full">
-            <div className="p-2 text-center border-b border-black">
-              <span className="text-gray-600">SUB TOTAL</span><br/>
-              <span className="font-medium">{formatCurrency(contractData.subtotal)}</span>
-            </div>
-            <div className="p-2 text-center">
-              <span className="font-bold">TOTAL</span><br/>
-              <span className="font-bold text-sm sm:text-base">{formatCurrency(contractData.total)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Notes */}
-      <div className="mb-3">
-        <span className="font-bold text-xs">NOTES:</span>
-        <div className="border border-black p-2 min-h-8 text-xs mt-1">{contractData.notes || ''}</div>
-      </div>
-
-      {/* Terms - Collapsible on mobile */}
-      <details className="mb-3">
-        <summary className="text-xs font-bold cursor-pointer text-gray-700">Terms and Conditions (tap to read)</summary>
-        <div className="text-xs text-gray-600 mt-2 leading-tight" style={{ fontSize: '9px' }}>
-          {t.terms_and_conditions}
-        </div>
-      </details>
-
-      {/* Payment Details - Simplified for mobile */}
-      <div className="border border-black mb-3 text-xs">
-        <div className="grid grid-cols-3 sm:grid-cols-5 border-b border-black">
-          <div className="p-2 font-medium col-span-3 sm:col-span-2">PAYMENT</div>
-          <div className="hidden sm:block p-2 text-center border-l border-black">CARD</div>
-          <div className="hidden sm:block p-2 text-center border-l border-black">CASH</div>
-          <div className="hidden sm:block p-2 text-center border-l border-black">FINANCE</div>
-        </div>
-        <div className="grid grid-cols-2 border-b border-black">
-          <div className="p-2">Payment Method:</div>
-          <div className="p-2 font-medium text-right">{contractData.paymentMethod?.toUpperCase() || 'CARD'}</div>
-        </div>
-        <div className="grid grid-cols-2 border-b border-black">
-          <div className="p-2">Subtotal:</div>
-          <div className="p-2 font-medium text-right">{formatCurrency(contractData.subtotal)}</div>
-        </div>
-        <div className="grid grid-cols-2 border-b border-black">
-          <div className="p-2">VAT @ 20%:</div>
-          <div className="p-2 font-medium text-right">{formatCurrency(contractData.vatAmount)}</div>
-        </div>
-        {/* Finance Details - DYNAMIC: Only shown when payment method is finance */}
-        {contractData.paymentMethod === 'finance' && (
-          <>
-            <div className="grid grid-cols-2 border-b border-black bg-amber-50">
-              <div className="p-2 text-amber-800">{t.finance_deposit_label || 'Deposit Paid'}:</div>
-              <div className="p-2 font-medium text-right text-amber-800">{formatCurrency(contractData.depositAmount || 0)}</div>
-            </div>
-            <div className="grid grid-cols-2 border-b border-black bg-amber-50">
-              <div className="p-2 text-amber-800">{t.finance_amount_label || 'Finance Amount'}:</div>
-              <div className="p-2 font-medium text-right text-amber-800">{formatCurrency(contractData.financeAmount || 0)}</div>
-            </div>
-            {(t.finance_provider_text || t.finance_info_text) && (
-              <div className="grid grid-cols-1 border-b border-black bg-amber-50 text-center py-1">
-                {t.finance_provider_text && <div className="text-amber-800 font-medium text-xs">{t.finance_provider_text}</div>}
-                {t.finance_info_text && <div className="text-amber-700 text-xs">{t.finance_info_text}</div>}
-              </div>
-            )}
-          </>
-        )}
-        <div className="grid grid-cols-2 bg-gray-50">
-          <div className="p-2 font-bold">TOTAL:</div>
-          <div className="p-2 font-bold text-right text-base">{formatCurrency(contractData.total)}</div>
-        </div>
-      </div>
-
-      {/* Main Signature Section */}
-      <div className="mb-3">
-        <p className="text-xs font-bold mb-2">{t.signature_instruction}</p>
-        <div className="border border-black">
-          <div className="p-2">
-            <span className="text-xs text-gray-600">CUSTOMER SIGNATURE:</span>
-            <div className="mt-1">
-              <SignaturePad
-                onSignatureChange={(data) => setSignatures(prev => ({ ...prev, main: data }))}
-                signature={signatures.main}
-                height={80}
-              />
-            </div>
-          </div>
-          <div className="border-t border-black p-2 flex justify-between items-center bg-gray-50">
-            <span className="text-xs text-gray-600">DATE:</span>
-            <span className="font-medium text-sm">{formatDate(new Date())}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="text-center text-xs text-gray-600 pt-2">
-        <p>Edge Talent is a trading name of S&A Advertising Ltd</p>
-        <p>Company No 8708429 VAT Reg No 171339904</p>
-      </div>
-    </div>
-  );
-};
-
-/**
- * Page 2 - Confirmation Signatures (Mobile Responsive)
- */
-const Page2Content = ({ contractData, signatures, setSignatures, formatDate, template }) => {
-  // Use template values directly from server (no hardcoded fallbacks)
-  // Server always returns complete template from database or defaults
-  const confirmations = [
-    {
-      key: 'notAgency',
-      html: template?.confirmation1_text || ''
-    },
-    {
-      key: 'noCancel',
-      html: template?.confirmation2_text || ''
-    },
-    {
-      key: 'passDetails',
-      html: template?.confirmation3_text || ''
-    },
-    {
-      key: 'happyPurchase',
-      html: template?.confirmation4_text || ''
-    },
-  ];
-
-  return (
-    <div className="p-3 sm:p-8">
-      {/* Header */}
-      <div className="mb-6">
-        <p className="font-bold text-sm sm:text-base mb-2">CUSTOMER NAME: <span className="font-normal">{contractData.customerName}</span></p>
-        <p className="font-bold text-sm sm:text-base">DATE: <span className="font-normal">{formatDate(new Date())}</span></p>
-      </div>
-
-      {/* 4 Confirmation Boxes - Stacked on mobile */}
-      <div className="space-y-4 sm:space-y-6">
-        {confirmations.map((conf) => (
-          <div key={conf.key} className="flex flex-col sm:flex-row gap-3 sm:gap-6 items-start border-b border-gray-200 pb-4 sm:border-0 sm:pb-0">
-            {/* Signature Box */}
-            <div className="w-full sm:w-44 flex-shrink-0 order-2 sm:order-1">
-              <div className="border-2 border-black bg-white">
-                <p className="text-xs text-gray-500 px-2 pt-1">TAP TO SIGN</p>
-                <div className="relative">
-                  <SignaturePad
-                    onSignatureChange={(data) => setSignatures(prev => ({ ...prev, [conf.key]: data }))}
-                    signature={signatures[conf.key]}
-                    height={70}
-                    small
-                  />
-                  {!signatures[conf.key] && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <span className="text-gray-300 text-base italic">Sign Here</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            {/* Text */}
-            <div className="flex-1 order-1 sm:order-2">
-              <p className="text-sm sm:text-base leading-relaxed" dangerouslySetInnerHTML={{ __html: conf.html }} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-/**
  * SignaturePad Component - Mobile Responsive
  */
-const SignaturePad = ({ onSignatureChange, signature, height = 100, small = false }) => {
+const SignaturePad = ({ onSignatureChange, signature, height = 100, small = false, parentScale = 1 }) => {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!signature);
   const [context, setContext] = useState(null);
-  const [canvasWidth, setCanvasWidth] = useState(small ? 180 : 350);
+  const [canvasWidth, setCanvasWidth] = useState(350);
   const hasDrawnRef = useRef(false);
 
-  // Responsive width
+  // Responsive width - fill the container
   useEffect(() => {
     const updateWidth = () => {
       if (containerRef.current) {
         const containerWidth = containerRef.current.offsetWidth - 10;
-        setCanvasWidth(Math.min(containerWidth, small ? 180 : 500));
+        setCanvasWidth(Math.max(containerWidth, 100));
       }
     };
 
@@ -571,11 +428,21 @@ const SignaturePad = ({ onSignatureChange, signature, height = 100, small = fals
   const getPosition = useCallback((e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
+    // getBoundingClientRect() returns the visual (post-transform) rect.
+    // Canvas drawing expects unscaled coordinates, so divide by parentScale
+    // to convert from visual touch position to canvas internal coordinates.
+    const s = parentScale || 1;
     if (e.touches) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
+      return {
+        x: (e.touches[0].clientX - rect.left) / s,
+        y: (e.touches[0].clientY - rect.top) / s
+      };
     }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  }, []);
+    return {
+      x: (e.clientX - rect.left) / s,
+      y: (e.clientY - rect.top) / s
+    };
+  }, [parentScale]);
 
   const startDrawing = useCallback((e) => {
     if (!context) return;
@@ -650,7 +517,7 @@ const SignaturePad = ({ onSignatureChange, signature, height = 100, small = fals
         className="border border-gray-300 cursor-crosshair touch-none bg-white block w-full"
         style={{ height: `${height}px` }}
       />
-      {!hasSignature && (
+      {!hasSignature && !small && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <span className="text-gray-300 italic text-sm">Sign here</span>
         </div>

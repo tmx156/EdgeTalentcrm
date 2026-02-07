@@ -485,6 +485,9 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/messages-list', messagesListRoutes);
 app.use('/api/retargeting', retargetingRoutes);
 app.use('/api/finance', financeRoutes);
+// Comprehensive Finance Routes temporarily disabled (tables not created)
+// const financeComprehensiveRoutes = require('./routes/finance-comprehensive');
+// app.use('/api/finance', financeComprehensiveRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/sms', smsRoutes);
 // Legacy routes removed - no longer needed
@@ -1000,6 +1003,15 @@ testDatabaseConnection().then(() => {
     } catch (e) {
       console.error('❌ Failed to start finance reminder service:', e?.message || e);
     }
+
+    // DISABLED: Comprehensive Finance Automation Service (tables not created)
+    // try {
+    //   const financeAutomationService = require('./services/financeAutomationService');
+    //   financeAutomationService.start();
+    //   console.log('✅ Finance automation service started');
+    // } catch (e) {
+    //   console.error('❌ Failed to start finance automation service:', e?.message || e);
+    // }
 
     // ENABLED: Callback Reminder Service
     try {

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { FiCheckCircle, FiClock } from 'react-icons/fi';
+import { FiCheckCircle, FiClock, FiMessageSquare, FiMail } from 'react-icons/fi';
 
 // Get status color for a booking (matches SlotCalendar colors)
 const getStatusColor = (event) => {
@@ -247,6 +247,16 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
                           title={`${event.name} - ${event.booking_status || (event.is_double_confirmed == 1 ? 'Double Confirmed' : event.is_confirmed == 1 ? 'Confirmed' : 'Unconfirmed')}`}
                         >
                           {event.time_booked ? `${event.time_booked.slice(0,5)} ` : ''}{event.name?.split(' ')[0]}
+                          {/* Unread received - flashing */}
+                          {event.hasUnreadSms ? (
+                            <FiMessageSquare className="inline-block w-2.5 h-2.5 text-green-500 ml-0.5 animate-pulse" />
+                          ) : event.hasUnreadEmail ? (
+                            <FiMail className="inline-block w-2.5 h-2.5 text-blue-500 ml-0.5 animate-pulse" />
+                          ) : event.hasReceivedSms ? (
+                            <FiMessageSquare className="inline-block w-2.5 h-2.5 text-gray-400 ml-0.5" />
+                          ) : event.hasReceivedEmail ? (
+                            <FiMail className="inline-block w-2.5 h-2.5 text-gray-400 ml-0.5" />
+                          ) : null}
                         </div>
                       ))}
                       {total > 3 && (

@@ -90,6 +90,48 @@ const SAMPLE_CONTRACT_DATA_FINANCE = {
   }
 };
 
+// Sample contract data for preview - Payl8r mode (identical to finance but with Payl8er branding)
+const SAMPLE_CONTRACT_DATA_PAYL8R = {
+  date: new Date(),
+  signedAt: null,
+  customerNumber: '123457',
+  customerName: 'Alex Payl8r',
+  clientNameIfDifferent: '',
+  address: '789 Payl8r Street, Birmingham',
+  postcode: 'B1 1AA',
+  phone: '07888 999000',
+  email: 'alex.payl8r@email.com',
+  isVip: false,
+  studioNumber: 'Studio 3',
+  photographer: 'Emma Wilson',
+  invoiceNumber: 'INV-00003',
+  digitalImages: true,
+  digitalImagesQty: '20',
+  digitalZCard: true,
+  efolio: true,
+  efolioUrl: '',
+  projectInfluencer: true,
+  influencerLogin: '',
+  influencerPassword: '',
+  allowImageUse: true,
+  imagesReceived: 'N.A',
+  notes: 'Package: Ultimate Portfolio Package (Payl8r)',
+  subtotal: 832.50,
+  vatAmount: 166.50,
+  total: 999.00,
+  paymentMethod: 'payl8r',
+  depositAmount: 199.00,
+  financeAmount: 800.00,
+  authCode: '',
+  signatures: {
+    main: null,
+    notAgency: null,
+    noCancel: null,
+    passDetails: null,
+    happyPurchase: null
+  }
+};
+
 // Legacy alias for backward compatibility
 const SAMPLE_CONTRACT_DATA = SAMPLE_CONTRACT_DATA_NORMAL;
 
@@ -192,15 +234,17 @@ router.get('/active', auth, async (req, res) => {
 // @route   GET /api/contract-templates/preview
 // @desc    Get the actual HTML preview of the contract using the current template
 // @access  Private (Admin only)
-// @query   mode - 'normal' (default) or 'finance' to show finance section preview
+// @query   mode - 'normal' (default), 'finance', or 'payl8r' to show respective payment section preview
 router.get('/preview', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Admin only.' });
     }
 
-    // Get preview mode from query param (default: normal)
-    const previewMode = req.query.mode === 'finance' ? 'finance' : 'normal';
+    // Get preview mode from query param (default: normal, options: normal, finance, payl8r)
+    let previewMode = 'normal';
+    if (req.query.mode === 'finance') previewMode = 'finance';
+    else if (req.query.mode === 'payl8r') previewMode = 'payl8r';
 
     // Get the active template from database or use defaults
     const { data: dbTemplate, error } = await supabase
@@ -219,9 +263,14 @@ router.get('/preview', auth, async (req, res) => {
     const template = dbTemplate || DEFAULT_TEMPLATE;
 
     // Select sample data based on preview mode
-    const sampleData = previewMode === 'finance'
-      ? SAMPLE_CONTRACT_DATA_FINANCE
-      : SAMPLE_CONTRACT_DATA_NORMAL;
+    let sampleData;
+    if (previewMode === 'finance') {
+      sampleData = SAMPLE_CONTRACT_DATA_FINANCE;
+    } else if (previewMode === 'payl8r') {
+      sampleData = SAMPLE_CONTRACT_DATA_PAYL8R;
+    } else {
+      sampleData = SAMPLE_CONTRACT_DATA_NORMAL;
+    }
 
     // Generate the actual HTML using the same function that creates PDFs
     const html = generateContractHTML(sampleData, template);

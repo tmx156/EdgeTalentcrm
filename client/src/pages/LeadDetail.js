@@ -34,7 +34,12 @@ const LeadDetail = () => {
   const [filterContext, setFilterContext] = useState({
     statusFilter: 'all',
     searchTerm: '',
-    filteredLeads: []
+    filteredLeads: [],
+    dateFilter: 'all',
+    customDateStart: '',
+    customDateEnd: '',
+    assigned_at_start: null,
+    assigned_at_end: null
   });
 
   // SMS & Email templates state (for Messages section)
@@ -203,6 +208,8 @@ const LeadDetail = () => {
       // (React state updates are async, so filterContext may not be set yet when this runs)
       const statusFilter = location.state?.statusFilter || filterContext.statusFilter;
       const searchTerm = location.state?.searchTerm || filterContext.searchTerm;
+      const assigned_at_start = location.state?.assigned_at_start || filterContext.assigned_at_start;
+      const assigned_at_end = location.state?.assigned_at_end || filterContext.assigned_at_end;
 
       const params = {};
       if (statusFilter && statusFilter !== 'all') {
@@ -210,6 +217,10 @@ const LeadDetail = () => {
       }
       if (searchTerm) {
         params.search = searchTerm;
+      }
+      if (assigned_at_start && assigned_at_end) {
+        params.assigned_at_start = assigned_at_start;
+        params.assigned_at_end = assigned_at_end;
       }
 
       // For navigation, we need ALL filtered leads, so we'll fetch in pages and combine
@@ -249,12 +260,15 @@ const LeadDetail = () => {
       setAllLeads(leadsToUse);
 
       // Also update filterContext to match what we're using (for display and navigation)
-      if (statusFilter !== filterContext.statusFilter || searchTerm !== filterContext.searchTerm) {
-        setFilterContext({
+      if (statusFilter !== filterContext.statusFilter || searchTerm !== filterContext.searchTerm || assigned_at_start !== filterContext.assigned_at_start) {
+        setFilterContext(prev => ({
+          ...prev,
           statusFilter: statusFilter || 'all',
           searchTerm: searchTerm || '',
-          filteredLeads: leadsToUse
-        });
+          filteredLeads: leadsToUse,
+          assigned_at_start: assigned_at_start || null,
+          assigned_at_end: assigned_at_end || null
+        }));
       }
 
       // Find current lead's position - handle both string and ObjectId formats
@@ -485,13 +499,18 @@ const LeadDetail = () => {
 
       // Always try to set up navigation context
       if (location.state) {
-        const { statusFilter, searchTerm, filteredLeads } = location.state;
-        console.log('🔍 LeadDetail: Setting up navigation context', { statusFilter, searchTerm, hasFilteredLeads: !!filteredLeads?.length });
+        const { statusFilter, searchTerm, filteredLeads, dateFilter, customDateStart, customDateEnd, assigned_at_start, assigned_at_end } = location.state;
+        console.log('🔍 LeadDetail: Setting up navigation context', { statusFilter, searchTerm, hasFilteredLeads: !!filteredLeads?.length, dateFilter, assigned_at_start, assigned_at_end });
 
         setFilterContext({
           statusFilter: statusFilter || 'all',
           searchTerm: searchTerm || '',
-          filteredLeads: filteredLeads || []
+          filteredLeads: filteredLeads || [],
+          dateFilter: dateFilter || 'all',
+          customDateStart: customDateStart || '',
+          customDateEnd: customDateEnd || '',
+          assigned_at_start: assigned_at_start || null,
+          assigned_at_end: assigned_at_end || null
         });
 
         if (filteredLeads && filteredLeads.length > 0) {
@@ -701,6 +720,11 @@ const LeadDetail = () => {
         state: {
           statusFilter: filterContext.statusFilter,
           searchTerm: filterContext.searchTerm,
+          dateFilter: filterContext.dateFilter,
+          customDateStart: filterContext.customDateStart,
+          customDateEnd: filterContext.customDateEnd,
+          assigned_at_start: filterContext.assigned_at_start,
+          assigned_at_end: filterContext.assigned_at_end,
           currentPage: location.state?.currentPage || 1, // Preserve page
           filteredLeads: allLeads
         }
@@ -721,6 +745,11 @@ const LeadDetail = () => {
         state: {
           statusFilter: filterContext.statusFilter,
           searchTerm: filterContext.searchTerm,
+          dateFilter: filterContext.dateFilter,
+          customDateStart: filterContext.customDateStart,
+          customDateEnd: filterContext.customDateEnd,
+          assigned_at_start: filterContext.assigned_at_start,
+          assigned_at_end: filterContext.assigned_at_end,
           currentPage: location.state?.currentPage || 1, // Preserve page
           filteredLeads: allLeads
         }

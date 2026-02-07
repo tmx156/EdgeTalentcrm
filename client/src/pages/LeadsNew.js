@@ -191,13 +191,23 @@ const LeadsNew = () => {
         search: searchTerm
       };
 
-      // Add date filter if applicable - always use assigned_at
+      // Add date filter if applicable
       const dateRange = getDateRange();
       if (dateRange) {
-        params.assigned_at_start = dateRange.start;
-        params.assigned_at_end = dateRange.end;
-        if (process.env.NODE_ENV === 'development') {
-          console.log('📅 Assigned date filter active:', dateFilter, 'Range:', dateRange);
+        // For No Answer statuses, filter by when the status was changed (not when assigned)
+        const noAnswerStatuses = ['No answer', 'No Answer x2', 'No Answer x3'];
+        if (noAnswerStatuses.includes(statusFilter)) {
+          params.status_changed_at_start = dateRange.start;
+          params.status_changed_at_end = dateRange.end;
+          if (process.env.NODE_ENV === 'development') {
+            console.log('📅 Status change date filter active for No Answer:', dateFilter, 'Range:', dateRange);
+          }
+        } else {
+          params.assigned_at_start = dateRange.start;
+          params.assigned_at_end = dateRange.end;
+          if (process.env.NODE_ENV === 'development') {
+            console.log('📅 Assigned date filter active:', dateFilter, 'Range:', dateRange);
+          }
         }
       } else {
         if (process.env.NODE_ENV === 'development') {
@@ -234,8 +244,15 @@ const LeadsNew = () => {
       const dateRange = getDateRange();
       
       if (dateRange) {
-        params.assigned_at_start = dateRange.start;
-        params.assigned_at_end = dateRange.end;
+        // For No Answer statuses, filter by when the status was changed
+        const noAnswerStatuses = ['No answer', 'No Answer x2', 'No Answer x3'];
+        if (noAnswerStatuses.includes(statusFilter)) {
+          params.status_changed_at_start = dateRange.start;
+          params.status_changed_at_end = dateRange.end;
+        } else {
+          params.assigned_at_start = dateRange.start;
+          params.assigned_at_end = dateRange.end;
+        }
         if (process.env.NODE_ENV === 'development') {
           console.log('📊 Fetching counts with date filter:', dateRange);
         }
@@ -249,7 +266,7 @@ const LeadsNew = () => {
     } catch (error) {
       console.error('Error fetching lead counts:', error);
     }
-  }, [getDateRange]);
+  }, [getDateRange, statusFilter]);
 
   // Combined useEffect for fetching leads
   useEffect(() => {

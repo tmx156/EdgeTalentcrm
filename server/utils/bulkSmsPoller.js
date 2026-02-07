@@ -181,9 +181,8 @@ async function pollOnce() {
   }
 
   try {
-    // Fetch recent messages with pagination to reduce egress
-    // BulkSMS v1 returns both MT and MO items from /v1/messages
-    // We fetch a limited page and filter inbound locally
+    // Fetch received (inbound) messages from BulkSMS
+    // GET /v1/messages only returns SENT by default – use filter for RECEIVED
     const resp = await axios.get('https://api.bulksms.com/v1/messages', {
       auth: {
         username: process.env.BULKSMS_USERNAME,
@@ -191,7 +190,9 @@ async function pollOnce() {
       },
       headers: { 'Content-Type': 'application/json' },
       params: {
-        limit: 20 // Limit to 20 messages per poll to reduce egress (was unlimited, filter inbound locally)
+        filter: 'type==RECEIVED',
+        sortOrder: 'DESCENDING',
+        limit: 20
       },
       timeout: 10000,
     });

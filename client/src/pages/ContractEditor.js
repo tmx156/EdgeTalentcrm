@@ -526,6 +526,16 @@ const ContractEditor = () => {
             >
               Finance
             </button>
+            <button
+              onClick={() => setPreviewMode('payl8r')}
+              className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                previewMode === 'payl8r'
+                  ? 'bg-purple-500 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Payl8er
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-3">

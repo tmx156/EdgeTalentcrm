@@ -275,6 +275,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 100px;">CREDIT/DEBIT CARD</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 50px;">CASH</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 60px;">FINANCE</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 60px;">PAYL8R</td>
           <td style="padding: 5px; text-align: right;">SUB TOTAL</td>
         </tr>
         <tr style="border-bottom: 1px solid black;">
@@ -282,32 +283,35 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'card' ? '✓' : ''}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'cash' ? '✓' : ''}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'finance' ? '✓' : ''}</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'payl8r' ? '✓' : ''}</td>
           <td style="padding: 5px; text-align: right; font-weight: 500;">${formatCurrency(contractData.subtotal)}</td>
         </tr>
-        ${contractData.paymentMethod === 'finance' ? `
+        ${contractData.paymentMethod === 'finance' || contractData.paymentMethod === 'payl8r' ? `
         <tr style="border-bottom: 1px solid black;">
-          <td style="padding: 5px; border-right: 1px solid black; background: #fef3c7;">${t.finance_deposit_label || 'DEPOSIT PAID'}</td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center; background: #fef3c7;" colspan="3">
+          <td style="padding: 5px; border-right: 1px solid black; background: #fef3c7;">${contractData.paymentMethod === 'payl8r' ? 'DEPOSIT TODAY' : (t.finance_deposit_label || 'DEPOSIT PAID')}</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; background: #fef3c7;" colspan="4">
             <span style="font-weight: bold; font-size: 12px;">${formatCurrency(contractData.depositAmount || 0)}</span>
           </td>
           <td style="padding: 5px; text-align: right; background: #fef3c7;">
-            <span style="font-size: 9px; color: #666;">${t.finance_amount_label || 'FINANCE AMOUNT'}:</span><br/>
-            <span style="font-weight: bold; font-size: 12px;">${formatCurrency(contractData.financeAmount || 0)}</span>
+            <div style="text-align: right;">
+              <span style="font-size: 9px; color: #666;">${contractData.paymentMethod === 'payl8r' ? 'PAYL8R AMOUNT' : (t.finance_amount_label || 'FINANCE AMOUNT')}:</span><br/>
+              <span style="font-weight: bold; font-size: 12px;">${formatCurrency(contractData.financeAmount || 0)}</span>
+            </div>
           </td>
         </tr>
         ` : ''}
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 5px; border-right: 1px solid black; font-size: 9px; color: #666;" rowspan="2">${t.cash_initial_text || ''}</td>
           <td style="padding: 5px; border-right: 1px solid black;" rowspan="2"></td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="2">VAT@20%</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="3">VAT@20%</td>
           <td style="padding: 5px; text-align: right; font-weight: 500;">${formatCurrency(contractData.vatAmount)}</td>
         </tr>
         <tr>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="2">
-            <span style="font-size: 9px;">AUTHORISATION CODE:</span><br/>
-            <span style="font-weight: 500;">${contractData.authCode || ''}</span>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="3">
+            <span style="font-size: 9px;">${contractData.paymentMethod === 'payl8r' ? 'PAYL8R' : 'AUTHORISATION CODE'}:</span><br/>
+            <span style="font-weight: 500;">${contractData.paymentMethod === 'payl8r' ? '' : (contractData.authCode || '')}</span>
           </td>
-          <td style="padding: 5px;">
+          <td style="padding: 5px; text-align: right;">
             <div style="text-align: right;">
               <strong>TOTAL</strong><br/>
               <span style="font-weight: bold; font-size: 16px;">${formatCurrency(contractData.total)}</span>
@@ -322,7 +326,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         <tr>
           <td style="padding: 8px; border-right: 1px solid black; width: 75%;">
             <span style="font-size: 10px;">CUSTOMER SIGNATURE:</span>
-            <div style="margin-top: 5px; min-height: 60px;">
+            <div data-signature="main" style="margin-top: 5px; min-height: 60px;">
               ${contractData.signatures?.main ? `<img src="${contractData.signatures.main}" style="max-height: 55px; max-width: 250px;" />` : ''}
             </div>
           </td>
@@ -354,7 +358,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
         <!-- Box 1 -->
         <div data-editable="confirmation1" style="display: flex; gap: 25px; align-items: flex-start;">
-          <div style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
+          <div data-signature="notAgency" style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
             ${contractData.signatures?.notAgency ? `<img src="${contractData.signatures.notAgency}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
@@ -366,7 +370,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
         <!-- Box 2 -->
         <div data-editable="confirmation2" style="display: flex; gap: 25px; align-items: flex-start;">
-          <div style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
+          <div data-signature="noCancel" style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
             ${contractData.signatures?.noCancel ? `<img src="${contractData.signatures.noCancel}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
@@ -378,7 +382,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
         <!-- Box 3 -->
         <div data-editable="confirmation3" style="display: flex; gap: 25px; align-items: flex-start;">
-          <div style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
+          <div data-signature="passDetails" style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
             ${contractData.signatures?.passDetails ? `<img src="${contractData.signatures.passDetails}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
@@ -390,7 +394,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
         <!-- Box 4 -->
         <div data-editable="confirmation4" style="display: flex; gap: 25px; align-items: flex-start;">
-          <div style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
+          <div data-signature="happyPurchase" style="width: 160px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 80px;">
             ${contractData.signatures?.happyPurchase ? `<img src="${contractData.signatures.happyPurchase}" style="max-height: 70px; max-width: 145px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 25px;">Sign Here</div>'}
           </div>
           <div style="flex: 1; padding-top: 10px;">
