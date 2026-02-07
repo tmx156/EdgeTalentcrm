@@ -390,7 +390,7 @@ const Dashboard = () => {
                     )}
 
                     <p className="text-gray-700 text-sm mb-3 line-clamp-2">
-                      {message.content || message.details?.body || message.body || message.preview || 'No content'}
+                      {message.message || message.content || message.details?.body || message.body || message.preview || 'No content'}
                     </p>
 
                     <div className="flex items-center justify-between">

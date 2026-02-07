@@ -167,14 +167,17 @@ const Layout = ({ children }) => {
           return;
         }
 
+        // Ensure content is never empty - fallback chain for different data formats
+        const messageContent = data.content || data.body || data.message || data.text || 'No content';
+        
         // Create notification object matching the expected format
         const notification = {
           id: data.messageId || `${data.leadId}_${data.timestamp}_${Date.now()}`, // Use messageId if available
           leadId: data.leadId,
           leadName: data.leadName || 'SMS Reply',
           leadPhone: data.phone,
-          message: data.content, // Use 'message' field for consistency with polling format
-          content: data.content, // Keep both for compatibility
+          message: messageContent, // Use 'message' field for consistency with polling format
+          content: messageContent, // Keep both for compatibility
           timestamp: data.timestamp,
           type: 'sms',
           read: false, // New messages are always unread when they arrive
@@ -214,6 +217,9 @@ const Layout = ({ children }) => {
       // Use consistent messageId format
       const notificationId = data.messageId || `${data.leadId || data.phone}_${data.timestamp}_${Date.now()}`;
 
+      // Ensure content is never empty - fallback chain for different data formats
+      const messageContent = data.content || data.body || data.message || data.text || 'No content';
+
       const notification = {
         id: notificationId,
         messageId: data.messageId || notificationId, // Store the actual message ID
@@ -221,8 +227,8 @@ const Layout = ({ children }) => {
         leadName: data.leadName || (data.channel === 'email' ? 'Email Reply' : 'SMS Reply'),
         leadPhone: data.phone || data.leadPhone,
         leadEmail: data.email || data.leadEmail,
-        message: data.content,
-        content: data.content, // Include both for compatibility
+        message: messageContent,
+        content: messageContent, // Include both for compatibility
         timestamp: data.timestamp,
         type: data.channel || data.type || 'sms',
         subject: data.subject,

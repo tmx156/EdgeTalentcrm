@@ -574,10 +574,12 @@ router.post('/webhook', async (req, res) => {
       const eventsEnabled = (process.env.SMS_EVENTS_ENABLED || 'true').toLowerCase() === 'true';
       if (eventsEnabled && global.io) {
         // Single consolidated notification payload
+        // Ensure content is never empty - fallback to body or message if text is missing
+        const messageContent = text || req.body?.Body || req.body?.body || req.body?.message || req.body?.Message || 'No content';
         const smsPayload = {
           type: 'SMS_RECEIVED',
           phone: sender,
-          content: text,
+          content: messageContent,
           timestamp: tsIso,
           leadId: lead ? lead.id : null,
           leadName: lead ? lead.name : null,
