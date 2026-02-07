@@ -139,7 +139,19 @@ class SupabaseStorageService {
             'image/webp',
             'text/plain',
             'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            // Audio formats
+            'audio/wav',
+            'audio/vnd.wave',
+            'audio/x-wav',
+            'audio/mpeg',
+            'audio/mp3',
+            'audio/mp4',
+            'audio/aac',
+            'audio/ogg',
+            'audio/webm',
+            'audio/flac',
+            'audio/x-m4a'
           ]
         });
 
