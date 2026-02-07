@@ -158,7 +158,7 @@ async function processGmailMessage(accountKey, messageId) {
         content: bodyText, // Plain text version
         email_body: htmlBody || null, // HTML version for Gmail-style rendering
         recipient_email: fromEmail,
-        status: 'delivered', // DB constraint only allows: pending/sent/delivered/failed
+        status: 'received',
         gmail_message_id: messageId,
         gmail_account_key: accountKey, // Track which account received it
         attachments: embeddedImagesMetadata.length > 0 ? embeddedImagesMetadata : null, // Store embedded images

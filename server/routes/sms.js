@@ -266,7 +266,7 @@ async function findLeadByPhone(phone) {
       id: messageId,
       lead_id: null, // NULL = orphaned message
       type: 'sms',
-      status: 'delivered', // DB constraint only allows: pending/sent/delivered/failed
+      status: 'received',
       sms_body: `ORPHANED: ${phone}`, // Mark as orphaned for admin review
       recipient_phone: phone,
       sent_at: new Date().toISOString(),
@@ -456,7 +456,7 @@ router.post('/webhook', async (req, res) => {
             id: messageId,
             lead_id: lead ? lead.id : null,
             type: 'sms',
-            status: 'delivered', // DB constraint only allows: pending/sent/delivered/failed
+            status: 'received',
             sms_body: text,
             recipient_phone: sender,
             sent_at: tsIso,

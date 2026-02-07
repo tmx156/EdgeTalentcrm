@@ -925,7 +925,7 @@ class EmailPoller {
                     subject: subject,
                     content: body,
                     recipient_email: fromAddr,
-                    status: 'delivered', // DB constraint only allows: pending/sent/delivered/failed
+                    status: 'received',
                     imap_uid: uid.toString(), // ✅ CRITICAL FIX: Store the UID as string
                     sent_at: emailReceivedDate,
                     created_at: processingDate,
