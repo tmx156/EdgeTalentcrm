@@ -266,7 +266,7 @@ async function findLeadByPhone(phone) {
       id: messageId,
       lead_id: null, // NULL = orphaned message
       type: 'sms',
-      status: 'received',
+      status: 'delivered', // DB constraint only allows: pending/sent/delivered/failed
       sms_body: `ORPHANED: ${phone}`, // Mark as orphaned for admin review
       recipient_phone: phone,
       sent_at: new Date().toISOString(),
@@ -415,7 +415,7 @@ router.post('/webhook', async (req, res) => {
           .from('messages')
           .select('id, created_at')
           .eq('type', 'sms')
-          .eq('status', 'received')
+          .in('status', ['received', 'delivered'])
           .eq('sms_body', text)
           .gte('created_at', tenMinutesAgo)
           .limit(1);
@@ -456,14 +456,13 @@ router.post('/webhook', async (req, res) => {
             id: messageId,
             lead_id: lead ? lead.id : null,
             type: 'sms',
-            status: 'received',
+            status: 'delivered', // DB constraint only allows: pending/sent/delivered/failed
             sms_body: text,
-            recipient_phone: sender, // Store sender phone for debugging and future matching
+            recipient_phone: sender,
             sent_at: tsIso,
             created_at: tsIso,
             updated_at: new Date().toISOString(),
-            read_status: false, // New messages are always unread when received
-            read_at: null // Will be set when message is read
+            read_status: false
           })
           .select()
           .single();
@@ -482,7 +481,7 @@ router.post('/webhook', async (req, res) => {
               .select('id')
               .eq('lead_id', lead ? lead.id : null)
               .eq('type', 'sms')
-              .eq('status', 'received')
+              .in('status', ['received', 'delivered'])
               .eq('sms_body', text)
               .gte('created_at', new Date(Date.now() - 60000).toISOString()) // Within last minute
               .limit(1);
