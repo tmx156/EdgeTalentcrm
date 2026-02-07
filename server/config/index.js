@@ -30,6 +30,7 @@ const config = {
     apiKey: process.env.SMS_WORKS_API_KEY || null,
     apiSecret: process.env.SMS_WORKS_API_SECRET || null,
     senderId: process.env.SMS_WORKS_SENDER_ID || '447860043007', // Replyable UK number
+    pollInterval: parseInt(process.env.BULKSMS_POLL_INTERVAL_MS) || 120000, // 2 minutes default
   },
 
   // Email Configuration (Legacy SMTP - being phased out)

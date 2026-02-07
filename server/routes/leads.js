@@ -1018,26 +1018,19 @@ router.get('/calendar', auth, async (req, res) => {
       const bookerIds = [...new Set(leads.filter(lead => lead.booker_id).map(lead => lead.booker_id))];
       
       if (bookerIds.length > 0) {
-        console.log(`📈 Calendar API: Fetching ${bookerIds.length} unique booker names...`);
-        
         // Single query to get all booker names
         const { data: users, error: usersError } = await supabase
           .from('users')
           .select('id, name')
           .in('id', bookerIds);
-        
+
         if (!usersError && users) {
-          // Create a map for quick lookup
           const usersMap = new Map(users.map(user => [user.id, user]));
-          
-          // Assign booker names to leads
           leads.forEach(lead => {
             if (lead.booker_id && usersMap.has(lead.booker_id)) {
               lead.booker_name = usersMap.get(lead.booker_id).name;
             }
           });
-          
-          console.log(`✅ Calendar API: Successfully assigned booker names to leads`);
         } else {
           console.warn('⚠️ Calendar API: Failed to fetch booker names:', usersError?.message);
         }

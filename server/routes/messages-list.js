@@ -99,8 +99,6 @@ router.get('/', auth, async (req, res) => {
 
     // SKIP LEGACY DATA - Only use Supabase data
     // 1) Skip leads.booking_history JSON (legacy source) - DISABLED
-    console.log('ℹ️ Skipping legacy booking_history data - using only Supabase data');
-    
     // Note: We're skipping the legacy booking_history parsing to avoid errors
     // All communication history should come from the messages table only
 
@@ -126,7 +124,7 @@ router.get('/', auth, async (req, res) => {
         // Get lead IDs from messages (filter out null values)
         const leadIds = [...new Set(messageData.map(msg => msg.lead_id).filter(id => id))];
 
-        console.log(`📊 Messages: ${messageData.length}, Valid lead IDs: ${leadIds.length}`);
+        // Reduced logging for Railway rate limits
 
         // Fetch leads separately
         const { data: leads, error: leadsError } = await supabase
@@ -138,15 +136,11 @@ router.get('/', auth, async (req, res) => {
           console.error('Error fetching leads for messages:', leadsError);
         }
         
-        console.log(`👥 Leads fetched: ${leads?.length || 0}`);
-
         // Create a map of lead data
         const leadMap = new Map();
         (leads || []).forEach(lead => {
           leadMap.set(lead.id, lead);
         });
-
-        console.log(`🗺️ Lead map size: ${leadMap.size}`);
 
         // Filter messages based on user permissions
         const filteredMessages = messageData.filter(msg => {
@@ -154,8 +148,6 @@ router.get('/', auth, async (req, res) => {
           const lead = leadMap.get(msg.lead_id);
           return lead && lead.booker_id === user.id;
         });
-
-        console.log(`📋 Filtered messages: ${filteredMessages.length} out of ${messageData.length}`);
 
         filteredMessages.forEach(row => {
           const lead = leadMap.get(row.lead_id);

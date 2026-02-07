@@ -52,7 +52,6 @@ const auth = async (req, res, next) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
 
     if (!token) {
-      console.error('Authentication failed: No token provided');
       return res.status(401).json({ message: 'No token, authorization denied' });
     }
 
@@ -61,7 +60,10 @@ const auth = async (req, res, next) => {
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-fallback-secret-key');
     } catch (verifyError) {
-      console.error('Token verification failed:', verifyError.message);
+      // Only log non-expiry errors to avoid flooding Railway logs
+      if (verifyError.name !== 'TokenExpiredError') {
+        console.error('Token verification failed:', verifyError.message);
+      }
       return res.status(401).json({ message: 'Invalid token' });
     }
     
