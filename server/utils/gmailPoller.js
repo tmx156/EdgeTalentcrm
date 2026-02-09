@@ -17,7 +17,8 @@ const { getSupabaseClient } = require('../config/supabase-client');
 // --- Configuration ---
 // Use singleton Supabase client to prevent connection leaks
 
-const POLL_INTERVAL_MS = parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 120000; // 2 minutes
+const POLL_INTERVAL_MS = parseInt(process.env.GMAIL_POLL_INTERVAL_MS) || 180000; // 3 minutes default (reduced from 2 min to reduce log spam)
+const VERBOSE_LOGGING = process.env.VERBOSE_GMAIL_LOGGING === 'true'; // Set to 'true' for debug logs
 
 // Account configurations (matching gmailService.js pattern)
 const ACCOUNTS = {
@@ -78,55 +79,110 @@ class GmailPoller {
     }
 
     this.disabled = false;
-    console.log(`📧 [${this.accountConfig.displayName}] Gmail Poller: Initializing...`);
+    this.pollCount = 0; // Track poll count for sampling
+    if (VERBOSE_LOGGING) {
+      console.log(`📧 [${this.accountConfig.displayName}] Gmail Poller: Initializing...`);
+    }
     this.supabase = this.getSupabase();
-    this.loadProcessedMessages();
+    // Load processed messages (async, but we don't wait - will populate in background)
+    this.loadProcessedMessages().catch(err => {
+      console.error(`📧 [${this.accountConfig.displayName}] Failed to load processed messages:`, err.message);
+    });
   }
 
-  // Load processed messages from persistent storage
-  loadProcessedMessages() {
+  // Helper for conditional logging - reduced spam for Railway
+  log(message, force = false) {
+    // Only log if forced OR verbose logging is enabled
+    // Reduce default logging to prevent Railway rate limits
+    if (force || VERBOSE_LOGGING) {
+      console.log(message);
+    }
+  }
+
+  // Load processed messages from DATABASE (Railway-safe)
+  async loadProcessedMessages() {
     try {
-      const dataDir = path.dirname(this.processedMessagesFile);
-      if (!fsSync.existsSync(dataDir)) {
-        fsSync.mkdirSync(dataDir, { recursive: true });
+      // First try to load from database (Railway-safe)
+      const { data: dbMessages, error: dbError } = await this.supabase
+        .from('processed_gmail_messages')
+        .select('gmail_message_id, processed_at')
+        .eq('account_key', this.accountKey)
+        .gte('processed_at', new Date(Date.now() - this.messageRetentionDays * 24 * 60 * 60 * 1000).toISOString());
+
+      if (!dbError && dbMessages && dbMessages.length > 0) {
+        dbMessages.forEach(msg => {
+          this.processedMessages.set(msg.gmail_message_id, new Date(msg.processed_at).getTime());
+        });
+        this.log(`📧 [${this.accountConfig.displayName}] Loaded ${this.processedMessages.size} processed IDs from database`);
+        return; // Successfully loaded from DB
       }
 
+      // Fallback to file (for migration/legacy)
       if (fsSync.existsSync(this.processedMessagesFile)) {
         const data = JSON.parse(fsSync.readFileSync(this.processedMessagesFile, 'utf8'));
         const cutoffTime = Date.now() - (this.messageRetentionDays * 24 * 60 * 60 * 1000);
         
         if (data.processedIds && Array.isArray(data.processedIds)) {
-          // Handle both old format (array of strings) and new format (array of [id, timestamp])
           data.processedIds.forEach(item => {
             if (Array.isArray(item) && item.length === 2) {
-              // New format: [id, timestamp]
-              if (item[1] > cutoffTime) {
-                this.processedMessages.set(item[0], item[1]);
-              }
+              if (item[1] > cutoffTime) this.processedMessages.set(item[0], item[1]);
             } else if (typeof item === 'string') {
-              // Old format: just id - assign current timestamp
               this.processedMessages.set(item, Date.now());
             }
           });
         }
-        console.log(`📧 [${this.accountConfig.displayName}] Loaded ${this.processedMessages.size} processed message IDs (kept within ${this.messageRetentionDays} days)`);
+        this.log(`📧 [${this.accountConfig.displayName}] Migrated ${this.processedMessages.size} IDs from file to database`);
+        
+        // Save to database for next time
+        await this.saveProcessedMessagesToDB();
       } else {
-        console.log(`📧 [${this.accountConfig.displayName}] No existing processed messages file found, starting fresh`);
+        this.log(`📧 [${this.accountConfig.displayName}] Starting fresh (no processed messages)`);
       }
     } catch (error) {
       console.error(`📧 [${this.accountConfig.displayName}] Error loading processed messages:`, error.message);
     }
   }
 
-  // Save processed messages to persistent storage
-  saveProcessedMessages() {
+  // Save to database (Railway-safe)
+  async saveProcessedMessagesToDB() {
     try {
-      // Convert Map to array of [id, timestamp] pairs
-      const processedIds = Array.from(this.processedMessages.entries());
+      const records = Array.from(this.processedMessages.entries())
+        .slice(-1000) // Only keep last 1000 to prevent bloat
+        .map(([gmail_message_id, timestamp]) => ({
+          account_key: this.accountKey,
+          gmail_message_id,
+          processed_at: new Date(timestamp).toISOString()
+        }));
+
+      if (records.length === 0) return;
+
+      // Upsert records
+      const { error } = await this.supabase
+        .from('processed_gmail_messages')
+        .upsert(records, { 
+          onConflict: 'account_key,gmail_message_id',
+          ignoreDuplicates: true 
+        });
+
+      if (error) {
+        console.error(`📧 [${this.accountConfig.displayName}] Error saving to database:`, error.message);
+      }
+    } catch (error) {
+      console.error(`📧 [${this.accountConfig.displayName}] Error in DB save:`, error.message);
+    }
+  }
+
+  // Save processed messages to DATABASE (Railway-safe) + file (backup)
+  async saveProcessedMessages() {
+    try {
+      // Save to database (primary, survives Railway restarts)
+      await this.saveProcessedMessagesToDB();
       
+      // Also save to file (backup, will be lost on Railway but helpful for local dev)
+      const processedIds = Array.from(this.processedMessages.entries());
       const data = {
         lastUpdated: new Date().toISOString(),
-        processedIds: processedIds,
+        processedIds: processedIds.slice(-1000), // Keep only last 1000
         count: processedIds.length,
         accountKey: this.accountKey
       };
@@ -143,7 +199,7 @@ class GmailPoller {
   }
 
   // Mark message as processed
-  markMessageProcessed(messageId) {
+  async markMessageProcessed(messageId) {
     this.processedMessages.set(messageId, Date.now());
     
     // Cleanup old messages periodically to prevent memory bloat
@@ -151,9 +207,9 @@ class GmailPoller {
       this.cleanupOldProcessedMessages();
     }
     
-    // Save periodically, not on every message to reduce I/O
-    if (this.processedMessages.size % 50 === 0) {
-      this.saveProcessedMessages();
+    // Save to database periodically (every 10 messages)
+    if (this.processedMessages.size % 10 === 0) {
+      await this.saveProcessedMessages();
     }
   }
 
@@ -187,7 +243,7 @@ class GmailPoller {
       }
       
       if (cleanedCount > 0) {
-        console.log(`🧹 [${this.accountConfig.displayName}] Cleaned up ${cleanedCount} old processed message IDs (current: ${this.processedMessages.size})`);
+        this.log(`🧹 [${this.accountConfig.displayName}] Cleaned up ${cleanedCount} old processed message IDs (current: ${this.processedMessages.size})`);
         this.saveProcessedMessages();
       }
     } catch (error) {
@@ -197,7 +253,7 @@ class GmailPoller {
 
   getSupabase() {
     // Use singleton Supabase client instead of creating new connections
-    console.log(`✅ [${this.accountConfig?.displayName || 'GmailPoller'}] Using singleton Supabase client`);
+    this.log(`✅ [${this.accountConfig?.displayName || 'GmailPoller'}] Using singleton Supabase client`);
     return getSupabaseClient();
   }
 
@@ -254,25 +310,29 @@ class GmailPoller {
    */
   async start() {
     if (this.disabled) {
-      console.log(`📧 [${this.accountConfig.displayName}] Poller is disabled`);
+      this.log(`📧 [${this.accountConfig.displayName}] Poller is disabled`);
       return;
     }
 
     if (this.isRunning) {
-      console.log(`📧 [${this.accountConfig.displayName}] Poller already running`);
+      this.log(`📧 [${this.accountConfig.displayName}] Poller already running`);
       return;
     }
 
     try {
-      console.log(`📧 [${this.accountConfig.displayName}] Starting Gmail poller...`);
+      this.pollCount++;
+      const shouldLog = this.pollCount === 1 || this.pollCount % 20 === 0; // Log first poll and every 20th (reduced frequency)
+      if (shouldLog) {
+        this.log(`📧 [${this.accountConfig.displayName}] Starting Gmail poller (poll #${this.pollCount})...`, true);
+      }
 
       // Authenticate and get Gmail client
       this.gmail = await this.getGmailClient();
 
       // Get initial profile to verify connection
       const profile = await this.gmail.users.getProfile({ userId: 'me' });
-      console.log(`✅ [${this.accountConfig.displayName}] Connected to ${profile.data.emailAddress}`);
-      console.log(`📊 [${this.accountConfig.displayName}] Total messages: ${profile.data.messagesTotal}`);
+      this.log(`✅ [${this.accountConfig.displayName}] Connected to ${profile.data.emailAddress}`, true);
+      this.log(`📊 [${this.accountConfig.displayName}] Total messages: ${profile.data.messagesTotal}`, true);
 
       // Get initial historyId
       this.lastHistoryId = profile.data.historyId;
@@ -329,7 +389,10 @@ class GmailPoller {
       }
     }, 60 * 60 * 1000); // Every hour
 
-    console.log(`📧 [${this.accountConfig.displayName}] Polling started (${POLL_INTERVAL_MS / 1000}s interval) with hourly cleanup`);
+    // Only log first poll
+    if (this.pollCount <= 1) {
+      console.log(`📧 [${this.accountConfig.displayName}] Polling started (${POLL_INTERVAL_MS / 1000}s interval) with hourly cleanup`);
+    }
   }
 
   /**
@@ -343,9 +406,9 @@ class GmailPoller {
     }
 
     try {
-      // Query: Get unread emails + recent emails (last 2 days)
-      const twoDaysAgo = Math.floor(Date.now() / 1000) - (2 * 24 * 60 * 60);
-      const query = `in:inbox (is:unread OR after:${twoDaysAgo})`;
+      // Query: Get unread emails + recent emails (last 7 days to catch missed replies)
+      const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
+      const query = `in:inbox (is:unread OR after:${sevenDaysAgo})`;
 
       let allMessages = [];
       let pageToken = null;
@@ -367,7 +430,7 @@ class GmailPoller {
         pageCount++;
 
         // Only log if there are messages beyond page 1
-        if (pageCount > 1) {
+        if (pageCount > 1 && VERBOSE_LOGGING) {
           console.log(`📧 [${this.accountConfig.displayName}] Page ${pageCount}: ${allMessages.length} messages so far`);
         }
 
@@ -413,17 +476,17 @@ class GmailPoller {
             const result = await this.processMessage(fullMessage.data);
             
             if (result === 'processed') {
-              this.markMessageProcessed(message.id);
+              await this.markMessageProcessed(message.id);
               processedCount++;
               processed = true;
               break; // Success, exit retry loop
             } else if (result === 'skipped') {
-              this.markMessageProcessed(message.id); // Mark as processed even if skipped (to avoid reprocessing)
+              await this.markMessageProcessed(message.id); // Mark as processed even if skipped (to avoid reprocessing)
               skippedCount++;
               processed = true;
               break;
             } else if (result === 'duplicate') {
-              this.markMessageProcessed(message.id);
+              await this.markMessageProcessed(message.id);
               skippedCount++;
               processed = true;
               break;
@@ -446,7 +509,9 @@ class GmailPoller {
 
         // Progress indicator for large batches (every 50)
         if ((i + 1) % 50 === 0) {
+          if (VERBOSE_LOGGING) {
           console.log(`📧 [${this.accountConfig.displayName}] Progress: ${i + 1}/${allMessages.length}`);
+        }
         }
         
         // Rate limiting: Add small delay between messages to avoid hitting Gmail API limits
@@ -455,9 +520,13 @@ class GmailPoller {
         }
       }
 
-      // Only log if something was actually processed or errored
+      // Only log if something was actually processed or errored (reduced frequency for Railway)
       if (processedCount > 0 || errorCount > 0) {
-        console.log(`📧 [${this.accountConfig.displayName}] Scan: ${processedCount} new, ${skippedCount} skipped, ${errorCount} errors`);
+        // Only log every 5th successful scan to reduce spam, but always log errors
+        const shouldLog = errorCount > 0 || this.pollCount % 5 === 0;
+        if (shouldLog) {
+          this.log(`📧 [${this.accountConfig.displayName}] Scan #${this.pollCount}: ${processedCount} new, ${skippedCount} skipped, ${errorCount} errors`, true);
+        }
       }
 
     } catch (error) {
@@ -517,7 +586,9 @@ class GmailPoller {
       }
     }
 
-    console.log(`📧 [${this.accountConfig.displayName}] New email from ${fromEmail}: "${subject.substring(0, 50)}"`);
+    if (VERBOSE_LOGGING) {
+      console.log(`📧 [${this.accountConfig.displayName}] New email from ${fromEmail}: "${subject.substring(0, 50)}"`);
+    }
 
     // ✅ FIX: Only process emails from existing CRM leads (don't create new leads automatically)
     let lead = await this.findLead(fromEmail);
@@ -613,7 +684,8 @@ class GmailPoller {
     // Emit events with HTML content for proper rendering
     this.emitEvents(lead, recordId, subject, bodyText || '(No content)', emailReceivedDate, htmlBody);
 
-    console.log(`✅ [${this.accountConfig.displayName}] Email processed successfully: "${subject}" from ${fromEmail}`);
+    // Reduced logging to prevent Railway rate limits - only log in verbose mode
+    this.log(`✅ [${this.accountConfig.displayName}] Email: "${subject.substring(0, 40)}..." from ${fromEmail}`, true);
     return 'processed';
   }
 
@@ -709,7 +781,7 @@ class GmailPoller {
         return attachments; // No attachments
       }
       
-      console.log(`📎 [${this.accountConfig.displayName}] Found ${attachmentParts.length} attachment(s) in message ${messageId}`);
+      this.log(`📎 [${this.accountConfig.displayName}] Found ${attachmentParts.length} attachment(s) in message ${messageId}`);
       
       // Download and upload each attachment
       for (let i = 0; i < attachmentParts.length; i++) {
@@ -765,7 +837,7 @@ class GmailPoller {
               mimetype: att.mimeType,
               gmail_attachment_id: att.attachmentId
             });
-            console.log(`✅ [${this.accountConfig.displayName}] Uploaded attachment: ${att.filename} (${(buffer.length / 1024).toFixed(2)} KB)`);
+            this.log(`✅ [${this.accountConfig.displayName}] Uploaded attachment: ${att.filename} (${(buffer.length / 1024).toFixed(2)} KB)`);
           } else {
             console.error(`❌ [${this.accountConfig.displayName}] Failed to upload attachment ${att.filename}:`, uploadResult.error);
           }
@@ -1007,7 +1079,7 @@ class GmailPoller {
       }
       // Don't throw - continue processing other messages
     } else {
-      console.log(`✅ [${this.accountConfig.displayName}] Updated booking history for ${lead.name}`);
+      this.log(`✅ [${this.accountConfig.displayName}] Updated booking history for ${lead.name}`);
     }
   }
 
@@ -1084,8 +1156,9 @@ class GmailPoller {
       const originalSenderId = matchingMessage.sent_by;
       const originalSenderName = matchingMessage.sent_by_name || 'Unknown';
 
-      console.log(`📧 [REPLY ROUTING] Reply from ${fromEmail} matches original message sent by ${originalSenderName}`);
-      console.log(`📧 [REPLY ROUTING] Notifying user ${originalSenderId} of reply to lead ${lead.name}`);
+      // Reduced logging for Railway rate limits
+      this.log(`📧 [REPLY ROUTING] Reply from ${fromEmail} matches original message sent by ${originalSenderName}`, true);
+      this.log(`📧 [REPLY ROUTING] Notifying user ${originalSenderId} of reply to lead ${lead.name}`, true);
 
       // Create notification for original sender
       await this.createReplyNotification({
@@ -1152,10 +1225,10 @@ class GmailPoller {
           created_at: new Date().toISOString()
         });
 
-      console.log(`✅ [REPLY ROUTING] Notification created for user ${originalSenderId}`);
+      this.log(`✅ [REPLY ROUTING] Notification created for user ${originalSenderId}`);
     } catch (error) {
       // Notifications table might not exist, log but don't fail
-      console.log(`ℹ️ [REPLY ROUTING] Notification not created (table may not exist): ${error.message}`);
+      this.log(`ℹ️ [REPLY ROUTING] Notification not created (table may not exist): ${error.message}`);
     }
   }
 
@@ -1175,7 +1248,7 @@ class GmailPoller {
     }
     // Save processed messages on stop
     this.saveProcessedMessages();
-    console.log(`✅ [${this.accountConfig.displayName}] Poller stopped`);
+    this.log(`✅ [${this.accountConfig.displayName}] Poller stopped`);
   }
 }
 
@@ -1191,7 +1264,7 @@ function startGmailPoller(socketIoInstance) {
     return [];
   }
 
-  console.log('📧 Starting Gmail pollers for all configured accounts...');
+  console.log('📧 Gmail: Starting pollers...');
   const pollers = [];
 
   // Start poller for each configured account
@@ -1199,11 +1272,13 @@ function startGmailPoller(socketIoInstance) {
     const account = ACCOUNTS[accountKey];
     
     if (!account || !account.clientId || !account.clientSecret || !account.refreshToken) {
-      console.log(`📧 Skipping ${accountKey} Gmail poller: Account not configured`);
+      if (VERBOSE_LOGGING) {
+        console.log(`📧 Skipping ${accountKey} Gmail poller: Account not configured`);
+      }
       continue;
     }
 
-    console.log(`📧 Starting Gmail poller for ${account.displayName} (${account.email})...`);
+    console.log(`📧 Starting Gmail poller: ${account.displayName} (${account.email})`);
     const poller = new GmailPoller(socketIoInstance, accountKey);
     poller.start();
     pollers.push(poller);
@@ -1212,7 +1287,7 @@ function startGmailPoller(socketIoInstance) {
   if (pollers.length === 0) {
     console.error('❌ No Gmail pollers started - no accounts configured');
   } else {
-    console.log(`✅ Started ${pollers.length} Gmail poller(s)`);
+    console.log(`✅ Started ${pollers.length} Gmail poller(s), interval: ${POLL_INTERVAL_MS/1000}s`);
   }
 
   return pollers;

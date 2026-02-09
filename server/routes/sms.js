@@ -457,6 +457,7 @@ router.post('/webhook', async (req, res) => {
             lead_id: lead ? lead.id : null,
             type: 'sms',
             status: 'received',
+            content: text,  // Populate content field to ensure dashboard display
             sms_body: text,
             recipient_phone: sender,
             sent_at: tsIso,

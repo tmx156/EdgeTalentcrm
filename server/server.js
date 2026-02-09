@@ -124,8 +124,12 @@ app.use((req, res, next) => {
 global.todaysBookings = [];
 
 // Socket.IO connection handling with enhanced stability
+const VERBOSE_SOCKET_LOGGING = process.env.VERBOSE_SOCKET_LOGGING === 'true';
+
 io.on('connection', (socket) => {
-  console.log(`✅ User connected: ${socket.id}`);
+  if (VERBOSE_SOCKET_LOGGING) {
+    console.log(`✅ User connected: ${socket.id}`);
+  }
 
   // Track user session for better stability
   let userSession = {
@@ -158,7 +162,9 @@ io.on('connection', (socket) => {
       }
       // Keep legacy global room join for now if needed by other features
       socket.join('all_users'); // Join global room for system-wide updates
-      console.log(`User ${userData.id} joined their room`);
+      if (VERBOSE_SOCKET_LOGGING) {
+        console.log(`User ${userData.id} joined their room`);
+      }
 
       // Send welcome message
       socket.emit('welcome', {
@@ -179,8 +185,9 @@ io.on('connection', (socket) => {
       serverTime: new Date().toISOString()
     });
     
-    // Log heartbeat every 10th time to avoid spam
-    if (userSession.heartbeatCount % 10 === 0) {
+    // Heartbeat logging disabled to reduce log spam (Railway rate limit)
+    // Only log if VERBOSE_SOCKET_LOGGING is enabled and every 500 heartbeats
+    if (VERBOSE_SOCKET_LOGGING && userSession.heartbeatCount % 500 === 0) {
       console.log(`💓 Heartbeat from ${userSession.name || 'user'}: ${userSession.heartbeatCount} beats`);
     }
   });
@@ -195,11 +202,10 @@ io.on('connection', (socket) => {
     const duration = userSession.lastActivity ?
       Math.round((Date.now() - userSession.lastActivity) / 1000) : 0;
 
-    console.log(`❌ User disconnected: ${socket.id}`);
-    console.log(`   User: ${userSession.name || 'Unknown'}`);
-    console.log(`   Reason: ${reason}`);
-    console.log(`   Session duration: ${duration}s`);
-    console.log(`   Heartbeats: ${userSession.heartbeatCount}`);
+    // Single-line disconnect log to reduce spam
+    if (VERBOSE_SOCKET_LOGGING) {
+      console.log(`❌ User disconnected: ${socket.id} (${userSession.name || 'Unknown'}), ${duration}s, ${userSession.heartbeatCount} heartbeats`);
+    }
 
   });
 
