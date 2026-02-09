@@ -105,12 +105,8 @@ const LeadsNew = () => {
   });
 
   // Reset page to 1 when filters change (except for pagination clicks)
-  // Note: statusFilter changes reset page immediately in the onClick handler, not here
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setCurrentPage(1);
-    }, 500);
-    return () => clearTimeout(timer);
+    setCurrentPage(1);
   }, [searchTerm, dateFilter, customDateStart, customDateEnd]);
 
   // Helper function to calculate date range in GMT/London timezone
@@ -191,23 +187,62 @@ const LeadsNew = () => {
         search: searchTerm
       };
 
-      // Add date filter if applicable
+      // Add date filter if applicable - each status uses a different date column
       const dateRange = getDateRange();
       if (dateRange) {
-        // For No Answer statuses, filter by when the status was changed (not when assigned)
-        const noAnswerStatuses = ['No answer', 'No Answer x2', 'No Answer x3'];
-        if (noAnswerStatuses.includes(statusFilter)) {
-          params.status_changed_at_start = dateRange.start;
-          params.status_changed_at_end = dateRange.end;
-          if (process.env.NODE_ENV === 'development') {
-            console.log('📅 Status change date filter active for No Answer:', dateFilter, 'Range:', dateRange);
-          }
-        } else {
+        // Define which date column to use for each status filter
+        // This ensures status and date filters work independently
+        const statusDateColumnMap = {
+          // created_at: when lead was created (for 'all' - show all leads from that period)
+          'all': 'created_at',
+          // assigned_at: when lead was assigned to a booker
+          'Assigned': 'assigned_at',
+          
+          // booked_at: when the booking was made
+          'Booked': 'booked_at',
+          'Sales': 'booked_at',
+          
+          // booking_history: when the status was changed (checked in JS after fetch)
+          'Attended': 'booking_history',
+          'Cancelled': 'booking_history',
+          'No Show': 'booking_history',
+          'Rejected': 'booking_history',
+          
+          // call_status set_at: when call outcome was recorded (checked in JS after fetch)
+          'No answer': 'call_status',
+          'No Answer x2': 'call_status',
+          'No Answer x3': 'call_status',
+          'Left Message': 'call_status',
+          'Not interested': 'call_status',
+          'Call back': 'call_status',
+          'Wrong number': 'call_status',
+          'Not Qualified': 'call_status'
+        };
+
+        const dateColumn = statusDateColumnMap[statusFilter] || 'assigned_at';
+
+        // Send the appropriate date parameter based on the status
+        if (dateColumn === 'created_at') {
+          // For 'all' status - show all leads created in the date range
+          params.created_at_start = dateRange.start;
+          params.created_at_end = dateRange.end;
+        } else if (dateColumn === 'assigned_at') {
           params.assigned_at_start = dateRange.start;
           params.assigned_at_end = dateRange.end;
-          if (process.env.NODE_ENV === 'development') {
-            console.log('📅 Assigned date filter active:', dateFilter, 'Range:', dateRange);
-          }
+        } else if (dateColumn === 'booked_at') {
+          params.booked_at_start = dateRange.start;
+          params.booked_at_end = dateRange.end;
+        } else if (dateColumn === 'booking_history' || dateColumn === 'call_status') {
+          // For booking_history and call_status, we do NOT filter by a date column in SQL
+          // because the SQL date (booked_at/assigned_at) is DIFFERENT from the booking_history date
+          // Example: Lead booked Monday, attended Wednesday - SQL would exclude it if filtering by booked_at
+          // Instead, we fetch all leads and filter entirely in JavaScript using booking_history
+          params.status_changed_at_start = dateRange.start;
+          params.status_changed_at_end = dateRange.end;
+        }
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📅 Date filter active:', dateFilter, 'Status:', statusFilter, 'DateColumn:', dateColumn, 'Range:', dateRange);
         }
       } else {
         if (process.env.NODE_ENV === 'development') {
@@ -215,9 +250,13 @@ const LeadsNew = () => {
         }
       }
 
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔍 Fetching leads with params:', params);
-      }
+      // DEBUG: Always log date filter info
+      console.log('🔍 Fetching leads:', {
+        status: statusFilter,
+        dateFilter,
+        dateRange: dateRange || 'none',
+        params: params
+      });
 
       const response = await axios.get('/api/leads', {
         params,
@@ -240,23 +279,17 @@ const LeadsNew = () => {
   const fetchLeadCounts = useCallback(async () => {
     try {
       // Build params for stats API with date filter if applicable
+      // Send generic date_start/date_end - the stats endpoint applies per-status logic internally
       const params = {};
       const dateRange = getDateRange();
-      
+
       if (dateRange) {
-        // For No Answer statuses, filter by when the status was changed
-        const noAnswerStatuses = ['No answer', 'No Answer x2', 'No Answer x3'];
-        if (noAnswerStatuses.includes(statusFilter)) {
-          params.status_changed_at_start = dateRange.start;
-          params.status_changed_at_end = dateRange.end;
-        } else {
-          params.assigned_at_start = dateRange.start;
-          params.assigned_at_end = dateRange.end;
-        }
-        if (process.env.NODE_ENV === 'development') {
-          console.log('📊 Fetching counts with date filter:', dateRange);
-        }
+        params.date_start = dateRange.start;
+        params.date_end = dateRange.end;
       }
+      
+      // DEBUG: Always log count fetch
+      console.log('📊 Fetching counts:', { dateFilter, dateRange: dateRange || 'none', params });
 
       const response = await axios.get('/api/stats/leads', { params });
       if (process.env.NODE_ENV === 'development') {
@@ -266,7 +299,7 @@ const LeadsNew = () => {
     } catch (error) {
       console.error('Error fetching lead counts:', error);
     }
-  }, [getDateRange, statusFilter]);
+  }, [getDateRange]);
 
   // Combined useEffect for fetching leads
   useEffect(() => {
@@ -434,6 +467,22 @@ const LeadsNew = () => {
   const handleRowClick = useCallback((lead) => {
     // Pass filter context to LeadDetail for navigation (removed filteredLeads to save memory)
     const dateRange = getDateRange();
+    
+    // Determine which date parameters to pass based on status filter
+    const dateParams = {};
+    if (dateRange) {
+      if (statusFilter === 'all') {
+        dateParams.created_at_start = dateRange.start;
+        dateParams.created_at_end = dateRange.end;
+      } else if (statusFilter === 'Booked' || statusFilter === 'Sales') {
+        dateParams.booked_at_start = dateRange.start;
+        dateParams.booked_at_end = dateRange.end;
+      } else {
+        dateParams.assigned_at_start = dateRange.start;
+        dateParams.assigned_at_end = dateRange.end;
+      }
+    }
+    
     navigate(`/leads/${lead.id}`, {
       state: {
         statusFilter,
@@ -441,10 +490,7 @@ const LeadsNew = () => {
         dateFilter,
         customDateStart,
         customDateEnd,
-        ...(dateRange ? {
-          assigned_at_start: dateRange.start,
-          assigned_at_end: dateRange.end
-        } : {})
+        ...dateParams
       }
     });
   }, [navigate, statusFilter, searchTerm, dateFilter, customDateStart, customDateEnd, getDateRange]);
@@ -1127,7 +1173,13 @@ const LeadsNew = () => {
           <div className="flex items-center space-x-2 flex-shrink-0">
             <FiCalendar className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
             <span className="text-xs sm:text-sm font-semibold text-gray-800 whitespace-nowrap">
-              Date Assigned:
+              {statusFilter === 'all' ? 'Date Created:' :
+               statusFilter === 'Booked' || statusFilter === 'Sales' ? 'Date Booked:' : 
+               statusFilter === 'Attended' || statusFilter === 'Cancelled' || statusFilter === 'No Show' ? 'Date Changed:' :
+               statusFilter === 'No answer' || statusFilter === 'No Answer x2' || statusFilter === 'No Answer x3' || 
+               statusFilter === 'Left Message' || statusFilter === 'Not interested' || statusFilter === 'Call back' || 
+               statusFilter === 'Wrong number' || statusFilter === 'Not Qualified' ? 'Call Date:' :
+               'Date Assigned:'}
             </span>
           </div>
 
