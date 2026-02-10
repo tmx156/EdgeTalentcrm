@@ -193,30 +193,34 @@ const LeadsNew = () => {
         // Define which date column to use for each status filter
         // This ensures status and date filters work independently
         const statusDateColumnMap = {
-          // created_at: when lead was created (for 'all' - show all leads from that period)
+          // created_at: when lead was created
           'all': 'created_at',
+          'New': 'created_at',
           // assigned_at: when lead was assigned to a booker
           'Assigned': 'assigned_at',
-          
-          // booked_at: when the booking was made
+
+          // booked_at: when the booking action was performed
           'Booked': 'booked_at',
-          'Sales': 'booked_at',
-          
-          // booking_history: when the status was changed (checked in JS after fetch)
-          'Attended': 'booking_history',
-          'Cancelled': 'booking_history',
-          'No Show': 'booking_history',
-          'Rejected': 'booking_history',
-          
-          // call_status set_at: when call outcome was recorded (checked in JS after fetch)
-          'No answer': 'call_status',
-          'No Answer x2': 'call_status',
-          'No Answer x3': 'call_status',
-          'Left Message': 'call_status',
-          'Not interested': 'call_status',
-          'Call back': 'call_status',
-          'Wrong number': 'call_status',
-          'Not Qualified': 'call_status'
+          // date_booked: appointment date on calendar (for Sales)
+          'Sales': 'date_booked',
+
+          // date_booked: appointment date (when they actually attended)
+          'Attended': 'date_booked',
+          // booked_at: when the booking action was performed (Cancelled/No Show are subsets of Booked)
+          'Cancelled': 'booked_at',
+          'No Show': 'booked_at',
+          // assigned_at: when lead was assigned
+          'Rejected': 'assigned_at',
+
+          // assigned_at: when lead was assigned (for all call statuses)
+          'No answer': 'assigned_at',
+          'No Answer x2': 'assigned_at',
+          'No Answer x3': 'assigned_at',
+          'Left Message': 'assigned_at',
+          'Not interested': 'assigned_at',
+          'Call back': 'assigned_at',
+          'Wrong number': 'assigned_at',
+          'Not Qualified': 'assigned_at'
         };
 
         const dateColumn = statusDateColumnMap[statusFilter] || 'assigned_at';
@@ -232,6 +236,9 @@ const LeadsNew = () => {
         } else if (dateColumn === 'booked_at') {
           params.booked_at_start = dateRange.start;
           params.booked_at_end = dateRange.end;
+        } else if (dateColumn === 'date_booked') {
+          params.date_booked_start = dateRange.start;
+          params.date_booked_end = dateRange.end;
         } else if (dateColumn === 'booking_history' || dateColumn === 'call_status') {
           // For booking_history and call_status, we do NOT filter by a date column in SQL
           // because the SQL date (booked_at/assigned_at) is DIFFERENT from the booking_history date
@@ -347,6 +354,7 @@ const LeadsNew = () => {
   // Memoize status filter buttons array to prevent recreations
   const statusFilterButtons = useMemo(() => [
     { value: 'all', label: 'All', count: leadCounts.total },
+    ...(user?.role === 'admin' ? [{ value: 'New', label: '🆕 New', count: leadCounts.new }] : []),
     { value: 'Assigned', label: '👤 Assigned', count: leadCounts.assigned },
     { value: 'Booked', label: '📅 Booked', count: leadCounts.booked },
     { value: 'Attended', label: '✅ Attended', count: leadCounts.attendedFilter },
@@ -362,7 +370,7 @@ const LeadsNew = () => {
     { value: 'Sales', label: '💰 Sales', count: leadCounts.salesConverted },
     { value: 'Not Qualified', label: '❌ Not Qualified', count: leadCounts.notQualified },
     ...(user?.role === 'admin' ? [{ value: 'Rejected', label: 'Rejected', count: leadCounts.rejected }] : [])
-  ], [leadCounts.total, leadCounts.assigned, leadCounts.booked, leadCounts.attendedFilter, leadCounts.cancelledFilter, leadCounts.noShow, leadCounts.noAnswerCall, leadCounts.noAnswerX2, leadCounts.noAnswerX3, leadCounts.leftMessage, leadCounts.notInterestedCall, leadCounts.callBack, leadCounts.wrongNumber, leadCounts.salesConverted, leadCounts.notQualified, leadCounts.rejected, user?.role]);
+  ], [leadCounts.total, leadCounts.new, leadCounts.assigned, leadCounts.booked, leadCounts.attendedFilter, leadCounts.cancelledFilter, leadCounts.noShow, leadCounts.noAnswerCall, leadCounts.noAnswerX2, leadCounts.noAnswerX3, leadCounts.leftMessage, leadCounts.notInterestedCall, leadCounts.callBack, leadCounts.wrongNumber, leadCounts.salesConverted, leadCounts.notQualified, leadCounts.rejected, user?.role]);
 
   // Handle navigation state from sidebar
   useEffect(() => {
@@ -965,7 +973,12 @@ const LeadsNew = () => {
                 </span>
               </div>
               <div className="px-3 py-1 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-700 rounded-full text-sm font-semibold">
-                {leadCounts.total} Total Leads
+                {(() => {
+                  const current = statusFilterButtons.find(f => f.value === statusFilter);
+                  const count = current?.count ?? leadCounts.total;
+                  const label = statusFilter === 'all' ? 'Total Leads' : `${current?.label?.replace(/^[^\w]*/, '') || statusFilter} Leads`;
+                  return `${count} ${label}`;
+                })()}
               </div>
             </div>
 
@@ -1307,29 +1320,26 @@ const LeadsNew = () => {
                       {getDisplayStatus(lead)}
                     </span>
                     {lead.has_sale > 0 && (
-                      <span className="text-sm bg-white rounded-full px-1" title="Sale Completed">💰</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap bg-green-600 text-white border-green-500">Sale</span>
                     )}
-                    {lead.booking_status === 'Arrived' && (
-                      <span className="text-sm bg-white rounded-full px-1" title="Arrived">🚶</span>
-                    )}
-                    {lead.booking_status === 'No Show' && (
-                      <span className="text-sm bg-white rounded-full px-1" title="No Show">🚫</span>
-                    )}
-                    {lead.booking_status === 'Cancel' && (
-                      <span className="text-sm bg-white rounded-full px-1" title="Cancelled">❌</span>
-                    )}
-                    {lead.booking_status === 'Complete' && (
-                      <span className="text-sm bg-white rounded-full px-1" title="Complete">✅</span>
-                    )}
-                    {lead.booking_status === 'No Sale' && (
-                      <span className="text-sm bg-white rounded-full px-1" title="No Sale">📋</span>
-                    )}
-                    {lead.booking_status === 'Reschedule' && (
-                      <span className="text-sm bg-white rounded-full px-1" title="Rescheduled">🔄</span>
-                    )}
-                    {lead.booking_status === 'Review' && (
-                      <span className="text-sm bg-white rounded-full px-1" title="Under Review">👁️</span>
-                    )}
+                    {lead.booking_status && lead.booking_status !== 'Pending' && (() => {
+                      const bookingStatusColors = {
+                        'Arrived': 'bg-green-100 text-green-800 border-green-300',
+                        'Left': 'bg-orange-100 text-orange-800 border-orange-300',
+                        'No Show': 'bg-gray-200 text-gray-700 border-gray-400',
+                        'Cancel': 'bg-red-100 text-red-800 border-red-300',
+                        'Complete': 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                        'No Sale': 'bg-amber-100 text-amber-800 border-amber-300',
+                        'Reschedule': 'bg-blue-100 text-blue-800 border-blue-300',
+                        'Review': 'bg-purple-100 text-purple-800 border-purple-300'
+                      };
+                      const color = bookingStatusColors[lead.booking_status] || 'bg-gray-100 text-gray-700 border-gray-300';
+                      return (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap ${color}`}>
+                          {lead.booking_status}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="absolute bottom-3 left-3 flex items-center space-x-3">
                     {lead.image_url ? (
@@ -1501,29 +1511,26 @@ const LeadsNew = () => {
                           {getDisplayStatus(lead)}
                         </span>
                         {lead.has_sale > 0 && (
-                          <span className="text-xs" title="Sale Completed">💰</span>
+                          <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold border whitespace-nowrap bg-green-600 text-white border-green-500">Sale</span>
                         )}
-                        {lead.booking_status === 'Arrived' && (
-                          <span className="text-xs" title="Arrived">🚶</span>
-                        )}
-                        {lead.booking_status === 'No Show' && (
-                          <span className="text-xs" title="No Show">🚫</span>
-                        )}
-                        {lead.booking_status === 'Cancel' && (
-                          <span className="text-xs" title="Cancelled">❌</span>
-                        )}
-                        {lead.booking_status === 'Complete' && (
-                          <span className="text-xs" title="Complete">✅</span>
-                        )}
-                        {lead.booking_status === 'No Sale' && (
-                          <span className="text-xs" title="No Sale">📋</span>
-                        )}
-                        {lead.booking_status === 'Reschedule' && (
-                          <span className="text-xs" title="Rescheduled">🔄</span>
-                        )}
-                        {lead.booking_status === 'Review' && (
-                          <span className="text-xs" title="Under Review">👁️</span>
-                        )}
+                        {lead.booking_status && lead.booking_status !== 'Pending' && (() => {
+                          const bookingStatusColors = {
+                            'Arrived': 'bg-green-100 text-green-800 border-green-300',
+                            'Left': 'bg-orange-100 text-orange-800 border-orange-300',
+                            'No Show': 'bg-gray-200 text-gray-700 border-gray-400',
+                            'Cancel': 'bg-red-100 text-red-800 border-red-300',
+                            'Complete': 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                            'No Sale': 'bg-amber-100 text-amber-800 border-amber-300',
+                            'Reschedule': 'bg-blue-100 text-blue-800 border-blue-300',
+                            'Review': 'bg-purple-100 text-purple-800 border-purple-300'
+                          };
+                          const color = bookingStatusColors[lead.booking_status] || 'bg-gray-100 text-gray-700 border-gray-300';
+                          return (
+                            <span className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold border whitespace-nowrap ${color}`}>
+                              {lead.booking_status}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </td>
                     <td className="px-2 sm:px-4 lg:px-6 py-2 sm:py-4 text-xs sm:text-sm text-gray-900 hidden md:table-cell">

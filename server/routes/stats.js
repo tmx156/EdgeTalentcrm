@@ -80,7 +80,7 @@ router.get('/leads', auth, async (req, res) => {
   try {
     // Accept generic date_start/date_end for per-status date logic
     // Also accept legacy params for backward compatibility
-    const { created_at_start, created_at_end, assigned_at_start, assigned_at_end, date_start, date_end } = req.query;
+    const { created_at_start, created_at_end, assigned_at_start, assigned_at_end, date_start, date_end, booker } = req.query;
 
     // Determine if we have a date filter active
     const hasDateFilter = !!(date_start && date_end) || !!(assigned_at_start && assigned_at_end) || !!(created_at_start && created_at_end);
@@ -106,7 +106,7 @@ router.get('/leads', auth, async (req, res) => {
     const buildQuery = (from, to) => {
       let query = dbManager.client
         .from('leads')
-        .select('status, custom_fields, call_status, booker_id, booking_status, has_sale, assigned_at, booked_at, date_booked, booking_history')
+        .select('status, custom_fields, call_status, booker_id, booking_status, has_sale, assigned_at, booked_at, date_booked, booking_history, created_at')
         .neq('postcode', 'ZZGHOST') // Exclude ghost bookings
         .range(from, to);
 
@@ -115,6 +115,11 @@ router.get('/leads', auth, async (req, res) => {
         query = query
           .eq('booker_id', req.user.id)
           .neq('status', 'Rejected');
+      }
+
+      // Optional booker filter (for admin per-booker reports)
+      if (booker && req.user.role === 'admin') {
+        query = query.eq('booker_id', booker);
       }
 
       // When NO date filter is active, apply legacy filters or role-based defaults
@@ -215,8 +220,37 @@ router.get('/leads', auth, async (req, res) => {
       return isInDateRange(lead.assigned_at, dateStart, dateEnd);
     };
 
-    // Check if lead was booked within the date range (using date_booked since booked_at is not populated for older bookings)
+    // Extract the actual booking action date from a lead
+    // Priority: booked_at > BOOKING_CONFIRMATION_SENT timestamp from history > assigned_at
+    const getBookingActionDate = (lead) => {
+      if (lead.booked_at) return lead.booked_at;
+
+      // Check booking_history for BOOKING_CONFIRMATION_SENT (the actual moment the booking was made)
+      const history = parseHistory(lead);
+      const bookingEntry = history.find(e => e.action === 'BOOKING_CONFIRMATION_SENT');
+      if (bookingEntry?.timestamp) return bookingEntry.timestamp;
+
+      // Fall back to assigned_at (same day as booking action in practice)
+      return lead.assigned_at;
+    };
+
+    // Check if lead was booked within the date range
+    // Only matches leads that actually have date_booked or booked_at (were actually booked)
     const wasBookedInRange = (lead) => {
+      if (!lead.date_booked && !lead.booked_at) return false;
+      const bookedDate = getBookingActionDate(lead);
+      if (!hasDateFilter) return true;
+      return isInDateRange(bookedDate, dateStart, dateEnd);
+    };
+
+    // Check if lead was created within the date range (for "All" tab when date filter is active)
+    const wasCreatedInRange = (lead) => {
+      if (!hasDateFilter) return true;
+      return isInDateRange(lead.created_at, dateStart, dateEnd);
+    };
+
+    // Check if lead's appointment date (date_booked) is within the date range (for Sales)
+    const wasAppointmentDateInRange = (lead) => {
       if (!hasDateFilter) return !!lead.date_booked;
       return isInDateRange(lead.date_booked, dateStart, dateEnd);
     };
@@ -241,7 +275,7 @@ router.get('/leads', auth, async (req, res) => {
         // Without date filter, check current status
         if (targetStatus === 'Attended') {
           return lead.status === 'Attended' || 
-            (lead.status === 'Booked' && ['Arrived', 'Left', 'No Sale', 'Complete'].includes(lead.booking_status));
+            (lead.status === 'Booked' && ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'].includes(lead.booking_status));
         } else if (targetStatus === 'Cancelled') {
           return lead.status === 'Cancelled' || 
             (lead.status === 'Booked' && lead.booking_status === 'Cancel');
@@ -259,7 +293,7 @@ router.get('/leads', auth, async (req, res) => {
         if (!isEntryInRange(entry, dateStart, dateEnd)) return false;
         if (targetStatus === 'Attended') {
           if (entry.action === 'STATUS_CHANGE' && entry.details?.newStatus === 'Attended') return true;
-          if (entry.action === 'BOOKING_STATUS_UPDATE' && ['Arrived', 'Left', 'No Sale', 'Complete'].includes(entry.details?.bookingStatus)) return true;
+          if (entry.action === 'BOOKING_STATUS_UPDATE' && ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'].includes(entry.details?.bookingStatus)) return true;
           return false;
         } else if (targetStatus === 'Cancelled') {
           if (entry.action === 'CANCELLATION') return true;
@@ -280,9 +314,9 @@ router.get('/leads', auth, async (req, res) => {
 
     // --- Count leads per status with per-status date logic ---
     const result = {
-      // total = all leads (no date filter on total, so the "All" badge shows the full count)
-      total: leads.length,
-      new: leads.filter(l => l.status === 'New' && wasAssignedInRange(l)).length,
+      // total = when date filter active: leads created in range (matches "All" tab list); otherwise all leads
+      total: hasDateFilter ? leads.filter(l => wasCreatedInRange(l)).length : leads.length,
+      new: leads.filter(l => l.status === 'New' && wasCreatedInRange(l)).length,
       // OPTION B: assigned shows leads by assigned_at date (regardless of current status)
       assigned: leads.filter(l => {
         // Check if lead was assigned in the date range
@@ -290,45 +324,65 @@ router.get('/leads', auth, async (req, res) => {
       }).length,
       // booked uses booked_at date - counts ALL leads booked in range (including cancelled)
       booked: leads.filter(l => wasBookedInRange(l)).length,
-      // attended, cancelled, noShow use booking_history dates
-      attended: leads.filter(l => l.status === 'Attended' && wasSpecialStatusInRange(l, 'Attended')).length,
-      cancelled: leads.filter(l => l.status === 'Cancelled' && wasSpecialStatusInRange(l, 'Cancelled')).length,
+      // attended uses date_booked (appointment date = when they attended)
+      attended: leads.filter(l => l.status === 'Attended' && wasAppointmentDateInRange(l)).length,
+      // cancelled uses booked_at date (when booking action was performed)
+      cancelled: leads.filter(l => l.status === 'Cancelled' && wasBookedInRange(l)).length,
       attendedFilter: leads.filter(l => {
         const isAttended = l.status === 'Attended';
-        const isBookedButAttended = l.status === 'Booked' && ['Arrived', 'Left', 'No Sale', 'Complete'].includes(l.booking_status);
+        const isBookedButAttended = l.status === 'Booked' && ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'].includes(l.booking_status);
         if (!(isAttended || isBookedButAttended) || l.booker_id == null) return false;
-        return wasSpecialStatusInRange(l, 'Attended');
+        return wasAppointmentDateInRange(l);
       }).length,
       cancelledFilter: leads.filter(l => {
         const isCancelled = l.status === 'Cancelled';
         const isBookedButCancelled = l.status === 'Booked' && l.booking_status === 'Cancel';
         if (!(isCancelled || isBookedButCancelled) || l.booker_id == null) return false;
-        return wasSpecialStatusInRange(l, 'Cancelled');
+        return wasBookedInRange(l);
       }).length,
       noShow: leads.filter(l => {
         const isNoShow = l.status === 'No Show';
         const isBookedButNoShow = l.status === 'Booked' && l.booking_status === 'No Show';
         if (!(isNoShow || isBookedButNoShow) || l.booker_id == null) return false;
-        return wasSpecialStatusInRange(l, 'No Show');
+        return wasBookedInRange(l);
       }).length,
-      // rejected uses booking_history date
-      rejected: leads.filter(l => l.status === 'Rejected' && wasSpecialStatusInRange(l, 'Rejected')).length,
+      // rejected uses assigned_at date
+      rejected: leads.filter(l => l.status === 'Rejected' && wasAssignedInRange(l)).length,
       // Legacy status counts (assigned_at for backward compat)
       callback: leads.filter(l => l.status === 'Call Back' && wasAssignedInRange(l)).length,
       noAnswer: leads.filter(l => l.status === 'No Answer' && wasAssignedInRange(l)).length,
       notInterested: leads.filter(l => l.status === 'Not Interested' && wasAssignedInRange(l)).length,
-      // call_status-based counts use booking_history CALL_STATUS_UPDATE dates
-      noAnswerCall: leads.filter(l => getCallStatus(l) === 'No answer' && hasNotProgressed(l) && wasCallStatusSetInRange(l, 'No answer')).length,
-      noAnswerX2: leads.filter(l => getCallStatus(l) === 'No Answer x2' && hasNotProgressed(l) && wasCallStatusSetInRange(l, 'No Answer x2')).length,
-      noAnswerX3: leads.filter(l => getCallStatus(l) === 'No Answer x3' && hasNotProgressed(l) && wasCallStatusSetInRange(l, 'No Answer x3')).length,
-      leftMessage: leads.filter(l => getCallStatus(l) === 'Left Message' && hasNotProgressed(l) && wasCallStatusSetInRange(l, 'Left Message')).length,
-      notInterestedCall: leads.filter(l => getCallStatus(l) === 'Not interested' && hasNotProgressed(l) && wasCallStatusSetInRange(l, 'Not interested')).length,
-      callBack: leads.filter(l => getCallStatus(l) === 'Call back' && hasNotProgressed(l) && wasCallStatusSetInRange(l, 'Call back')).length,
-      wrongNumber: leads.filter(l => getCallStatus(l) === 'Wrong number' && hasNotProgressed(l) && wasCallStatusSetInRange(l, 'Wrong number')).length,
-      // sales uses booked_at date
-      salesConverted: leads.filter(l => l.has_sale > 0 && l.booker_id != null && wasBookedInRange(l)).length,
-      notQualified: leads.filter(l => getCallStatus(l) === 'Not Qualified' && hasNotProgressed(l) && wasCallStatusSetInRange(l, 'Not Qualified')).length,
-      noPhoto: leads.filter(l => (getCallStatus(l) === 'No photo' || l.status === 'No photo') && hasNotProgressed(l) && wasCallStatusSetInRange(l, 'No photo')).length
+      // call_status-based counts use assigned_at date
+      noAnswerCall: leads.filter(l => getCallStatus(l) === 'No answer' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      noAnswerX2: leads.filter(l => getCallStatus(l) === 'No Answer x2' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      noAnswerX3: leads.filter(l => getCallStatus(l) === 'No Answer x3' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      leftMessage: leads.filter(l => getCallStatus(l) === 'Left Message' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      notInterestedCall: leads.filter(l => getCallStatus(l) === 'Not interested' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      callBack: leads.filter(l => getCallStatus(l) === 'Call back' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      wrongNumber: leads.filter(l => getCallStatus(l) === 'Wrong number' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      // sales uses date_booked (appointment date on calendar)
+      salesConverted: leads.filter(l => l.has_sale > 0 && l.booker_id != null && wasAppointmentDateInRange(l)).length,
+      notQualified: leads.filter(l => getCallStatus(l) === 'Not Qualified' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      noPhoto: leads.filter(l => (getCallStatus(l) === 'No photo' || l.status === 'No photo') && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      // Attendance sub-breakdown (for Reports page) - uses date_booked like attendedFilter
+      arrived: leads.filter(l => {
+        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'Arrived' && l.booker_id != null;
+        return match && wasAppointmentDateInRange(l);
+      }).length,
+      leftBuilding: leads.filter(l => {
+        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'Left' && l.booker_id != null;
+        return match && wasAppointmentDateInRange(l);
+      }).length,
+      noSale: leads.filter(l => {
+        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'No Sale' && l.booker_id != null;
+        return match && wasAppointmentDateInRange(l);
+      }).length,
+      complete: leads.filter(l => {
+        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'Complete' && l.booker_id != null;
+        return match && wasAppointmentDateInRange(l);
+      }).length,
+      // Revenue (for Reports page) - sales with appointment date in range
+      revenue: 0 // sale_amount column doesn't exist on leads table yet
     };
 
     console.log(`✅ Lead counts: Total=${result.total}, New=${result.new}, Booked=${result.booked}, Attended=${result.attendedFilter}, Cancelled=${result.cancelledFilter}`);

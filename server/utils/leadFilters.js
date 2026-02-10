@@ -36,7 +36,7 @@ const STATUS_FILTER_CONFIG = {
   'Booked': {
     type: 'simple',
     statusMatch: ['Booked', 'Cancelled', 'Rejected', 'Attended', 'No Show'],  // Show all leads that were booked
-    dateColumn: 'date_booked',
+    dateColumn: 'booked_at',
     description: 'Booked leads'
   },
   
@@ -44,9 +44,8 @@ const STATUS_FILTER_CONFIG = {
   'Attended': {
     type: 'special',
     statusMatch: ['Attended'],
-    bookingStatusMatch: ['Arrived', 'Left', 'No Sale', 'Complete'],
-    dateColumn: 'booking_history',
-    historyAction: ['STATUS_CHANGE', 'BOOKING_STATUS_UPDATE'],
+    bookingStatusMatch: ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'],
+    dateColumn: 'date_booked',
     description: 'Attended leads'
   },
   
@@ -54,25 +53,22 @@ const STATUS_FILTER_CONFIG = {
     type: 'special',
     statusMatch: ['Cancelled'],
     bookingStatusMatch: ['Cancel'],
-    dateColumn: 'booking_history',
-    historyAction: ['CANCELLATION', 'STATUS_CHANGE', 'BOOKING_STATUS_UPDATE'],
+    dateColumn: 'booked_at',
     description: 'Cancelled leads'
   },
-  
+
   'No Show': {
     type: 'special',
     statusMatch: ['No Show'],
     bookingStatusMatch: ['No Show'],
-    dateColumn: 'booking_history',
-    historyAction: ['STATUS_CHANGE', 'BOOKING_STATUS_UPDATE'],
+    dateColumn: 'booked_at',
     description: 'No-show leads'
   },
-  
+
   'Rejected': {
     type: 'simple',
     statusMatch: ['Rejected'],
-    dateColumn: 'booking_history',
-    historyAction: ['STATUS_CHANGE'],
+    dateColumn: 'assigned_at',
     description: 'Rejected leads'
   },
   
@@ -81,71 +77,63 @@ const STATUS_FILTER_CONFIG = {
     type: 'call_status',
     callStatusMatch: 'No answer',
     excludeProgressed: true,
-    dateColumn: 'booking_history',
-    historyAction: ['CALL_STATUS_UPDATE'],
+    dateColumn: 'assigned_at',
     description: 'No answer calls'
   },
-  
+
   'No Answer x2': {
     type: 'call_status',
     callStatusMatch: 'No Answer x2',
     excludeProgressed: true,
-    dateColumn: 'booking_history',
-    historyAction: ['CALL_STATUS_UPDATE'],
+    dateColumn: 'assigned_at',
     description: 'No answer x2 calls'
   },
-  
+
   'No Answer x3': {
     type: 'call_status',
     callStatusMatch: 'No Answer x3',
     excludeProgressed: true,
-    dateColumn: 'booking_history',
-    historyAction: ['CALL_STATUS_UPDATE'],
+    dateColumn: 'assigned_at',
     description: 'No answer x3 calls'
   },
-  
+
   'Left Message': {
     type: 'call_status',
     callStatusMatch: 'Left Message',
     excludeProgressed: true,
-    dateColumn: 'booking_history',
-    historyAction: ['CALL_STATUS_UPDATE'],
+    dateColumn: 'assigned_at',
     description: 'Left message calls'
   },
-  
+
   'Not interested': {
     type: 'call_status',
     callStatusMatch: 'Not interested',
     excludeProgressed: true,
-    dateColumn: 'booking_history',
-    historyAction: ['CALL_STATUS_UPDATE'],
+    dateColumn: 'assigned_at',
     description: 'Not interested calls'
   },
-  
+
   'Call back': {
     type: 'call_status',
     callStatusMatch: 'Call back',
     excludeProgressed: true,
-    dateColumn: 'booking_history',
-    historyAction: ['CALL_STATUS_UPDATE'],
+    dateColumn: 'assigned_at',
     description: 'Call back scheduled'
   },
-  
+
   'Wrong number': {
     type: 'call_status',
     callStatusMatch: 'Wrong number',
     excludeProgressed: true,
-    dateColumn: 'booking_history',
-    historyAction: ['CALL_STATUS_UPDATE'],
+    dateColumn: 'assigned_at',
     description: 'Wrong number calls'
   },
-  
+
   'Not Qualified': {
     type: 'call_status',
     callStatusMatch: 'Not Qualified',
     excludeProgressed: true,
-    dateColumn: 'booking_history',
-    historyAction: ['CALL_STATUS_UPDATE'],
+    dateColumn: 'assigned_at',
     description: 'Not qualified leads'
   },
   
@@ -154,7 +142,7 @@ const STATUS_FILTER_CONFIG = {
     type: 'has_sale',
     hasSale: true,
     requireBooker: true,
-    dateColumn: 'booked_at',
+    dateColumn: 'date_booked',
     description: 'Sales leads'
   }
 };
@@ -262,9 +250,11 @@ function matchesDateFilter(lead, config, dateRange) {
     case 'assigned_at':
       return isDateInRange(lead.assigned_at, start, end);
       
-    case 'date_booked':
     case 'booked_at':
-      return isDateInRange(lead.date_booked || lead.booked_at, start, end);
+      return isDateInRange(lead.booked_at || lead.assigned_at, start, end);
+
+    case 'date_booked':
+      return isDateInRange(lead.date_booked, start, end);
       
     case 'booking_history':
       // For booking_history, we need to check if any relevant history entry 
