@@ -873,7 +873,8 @@ const Calendar = () => {
             status: 'Booked', // Set status to Booked when coming from leads page
             notes: leadData.notes || '',
             image_url: leadData.image_url || '',
-            isReschedule: leadData.isReschedule || false
+            isReschedule: leadData.isReschedule || false,
+            original_booker_id: leadData.booker_id || null
           });
           console.log('📊 Set leadForm with ID:', leadId);
           
@@ -900,7 +901,8 @@ const Calendar = () => {
             status: 'Booked',
             notes: leadData.notes || '',
             image_url: leadData.image_url || '',
-            isReschedule: leadData.isReschedule || false
+            isReschedule: leadData.isReschedule || false,
+            original_booker_id: leadData.booker_id || null
           });
           localStorage.removeItem('bookingLead');
         }
@@ -1696,7 +1698,9 @@ const Calendar = () => {
         ...((_id && _id !== '') ? { _id } : {}),
         status: 'Booked',
         is_confirmed: leadForm.isReschedule ? 0 : 0, // Reset to unconfirmed (0) when rescheduling, 0 for new bookings
-        booker: currentUser._id || currentUser.id || '507f1f77bcf86cd799439012',
+        booker: leadForm.isReschedule && leadForm.original_booker_id
+        ? leadForm.original_booker_id
+        : (currentUser._id || currentUser.id || '507f1f77bcf86cd799439012'),
         // Add reschedule fields if this is a reschedule
         ...(leadForm.isReschedule && {
           booking_status: 'Reschedule', // Set to new Reschedule status to indicate rescheduling
@@ -2431,7 +2435,8 @@ const Calendar = () => {
       status: 'Booked', // Keep as booked for rescheduling
       notes: selectedEvent.extendedProps.lead.notes || '',
       image_url: selectedEvent.extendedProps.lead.image_url || '',
-      isReschedule: true
+      isReschedule: true,
+      original_booker_id: selectedEvent.extendedProps.lead.booker_id || null
     });
 
     // Close the event modal and open the booking form
