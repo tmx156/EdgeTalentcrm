@@ -5000,8 +5000,8 @@ const Calendar = () => {
                                     <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-opacity flex items-center justify-center z-10 pointer-events-none">
                                       <FiImage className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </div>
-                                    {/* Delete button - only for admin and photographer */}
-                                    {(user?.role === 'admin' || user?.role === 'photographer') && (
+                                    {/* Delete button - for admin, viewer, and photographer */}
+                                    {(user?.role === 'admin' || user?.role === 'viewer' || user?.role === 'photographer') && (
                                       <button
                                         onClick={(e) => handleDeletePhoto(photo.id, e)}
                                         className="absolute top-1 right-1 p-1.5 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-600 shadow-lg"
@@ -5367,7 +5367,7 @@ const Calendar = () => {
           initialSelectedIds={selectedPhotoIds}
           imageLimit={selectedPackage?.imageCount ?? selectedPackage?.image_count}
           selectionMode={imageSelectionMode}
-          onDeletePhoto={(user?.role === 'admin' || user?.role === 'viewer') ? handleDeletePhoto : null}
+          onDeletePhoto={(user?.role === 'admin' || user?.role === 'viewer' || user?.role === 'photographer') ? handleDeletePhoto : null}
           onProceedToPackage={(photoIds, photos) => {
             setSelectedPhotoIds(photoIds);
             setSelectedPhotos(photos);
