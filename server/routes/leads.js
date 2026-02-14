@@ -1910,7 +1910,7 @@ router.post('/', auth, async (req, res) => {
           time_booked: bodyWithoutId.time_booked,
           booking_slot: bodyWithoutId.booking_slot || 1, // Default to slot 1 if not specified
           status: 'Booked',
-          booker_id: isReschedule ? (existingLeads[0].booker_id || req.user.id) : req.user.id,
+          booker_id: existingLeads[0].booker_id || req.user.id, // Lock: keep original booker, only set if none exists
           updated_at: new Date().toISOString(),
           // Convert boolean to integer for database compatibility
           is_confirmed: bodyWithoutId.is_confirmed ? 1 : 0,
@@ -2094,12 +2094,12 @@ router.post('/', auth, async (req, res) => {
             date_booked: finalBody.date_booked ? preserveLocalTime(finalBody.date_booked) : null,
             time_booked: finalBody.time_booked,
             booking_slot: finalBody.booking_slot || 1, // Default to slot 1 if not specified
-            booker_id: req.user.id,
+            booker_id: existingLead.booker_id || req.user.id, // Lock: keep original booker, only set if none exists
             booked_at: new Date().toISOString(), // ✅ BOOKING HISTORY FIX: Set booked_at timestamp
             ever_booked: true, // ✅ BOOKING HISTORY FIX: Mark as ever booked
             updated_at: new Date().toISOString()
           };
-          
+
           // Include reschedule-specific fields if this is a reschedule
           if (isReschedule) {
             updateFields.booking_status = finalBody.booking_status || 'Reschedule';
@@ -2829,6 +2829,15 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
         console.log(`📊 Ensuring ever_booked is set for ${lead.name}`);
       }
       
+      // ✅ BOOKER LOCK: Once booker_id is set, it NEVER changes via this endpoint.
+      // Reassignment only happens through the dedicated /assign endpoint.
+      if (lead.booker_id && supabaseUpdateFields.booker_id) {
+        if (supabaseUpdateFields.booker_id !== lead.booker_id) {
+          console.log(`🔒 Blocked booker_id overwrite for ${lead.name}: keeping ${lead.booker_id}, rejected ${supabaseUpdateFields.booker_id}`);
+        }
+        delete supabaseUpdateFields.booker_id;
+      }
+
       // ✅ DATE ASSIGNED FIX: Set assigned_at when booker_id is set or changed
       // This ensures all assigned leads have an assigned_at timestamp for proper filtering
       const newBookerId = supabaseUpdateFields.booker_id !== undefined ? supabaseUpdateFields.booker_id : lead.booker_id;

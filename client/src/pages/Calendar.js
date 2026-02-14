@@ -4635,9 +4635,36 @@ const Calendar = () => {
                                     <p className="text-base text-gray-900 leading-relaxed whitespace-pre-wrap break-words">
                                       {selectedEvent.extendedProps.lead.notes}
                                     </p>
-                                    <div className="mt-2 text-xs text-gray-500">
-                                      Click "Edit Notes" to modify
-                                    </div>
+                                    {/* Show who last updated the notes */}
+                                    {(() => {
+                                      const history = selectedEvent.extendedProps?.lead?.bookingHistory || 
+                                                      selectedEvent.extendedProps?.lead?.booking_history || [];
+                                      const notesEntries = history.filter(h => h.action === 'NOTES_UPDATED');
+                                      const lastNoteEntry = notesEntries[notesEntries.length - 1];
+                                      if (lastNoteEntry) {
+                                        const updatedBy = lastNoteEntry.details?.updatedBy || 
+                                                           lastNoteEntry.performedByName || 
+                                                           lastNoteEntry.performed_by_name || 
+                                                           lastNoteEntry.performedBy || 
+                                                           lastNoteEntry.performed_by || 
+                                                           'Unknown';
+                                        const updatedAt = lastNoteEntry.timestamp ? 
+                                          new Date(lastNoteEntry.timestamp).toLocaleString('en-GB', { 
+                                            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' 
+                                          }) : '';
+                                        return (
+                                          <div className="mt-2 text-xs text-gray-500 flex items-center justify-between">
+                                            <span>Last updated by <span className="font-medium text-gray-700">{updatedBy}</span></span>
+                                            {updatedAt && <span>{updatedAt}</span>}
+                                          </div>
+                                        );
+                                      }
+                                      return (
+                                        <div className="mt-2 text-xs text-gray-500">
+                                          Click "Edit Notes" to modify
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 ) : (
                                   <div className="text-center py-4">
@@ -4700,12 +4727,28 @@ const Calendar = () => {
                                   )}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-xs font-semibold text-gray-700">
-                                    {h.action === 'EMAIL_SENT' && 'Email Sent'}
-                                    {h.action === 'EMAIL_RECEIVED' && 'Email Received'}
-                                    {h.action === 'SMS_SENT' && 'SMS Sent'}
-                                    {h.action === 'SMS_RECEIVED' && 'SMS Received'}
-                                    <span className="ml-2 text-gray-400 font-normal">{new Date(h.timestamp).toLocaleString()}</span>
+                                  <div className="text-xs font-semibold text-gray-700 flex items-center flex-wrap gap-1">
+                                    <span>
+                                      {h.action === 'EMAIL_SENT' && 'Email Sent'}
+                                      {h.action === 'EMAIL_RECEIVED' && 'Email Received'}
+                                      {h.action === 'SMS_SENT' && 'SMS Sent'}
+                                      {h.action === 'SMS_RECEIVED' && 'SMS Received'}
+                                    </span>
+                                    {/* Show who sent/received the message */}
+                                    {(() => {
+                                      const performerName = h.performedByName || 
+                                        h.performed_by_name || 
+                                        h.performedBy || 
+                                        h.performed_by ||
+                                        h.details?.sent_by_name ||
+                                        h.details?.performedByName ||
+                                        h.details?.performed_by_name;
+                                      if (performerName) {
+                                        return <span className="text-blue-600 font-medium">by {performerName}</span>;
+                                      }
+                                      return null;
+                                    })()}
+                                    <span className="text-gray-400 font-normal ml-auto">{new Date(h.timestamp).toLocaleString()}</span>
                                   </div>
                                   {h.details?.subject && (
                                     <div className="text-xs text-gray-500 truncate">Subject: {h.details.subject}</div>
@@ -5324,7 +5367,7 @@ const Calendar = () => {
           initialSelectedIds={selectedPhotoIds}
           imageLimit={selectedPackage?.imageCount ?? selectedPackage?.image_count}
           selectionMode={imageSelectionMode}
-          onDeletePhoto={(user?.role === 'admin' || user?.role === 'photographer') ? handleDeletePhoto : null}
+          onDeletePhoto={(user?.role === 'admin' || user?.role === 'viewer') ? handleDeletePhoto : null}
           onProceedToPackage={(photoIds, photos) => {
             setSelectedPhotoIds(photoIds);
             setSelectedPhotos(photos);

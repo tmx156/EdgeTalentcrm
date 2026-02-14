@@ -160,6 +160,7 @@ router.post('/submit', async (req, res) => {
       "Parent's Number", 'Parent Number', 'parent_phone', 'parents_number',
       'Upload Photo', 'Photo', 'photo', 'image_url',
       'Gender', 'gender',  // Gender field
+      'Lead Code', 'lead_code',  // Lead Code field
       // Gravity Forms metadata fields
       'id', 'form_id', 'post_id', 'date_created', 'date_updated',
       'is_starred', 'is_read', 'ip', 'source_url', 'user_agent',
@@ -170,9 +171,21 @@ router.post('/submit', async (req, res) => {
 
     // Extract Gender explicitly
     const gender = getGender();
-    
+
+    // Extract Lead Code (hidden field from Gravity Forms)
+    const getLeadCode = () => {
+      return formData['17'] ||           // Field ID 17 = Lead Code
+             formData['Lead Code'] ||
+             formData['lead_code'] ||
+             null;
+    };
+    const leadCode = getLeadCode();
+
     // Store any unprocessed fields in custom_fields (excluding Gender which has its own column)
     const customFields = {};
+    if (leadCode) {
+      customFields.lead_code = leadCode;
+    }
     Object.keys(formData).forEach(key => {
       if (!processedKeys.includes(key)) {
         customFields[key] = formData[key];

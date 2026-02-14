@@ -12,6 +12,7 @@ import SalesApeButton from '../components/SalesApeButton';
 import SalesApeStatus from '../components/SalesApeStatus';
 import ImageGalleryModal from '../components/ImageGalleryModal';
 import PresentationGallery from '../components/PresentationGallery';
+import GmailEmailRenderer from '../components/GmailEmailRenderer';
 import { Image, FileText, Presentation } from 'lucide-react';
 
 const LeadDetail = () => {
@@ -359,6 +360,14 @@ const LeadDetail = () => {
     try {
       setHistoryLoading(true);
       const response = await axios.get(`/api/leads/${id}/history`);
+      console.log('📋 Booking history fetched:', response.data.bookingHistory);
+      // Log entries that don't have performer name for debugging
+      const entriesWithoutPerformer = (response.data.bookingHistory || []).filter(entry => 
+        !entry.performedByName && !entry.performed_by_name && !entry.performedBy && !entry.performed_by
+      );
+      if (entriesWithoutPerformer.length > 0) {
+        console.log('⚠️ Entries without performer name:', entriesWithoutPerformer);
+      }
       setBookingHistory(response.data.bookingHistory || []);
     } catch (error) {
       console.error('Error fetching booking history:', error);
@@ -2090,20 +2099,33 @@ const LeadDetail = () => {
                                 key={`${message.timestamp}-${index}`}
                                 className={`flex ${(['SMS_SENT', 'EMAIL_SENT'].includes(message.action)) ? 'justify-end' : 'justify-start'}`}
                               >
-                                <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow-sm ${
+                                <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow-sm overflow-hidden ${
                                   (['SMS_SENT', 'EMAIL_SENT'].includes(message.action))
                                     ? 'bg-blue-500 text-white' 
                                     : 'bg-white border text-gray-900'
                                 }`}>
                                   {/* Message content */}
                                   {message.action.includes('EMAIL') && message.details?.subject && (
-                                    <p className="text-sm font-semibold mb-1">
+                                    <p className={`text-sm font-semibold mb-1 ${(['SMS_SENT', 'EMAIL_SENT'].includes(message.action)) ? 'text-white' : 'text-gray-900'}`}>
                                       {message.details.subject}
                                     </p>
                                   )}
-                                  <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                                    {message.details?.body || message.details?.message || 'No content available'}
-                                  </p>
+                                  
+                                  {/* Email content - use GmailEmailRenderer for HTML emails */}
+                                  {message.action.includes('EMAIL') && (message.details?.email_body || message.details?.html_content) ? (
+                                    <div className={`max-h-64 overflow-y-auto ${(['SMS_SENT', 'EMAIL_SENT'].includes(message.action)) ? 'email-sent' : 'email-received'}`}>
+                                      <GmailEmailRenderer
+                                        htmlContent={message.details?.email_body || message.details?.html_content}
+                                        textContent={message.details?.body || message.details?.message}
+                                        attachments={message.details?.attachments || []}
+                                        embeddedImages={message.details?.embedded_images || []}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                                      {message.details?.body || message.details?.message || 'No content available'}
+                                    </p>
+                                  )}
                                   
                                   {/* Message metadata */}
                                   <div className="flex items-center justify-between mt-1">
@@ -2419,7 +2441,7 @@ const LeadDetail = () => {
                         .filter(entry =>
                           entry.action &&
                           entry.action.trim() !== '' &&
-                          (entry.performedByName || entry.timestamp)
+                          (entry.performedByName || entry.performed_by_name || entry.performedBy || entry.performed_by || entry.timestamp)
                         )
                       )
                       .sort((a, b) => {
@@ -2447,7 +2469,21 @@ const LeadDetail = () => {
                                 {entry.isCallback ? '📞 Callback Scheduled' : entry.action}
                               </span>
                               <span className="text-sm text-gray-500">
-                                {entry.isCallback ? '' : `by ${entry.performedByName}`}
+                                {entry.isCallback ? '' : (() => {
+                                  // Try to find the performer name from various possible field locations
+                                  const performerName = entry.performedByName || 
+                                    entry.performed_by_name || 
+                                    entry.performedBy || 
+                                    entry.performed_by ||
+                                    entry.details?.performedByName ||
+                                    entry.details?.performed_by_name ||
+                                    entry.details?.sent_by_name ||
+                                    entry.details?.sentByName ||
+                                    entry.leadSnapshot?.performedByName ||
+                                    entry.leadSnapshot?.performed_by_name ||
+                                    (entry.details?.updatedBy && entry.action?.includes('STATUS'));
+                                  return performerName ? `by ${performerName}` : '';
+                                })()}
                               </span>
                             </div>
 
@@ -2468,8 +2504,11 @@ const LeadDetail = () => {
                                 ) : entry.action === 'NOTES_UPDATED' ? (
                                   <div className="space-y-2">
                                     <div className="bg-blue-50 p-3 rounded-lg">
-                                      <div className="font-medium text-blue-800 mb-1">
-                                        Notes {entry.details.changeType === 'added' ? 'Added' : 'Modified'}
+                                      <div className="font-medium text-blue-800 mb-1 flex items-center justify-between">
+                                        <span>Notes {entry.details.changeType === 'added' ? 'Added' : 'Modified'}</span>
+                                        <span className="text-xs font-normal text-blue-600">
+                                          by {entry.details.updatedBy || entry.performedByName || entry.performed_by_name || entry.performedBy || entry.performed_by || 'Unknown'}
+                                        </span>
                                       </div>
                                       {entry.details.oldNotes && (
                                         <div className="text-xs text-gray-600 mb-1">
@@ -2479,8 +2518,11 @@ const LeadDetail = () => {
                                       <div className="text-sm text-gray-800">
                                         <span className="font-medium">New:</span> {entry.details.newNotes}
                                       </div>
-                                      <div className="text-xs text-gray-500 mt-1">
-                                        {entry.details.characterCount} characters
+                                      <div className="text-xs text-gray-500 mt-1 flex items-center justify-between">
+                                        <span>{entry.details.characterCount} characters</span>
+                                        {entry.timestamp && (
+                                          <span>{new Date(entry.timestamp).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
@@ -2689,6 +2731,19 @@ const LeadDetail = () => {
                         {formatDate(lead.created_at)}
                       </span>
                     </div>
+                    {(() => {
+                      const cf = lead.custom_fields
+                        ? (typeof lead.custom_fields === 'string' ? JSON.parse(lead.custom_fields) : lead.custom_fields)
+                        : null;
+                      return cf?.lead_code ? (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-gray-600">Lead Code:</span>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                            {cf.lead_code}
+                          </span>
+                        </div>
+                      ) : null;
+                    })()}
                     {lead.lead_source && (
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-gray-600">Lead Source:</span>
