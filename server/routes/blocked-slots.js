@@ -58,8 +58,8 @@ router.post('/', auth, adminAuth, async (req, res) => {
     }
 
     // Validate slot_number if provided
-    if (slot_number && ![1, 2].includes(slot_number)) {
-      return res.status(400).json({ message: 'slot_number must be 1 or 2' });
+    if (slot_number && ![1, 2, 3].includes(slot_number)) {
+      return res.status(400).json({ message: 'slot_number must be 1, 2, or 3' });
     }
 
     // Check if this exact block already exists (use admin client to bypass RLS)
@@ -110,7 +110,7 @@ router.post('/', auth, adminAuth, async (req, res) => {
     console.log(`✅ Admin ${req.user.name} blocked slot:`, {
       date,
       time_slot: time_slot || 'full day',
-      slot_number: slot_number || 'both',
+      slot_number: slot_number || 'all',
       reason
     });
 
@@ -134,8 +134,8 @@ router.post('/bulk', auth, adminAuth, async (req, res) => {
     }
 
     // Validate slot_number if provided
-    if (slot_number && ![1, 2].includes(slot_number)) {
-      return res.status(400).json({ message: 'slot_number must be 1 or 2' });
+    if (slot_number && ![1, 2, 3].includes(slot_number)) {
+      return res.status(400).json({ message: 'slot_number must be 1, 2, or 3' });
     }
 
     // Create blocked slots for all dates (use admin client to bypass RLS)
@@ -192,7 +192,7 @@ router.delete('/:id', auth, adminAuth, async (req, res) => {
     console.log(`✅ Admin ${req.user.name} unblocked slot:`, {
       date: blockedSlot?.date,
       time_slot: blockedSlot?.time_slot || 'full day',
-      slot_number: blockedSlot?.slot_number || 'both'
+      slot_number: blockedSlot?.slot_number || 'all'
     });
 
     res.json({ message: 'Blocked slot deleted successfully' });
@@ -272,7 +272,7 @@ router.get('/check', async (req, res) => {
         if (block.slot_number && slot_number) {
           return parseInt(block.slot_number) === parseInt(slot_number);
         }
-        // No slot_number in block means both slots blocked
+        // No slot_number in block means all slots blocked
         return true;
       }
 
@@ -282,7 +282,7 @@ router.get('/check', async (req, res) => {
         if (block.slot_number && slot_number) {
           return parseInt(block.slot_number) === parseInt(slot_number);
         }
-        // No slot_number in block means both slots blocked
+        // No slot_number in block means all slots blocked
         return true;
       }
 

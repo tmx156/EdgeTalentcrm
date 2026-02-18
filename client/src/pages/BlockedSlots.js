@@ -53,7 +53,7 @@ const BlockedSlots = () => {
         if (slotNumber && block.slot_number) {
           return parseInt(block.slot_number) === parseInt(slotNumber);
         }
-        // If block has no slot_number, both slots are blocked
+        // If block has no slot_number, all slots are blocked
         if (!block.slot_number) {
           return true;
         }
@@ -228,7 +228,7 @@ const BlockedSlots = () => {
                         ) : (
                           <>
                             {block.time_slot}
-                            {block.slot_number ? ` - Slot ${block.slot_number}` : ' - Both Slots'}
+                            {block.slot_number ? ` - Slot ${block.slot_number}` : ' - All Slots'}
                           </>
                         )}
                       </p>
@@ -252,7 +252,7 @@ const BlockedSlots = () => {
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Time Slots Overview</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Slot 1 Column */}
             <div>
               <h3 className="text-md font-semibold text-gray-700 mb-3 text-center">Slot 1</h3>
@@ -314,6 +314,37 @@ const BlockedSlots = () => {
                 ))}
               </div>
             </div>
+
+            {/* Slot 3 Column */}
+            <div>
+              <h3 className="text-md font-semibold text-gray-700 mb-3 text-center">Slot 3</h3>
+              <div className="space-y-2">
+                {timeSlots.map((time) => (
+                  <div
+                    key={`slot3-${time}`}
+                    className={`p-3 rounded-lg border ${
+                      isSlotBlocked(time, 3)
+                        ? 'bg-red-100 border-red-300'
+                        : 'bg-green-100 border-green-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{time}</span>
+                      {isSlotBlocked(time, 3) ? (
+                        <span className="text-sm text-red-600 flex items-center gap-1">
+                          <FiLock /> Blocked
+                        </span>
+                      ) : (
+                        <span className="text-sm text-green-600">Available</span>
+                      )}
+                    </div>
+                    {isSlotBlocked(time, 3) && (
+                      <p className="text-xs text-gray-600 mt-1">{getBlockReason(time, 3)}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -343,8 +374,8 @@ const BlockedSlots = () => {
                   onChange={(e) => setBlockType(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="full-day">Full Day (Both Slots)</option>
-                  <option value="time-slot">Specific Time (Both Slots)</option>
+                  <option value="full-day">Full Day (All Slots)</option>
+                  <option value="time-slot">Specific Time (All Slots)</option>
                   <option value="slot-column">Specific Time & Slot Number</option>
                 </select>
               </div>
@@ -384,6 +415,7 @@ const BlockedSlots = () => {
                     <option value="">Select slot...</option>
                     <option value="1">Slot 1</option>
                     <option value="2">Slot 2</option>
+                    <option value="3">Slot 3</option>
                   </select>
                 </div>
               )}

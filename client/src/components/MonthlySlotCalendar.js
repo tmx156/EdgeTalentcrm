@@ -79,24 +79,25 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
 
   // Get bookings for a specific day - OPTIMIZED: Use pre-indexed map instead of filtering
   const getBookingsForDay = (day) => {
-    if (!day) return { slot1: [], slot2: [] };
-    
+    if (!day) return { slot1: [], slot2: [], slot3: [] };
+
     const dayStr = day.toISOString().split('T')[0];
     const dayBookings = eventsByDate.get(dayStr) || [];
-    
+
     const slot1 = dayBookings.filter(e => e.booking_slot === 1);
     const slot2 = dayBookings.filter(e => e.booking_slot === 2);
-    
-    return { slot1, slot2 };
+    const slot3 = dayBookings.filter(e => e.booking_slot === 3);
+
+    return { slot1, slot2, slot3 };
   };
 
   // Get booking count summary for a day
   const getBookingSummary = (day) => {
-    const { slot1, slot2 } = getBookingsForDay(day);
-    const total = slot1.length + slot2.length;
-    const confirmed = [...slot1, ...slot2].filter(e => e.is_confirmed).length;
-    
-    return { total, confirmed, slot1Count: slot1.length, slot2Count: slot2.length };
+    const { slot1, slot2, slot3 } = getBookingsForDay(day);
+    const total = slot1.length + slot2.length + slot3.length;
+    const confirmed = [...slot1, ...slot2, ...slot3].filter(e => e.is_confirmed).length;
+
+    return { total, confirmed, slot1Count: slot1.length, slot2Count: slot2.length, slot3Count: slot3.length };
   };
 
   // Check if a day is fully blocked (entire day blocked, not just specific time slots)
@@ -108,7 +109,7 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
     // Check if there's a full day block (no time_slot specified)
     return blockedSlots.some(block => {
       const blockDateStr = new Date(block.date).toISOString().split('T')[0];
-      // Full day block: date matches AND no time_slot AND no slot_number (blocks both slots for entire day)
+      // Full day block: date matches AND no time_slot AND no slot_number (blocks all slots for entire day)
       return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
     });
   };
@@ -175,10 +176,10 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
               );
             }
 
-            const { total, confirmed, slot1Count, slot2Count } = getBookingSummary(day);
+            const { total, confirmed, slot1Count, slot2Count, slot3Count } = getBookingSummary(day);
             const isToday = day.toDateString() === today.toDateString();
             const isPast = day < today;
-            const { slot1, slot2 } = getBookingsForDay(day);
+            const { slot1, slot2, slot3 } = getBookingsForDay(day);
             const isBlocked = isDayFullyBlocked(day);
 
             return (
@@ -226,6 +227,14 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
                       </div>
                     )}
 
+                    {/* Slot 3 Bookings */}
+                    {slot3Count > 0 && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-teal-500 rounded-full"></div>
+                        <span className="text-xs text-gray-600">S3: {slot3Count}</span>
+                      </div>
+                    )}
+
                     {/* Confirmed Count */}
                     {confirmed > 0 && (
                       <div className="flex items-center gap-1">
@@ -236,7 +245,7 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
 
                     {/* Show first few booking names with status colors */}
                     <div className="mt-1 space-y-0.5">
-                      {[...slot1, ...slot2].slice(0, 3).map((event, idx) => (
+                      {[...slot1, ...slot2, ...slot3].slice(0, 3).map((event, idx) => (
                         <div
                           key={event.id}
                           className={`text-xs truncate px-1.5 py-0.5 rounded cursor-pointer transition-all hover:opacity-80 ${getStatusColor(event)} ${getTextColor(event)}`}

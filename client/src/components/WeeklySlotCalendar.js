@@ -4,20 +4,20 @@ import { FiCheckCircle, FiClock, FiMessageSquare, FiMail } from 'react-icons/fi'
 // Time slots configuration matching updated schedule
 // 🔵 = Male, 🩷 = Female, 💛🔵 = Child/Male (striped), ⚫ = Blank/Unavailable
 const TIME_SLOTS = [
-  { time: '10:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'female', slot2Emoji: '🩷' },
-  { time: '10:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
-  { time: '11:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
-  { time: '11:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷' },
-  { time: '12:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'male', slot2Emoji: '🔵' },
-  { time: '12:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷' },
-  { time: '13:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'male', slot2Emoji: '🔵' },
-  { time: '13:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
-  { time: '14:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
-  { time: '14:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
-  { time: '15:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷' },
-  { time: '15:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵' },
-  { time: '16:00', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵' },
-  { time: '16:30', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵' }
+  { time: '10:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷' },
+  { time: '10:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
+  { time: '11:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
+  { time: '11:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷' },
+  { time: '12:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵' },
+  { time: '12:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷' },
+  { time: '13:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵' },
+  { time: '13:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
+  { time: '14:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
+  { time: '14:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
+  { time: '15:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷' },
+  { time: '15:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
+  { time: '16:00', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵' },
+  { time: '16:30', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵' }
 ];
 
 const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, onEventClick }) => {
@@ -104,7 +104,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
         if (slotNumber && block.slot_number) {
           return parseInt(block.slot_number) === parseInt(slotNumber);
         }
-        // If block has no slot_number, both slots are blocked
+        // If block has no slot_number, all slots are blocked
         if (!block.slot_number) {
           return true;
         }
@@ -249,6 +249,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                       <>
                         <span>S1</span>
                         <span>S2</span>
+                        <span>S3</span>
                       </>
                     )}
                   </div>
@@ -270,10 +271,13 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                 {days.map((day, dayIndex) => {
                   const slot1Event = getEventForDayTimeSlot(day, slotConfig.time, 1);
                   const slot2Event = getEventForDayTimeSlot(day, slotConfig.time, 2);
+                  const slot3Event = getEventForDayTimeSlot(day, slotConfig.time, 3);
                   const slot1All = getEventsForDayTimeSlot(day, slotConfig.time, 1);
                   const slot2All = getEventsForDayTimeSlot(day, slotConfig.time, 2);
+                  const slot3All = getEventsForDayTimeSlot(day, slotConfig.time, 3);
                   const slot1Overflow = slot1All.length > 1 ? slot1All.slice(1) : [];
                   const slot2Overflow = slot2All.length > 1 ? slot2All.slice(1) : [];
+                  const slot3Overflow = slot3All.length > 1 ? slot3All.slice(1) : [];
                   const dayStr = day.toISOString().split('T')[0];
 
                   return (
@@ -283,7 +287,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                         timeIndex === TIME_SLOTS.length - 1 ? '' : 'border-b'
                       } ${dayIndex === 6 ? 'border-r-0' : ''}`}
                     >
-                      <div className="grid grid-cols-2 gap-1 h-full">
+                      <div className="grid grid-cols-3 gap-1 h-full">
                         {/* Slot 1 */}
                         <div
                           className={`compact-cell ${getCellBackground(slot1Event, day, slotConfig.time, 1)} rounded ${isSlotBlocked(day, slotConfig.time, 1) || slotConfig.slot1Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200 relative`}
@@ -384,6 +388,65 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                                     +{slot2Overflow.length} more
                                   </div>
                                   {slot2Overflow.map((evt, i) => (
+                                    <button
+                                      key={evt.id || i}
+                                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 truncate transition-colors"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOverflowDropdown(null);
+                                        onEventClick(evt);
+                                      }}
+                                    >
+                                      {evt.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Slot 3 */}
+                        <div
+                          className={`compact-cell ${getCellBackground(slot3Event, day, slotConfig.time, 3)} rounded ${isSlotBlocked(day, slotConfig.time, 3) || slotConfig.slot3Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200 relative`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isSlotBlocked(day, slotConfig.time, 3) || slotConfig.slot3Type === 'blank') return;
+                            if (slot3Event) {
+                              onEventClick(slot3Event);
+                            } else {
+                              onDayClick(day, slotConfig.time, 3);
+                            }
+                          }}
+                          title={isSlotBlocked(day, slotConfig.time, 3) ? 'Blocked' : slotConfig.slot3Type === 'blank' ? 'Unavailable' : (slot3Event ? `${slot3Event.name} - Slot 3${slot3Overflow.length ? ` (+${slot3Overflow.length} more)` : ''}` : `Book ${slotConfig.time} Slot 3 (${slotConfig.slot3Type})`)}
+                        >
+                          {isSlotBlocked(day, slotConfig.time, 3) ? (
+                            <span className="text-xs">🔒</span>
+                          ) : slot3Event ? getCellContent(slot3Event) : slotConfig.slot3Emoji && <span className="text-xs">{slotConfig.slot3Emoji}</span>}
+                          {/* Overflow badge */}
+                          {slot3Overflow.length > 0 && (
+                            <div className="absolute -top-1 -right-1" ref={overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 3 ? dropdownRef : null}>
+                              <button
+                                className="bg-red-500 text-white font-bold rounded-full flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
+                                style={{ fontSize: '9px', width: '16px', height: '16px', lineHeight: '16px' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOverflowDropdown(
+                                    overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 3
+                                      ? null
+                                      : { dateStr: dayStr, time: slotConfig.time, slot: 3 }
+                                  );
+                                }}
+                                title={`${slot3Overflow.length} more booking(s)`}
+                              >
+                                +{slot3Overflow.length}
+                              </button>
+                              {overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 3 && (
+                                <div className="absolute top-5 right-0 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[160px] py-1">
+                                  <div className="px-2 py-1 text-xs font-semibold text-gray-500 border-b border-gray-200">
+                                    +{slot3Overflow.length} more
+                                  </div>
+                                  {slot3Overflow.map((evt, i) => (
                                     <button
                                       key={evt.id || i}
                                       className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 truncate transition-colors"

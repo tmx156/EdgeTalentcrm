@@ -4,61 +4,75 @@ import { FiCheckCircle, FiClock, FiUser, FiMessageSquare, FiMail } from 'react-i
 // Time slots configuration matching the visual design
 // Striped pattern for child/male slots: bg-gradient-to-r from-yellow-100 to-blue-100
 const TIME_SLOTS = [
-  // 10:00 - Slot 1: child/male (striped), Slot 2: female
+  // 10:00 - Slot 1: child/male, Slot 2: female, Slot 3: female
   { time: '10:00', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Child/Male',
-                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female' },
+                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female',
+                    slot3Type: 'female', slot3Color: 'bg-pink-100', slot3BorderColor: 'border-pink-200', slot3Label: 'Female' },
 
-  // 10:30 - Slot 1: child/male (striped), Slot 2: child/male (striped)
+  // 10:30 - Slot 1: child/male, Slot 2: child/male, Slot 3: child/male
   { time: '10:30', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Child/Male',
-                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Child/Male' },
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Child/Male',
+                    slot3Type: 'child-male', slot3Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot3BorderColor: 'border-yellow-300', slot3Label: 'Child/Male' },
 
-  // 11:00 - Slot 1: female, Slot 2: child/male (striped)
+  // 11:00 - Slot 1: female, Slot 2: child/male, Slot 3: child/male
   { time: '11:00', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
-                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Child/Male' },
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Child/Male',
+                    slot3Type: 'child-male', slot3Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot3BorderColor: 'border-yellow-300', slot3Label: 'Child/Male' },
 
-  // 11:30 - Slot 1: female, Slot 2: female
+  // 11:30 - Slot 1: female, Slot 2: female, Slot 3: female
   { time: '11:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
-                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female' },
+                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female',
+                    slot3Type: 'female', slot3Color: 'bg-pink-100', slot3BorderColor: 'border-pink-200', slot3Label: 'Female' },
 
-  // 12:00 - Slot 1: child/male (striped), Slot 2: male
+  // 12:00 - Slot 1: child/male, Slot 2: male, Slot 3: male
   { time: '12:00', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Child/Male',
-                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male' },
+                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male',
+                    slot3Type: 'male', slot3Color: 'bg-blue-100', slot3BorderColor: 'border-blue-200', slot3Label: 'Male' },
 
-  // 12:30 - Slot 1: female, Slot 2: female
+  // 12:30 - Slot 1: female, Slot 2: female, Slot 3: female
   { time: '12:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
-                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female' },
+                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female',
+                    slot3Type: 'female', slot3Color: 'bg-pink-100', slot3BorderColor: 'border-pink-200', slot3Label: 'Female' },
 
-  // 13:00 - Slot 1: female, Slot 2: male
+  // 13:00 - Slot 1: female, Slot 2: male, Slot 3: male
   { time: '13:00', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
-                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male' },
+                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male',
+                    slot3Type: 'male', slot3Color: 'bg-blue-100', slot3BorderColor: 'border-blue-200', slot3Label: 'Male' },
 
-  // 13:30 - Slot 1: female, Slot 2: male/child (striped)
+  // 13:30 - Slot 1: female, Slot 2: male/child, Slot 3: male/child
   { time: '13:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
-                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child' },
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child',
+                    slot3Type: 'child-male', slot3Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot3BorderColor: 'border-yellow-300', slot3Label: 'Male/Child' },
 
-  // 14:00 - Slot 1: male/child (striped), Slot 2: male/child (striped)
+  // 14:00 - Slot 1: male/child, Slot 2: male/child, Slot 3: male/child
   { time: '14:00', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Male/Child',
-                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child' },
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child',
+                    slot3Type: 'child-male', slot3Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot3BorderColor: 'border-yellow-300', slot3Label: 'Male/Child' },
 
-  // 14:30 - Slot 1: female, Slot 2: male/child (striped)
+  // 14:30 - Slot 1: female, Slot 2: male/child, Slot 3: male/child
   { time: '14:30', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
-                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child' },
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child',
+                    slot3Type: 'child-male', slot3Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot3BorderColor: 'border-yellow-300', slot3Label: 'Male/Child' },
 
-  // 15:00 - Slot 1: female, Slot 2: female
+  // 15:00 - Slot 1: female, Slot 2: female, Slot 3: female
   { time: '15:00', slot1Type: 'female', slot1Color: 'bg-pink-100', slot1BorderColor: 'border-pink-200', slot1Label: 'Female',
-                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female' },
+                    slot2Type: 'female', slot2Color: 'bg-pink-100', slot2BorderColor: 'border-pink-200', slot2Label: 'Female',
+                    slot3Type: 'female', slot3Color: 'bg-pink-100', slot3BorderColor: 'border-pink-200', slot3Label: 'Female' },
 
-  // 15:30 - Slot 1: male/child (striped), Slot 2: male/child (striped) - No female after 3:30pm
+  // 15:30 - Slot 1: male/child, Slot 2: male/child, Slot 3: male/child
   { time: '15:30', slot1Type: 'child-male', slot1Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot1BorderColor: 'border-yellow-300', slot1Label: 'Male/Child',
-                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child' },
+                    slot2Type: 'child-male', slot2Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot2BorderColor: 'border-yellow-300', slot2Label: 'Male/Child',
+                    slot3Type: 'child-male', slot3Color: 'bg-gradient-to-r from-yellow-100 to-blue-100', slot3BorderColor: 'border-yellow-300', slot3Label: 'Male/Child' },
 
-  // 16:00 - Slot 1: male, Slot 2: male
+  // 16:00 - Slot 1: male, Slot 2: male, Slot 3: male
   { time: '16:00', slot1Type: 'male', slot1Color: 'bg-blue-100', slot1BorderColor: 'border-blue-200', slot1Label: 'Male',
-                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male' },
+                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male',
+                    slot3Type: 'male', slot3Color: 'bg-blue-100', slot3BorderColor: 'border-blue-200', slot3Label: 'Male' },
 
-  // 16:30 - Slot 1: male, Slot 2: male
+  // 16:30 - Slot 1: male, Slot 2: male, Slot 3: male
   { time: '16:30', slot1Type: 'male', slot1Color: 'bg-blue-100', slot1BorderColor: 'border-blue-200', slot1Label: 'Male',
-                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male' }
+                    slot2Type: 'male', slot2Color: 'bg-blue-100', slot2BorderColor: 'border-blue-200', slot2Label: 'Male',
+                    slot3Type: 'male', slot3Color: 'bg-blue-100', slot3BorderColor: 'border-blue-200', slot3Label: 'Male' }
 ];
 
 const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, onEventClick }) => {
@@ -135,7 +149,7 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
         if (slotNumber && block.slot_number) {
           return parseInt(block.slot_number) === parseInt(slotNumber);
         }
-        // If block has no slot_number, both slots are blocked
+        // If block has no slot_number, all slots are blocked
         if (!block.slot_number) {
           return true;
         }
@@ -213,7 +227,7 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
     }
 
     // Get the appropriate color for this specific slot
-    const slotColor = slotNumber === 1 ? slotConfig.slot1Color : slotConfig.slot2Color;
+    const slotColor = slotNumber === 1 ? slotConfig.slot1Color : slotNumber === 2 ? slotConfig.slot2Color : slotConfig.slot3Color;
 
     if (!event) return slotColor;
 
@@ -302,25 +316,29 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
       {/* Calendar Grid */}
       <div className="slot-calendar-grid border border-gray-300 rounded-lg overflow-hidden shadow-sm">
         {/* Header Row */}
-        <div className="grid grid-cols-3 bg-gray-50 border-b border-gray-300">
+        <div className="grid grid-cols-4 bg-gray-50 border-b border-gray-300">
           <div className="p-3 font-semibold text-center border-r border-gray-300">TIME</div>
           <div className="p-3 font-semibold text-center border-r border-gray-300">SLOT 1</div>
-          <div className="p-3 font-semibold text-center">SLOT 2</div>
+          <div className="p-3 font-semibold text-center border-r border-gray-300">SLOT 2</div>
+          <div className="p-3 font-semibold text-center">SLOT 3</div>
         </div>
 
         {/* Time Slot Rows */}
         {TIME_SLOTS.map((slotConfig, index) => {
           const slot1Event = getEventForSlot(slotConfig.time, 1);
           const slot2Event = getEventForSlot(slotConfig.time, 2);
+          const slot3Event = getEventForSlot(slotConfig.time, 3);
           const slot1All = getEventsForSlot(slotConfig.time, 1);
           const slot2All = getEventsForSlot(slotConfig.time, 2);
+          const slot3All = getEventsForSlot(slotConfig.time, 3);
           const slot1Overflow = slot1All.length > 1 ? slot1All.slice(1) : [];
           const slot2Overflow = slot2All.length > 1 ? slot2All.slice(1) : [];
+          const slot3Overflow = slot3All.length > 1 ? slot3All.slice(1) : [];
 
           return (
             <div
               key={slotConfig.time}
-              className={`grid grid-cols-3 border-b border-gray-200 ${index === TIME_SLOTS.length - 1 ? 'border-b-0' : ''}`}
+              className={`grid grid-cols-4 border-b border-gray-200 ${index === TIME_SLOTS.length - 1 ? 'border-b-0' : ''}`}
             >
               {/* Time Column */}
               <div className="p-4 font-medium text-center border-r border-gray-300 bg-gray-50 flex items-center justify-center">
@@ -504,6 +522,102 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                           +{slot2Overflow.length} more booking{slot2Overflow.length > 1 ? 's' : ''}
                         </div>
                         {slot2Overflow.map((evt, i) => (
+                          <button
+                            key={evt.id || i}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOverflowDropdown(null);
+                              onEventClick(evt);
+                            }}
+                          >
+                            {getStatusIndicator(evt)}
+                            <span className="truncate font-medium">{evt.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Slot 3 */}
+              <div
+                className={`p-4 ${getCellBackground(slotConfig, slot3Event, slotConfig.time, 3)} ${slotConfig.slot3BorderColor} ${isSlotBlocked(slotConfig.time, 3) || slotConfig.slot3Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity min-h-[80px] flex items-center justify-center relative`}
+                onClick={() => {
+                  if (isSlotBlocked(slotConfig.time, 3) || slotConfig.slot3Type === 'blank') return;
+                  slot3Event ? onEventClick(slot3Event) : onSlotClick(slotConfig.time, 3, slotConfig);
+                }}
+              >
+                {isSlotBlocked(slotConfig.time, 3) ? (
+                  <div className="text-center w-full">
+                    <div className="font-semibold text-gray-600 flex items-center justify-center">
+                      <span className="text-xs">🔒 Blocked</span>
+                    </div>
+                  </div>
+                ) : slotConfig.slot3Type === 'blank' ? (
+                  <div className="text-center w-full">
+                    <div className="font-semibold text-gray-500 flex items-center justify-center">
+                      <span className="text-xs">Unavailable</span>
+                    </div>
+                  </div>
+                ) : slot3Event ? (
+                  <div className="text-center w-full">
+                    <div className="font-semibold text-gray-800 flex items-center justify-center">
+                      {getStatusIndicator(slot3Event)}
+                      <span className="truncate">{slot3Event.name}</span>
+                      {(slot3Event.hasUnreadSms || slot3Event.hasUnreadEmail) ? (
+                        <span className="relative ml-1.5 flex-shrink-0 animate-pulse">
+                          {slot3Event.hasUnreadSms ? (
+                            <FiMessageSquare className="inline-block w-4 h-4 text-green-500" />
+                          ) : (
+                            <FiMail className="inline-block w-4 h-4 text-blue-500" />
+                          )}
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white animate-ping" style={{animationDuration: '1.5s'}} />
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-white" />
+                        </span>
+                      ) : (slot3Event.hasReceivedSms || slot3Event.hasReceivedEmail) ? (
+                        <span className="ml-1.5 flex-shrink-0">
+                          {slot3Event.hasReceivedSms ? (
+                            <FiMessageSquare className="inline-block w-3.5 h-3.5 text-gray-400" />
+                          ) : (
+                            <FiMail className="inline-block w-3.5 h-3.5 text-gray-400" />
+                          )}
+                        </span>
+                      ) : null}
+                    </div>
+                    {slot3Event.phone && (
+                      <div className="text-xs text-gray-600 mt-1">{slot3Event.phone}</div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-sm text-center">
+                    Click to Book
+                  </div>
+                )}
+                {/* Overflow badge */}
+                {slot3Overflow.length > 0 && (
+                  <div className="absolute top-1 right-1" ref={overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 3 ? dropdownRef : null}>
+                    <button
+                      className="bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOverflowDropdown(
+                          overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 3
+                            ? null
+                            : { time: slotConfig.time, slot: 3 }
+                        );
+                      }}
+                      title={`${slot3Overflow.length} more booking(s)`}
+                    >
+                      +{slot3Overflow.length}
+                    </button>
+                    {overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 3 && (
+                      <div className="absolute top-7 right-0 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[180px] py-1">
+                        <div className="px-3 py-1 text-xs font-semibold text-gray-500 border-b border-gray-200">
+                          +{slot3Overflow.length} more booking{slot3Overflow.length > 1 ? 's' : ''}
+                        </div>
+                        {slot3Overflow.map((evt, i) => (
                           <button
                             key={evt.id || i}
                             className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 flex items-center gap-2 transition-colors"

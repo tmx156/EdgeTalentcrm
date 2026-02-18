@@ -134,12 +134,24 @@ const Calendar = () => {
           e.time_booked === slot.time && parseInt(e.booking_slot) === 2
         );
 
-        // If either slot is available, add to available list
+        // Check slot 3 availability
+        const slot3Blocked = dateBlockedSlots.some(b =>
+          (!b.time_slot || b.time_slot === slot.time) &&
+          (!b.slot_number || parseInt(b.slot_number) === 3)
+        );
+        const slot3Booked = bookedSlots.some(e =>
+          e.time_booked === slot.time && parseInt(e.booking_slot) === 3
+        );
+
+        // If any slot is available, add to available list
         if (!slot1Blocked && !slot1Booked) {
           available.push({ time: slot.time, slot: 1, label: `${slot.label} - Slot 1` });
         }
         if (!slot2Blocked && !slot2Booked) {
           available.push({ time: slot.time, slot: 2, label: `${slot.label} - Slot 2` });
+        }
+        if (!slot3Blocked && !slot3Booked) {
+          available.push({ time: slot.time, slot: 3, label: `${slot.label} - Slot 3` });
         }
       });
 
@@ -151,6 +163,7 @@ const Calendar = () => {
       ALL_TIME_SLOTS.forEach(slot => {
         fallback.push({ time: slot.time, slot: 1, label: `${slot.label} - Slot 1` });
         fallback.push({ time: slot.time, slot: 2, label: `${slot.label} - Slot 2` });
+        fallback.push({ time: slot.time, slot: 3, label: `${slot.label} - Slot 3` });
       });
       setReviewAvailableSlots(fallback);
     } finally {
@@ -3557,6 +3570,7 @@ const Calendar = () => {
                       >
                         <option value={1}>Slot 1</option>
                         <option value={2}>Slot 2</option>
+                        <option value={3}>Slot 3</option>
                       </select>
                       <p className="text-xs text-gray-500 mt-1">
                         Select which slot column to book the appointment in
@@ -4937,7 +4951,7 @@ const Calendar = () => {
                       <div className="animate-spin h-6 w-6 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-2"></div>
                       <p className="text-gray-500 text-sm">Loading photos...</p>
                     </div>
-                  ) : totalPhotoCount > 0 || galleryFolderFilter !== 'all' ? (
+                  ) : totalPhotoCount > 0 || leadPhotos.length > 0 || galleryFolderFilter !== 'all' ? (
                     <div className="flex gap-3">
                       {/* Folder Filter Sidebar */}
                       <div className="w-20 flex-shrink-0 space-y-1">
@@ -5233,7 +5247,7 @@ const Calendar = () => {
                   </option>
                   {reviewAvailableSlots.map((slot, idx) => (
                     <option key={`${slot.time}-${slot.slot}-${idx}`} value={`${slot.time}|${slot.slot}`}>
-                      {slot.label} {slot.slot === 1 ? '(Slot 1)' : '(Slot 2)'}
+                      {slot.label} {slot.slot === 1 ? '(Slot 1)' : slot.slot === 2 ? '(Slot 2)' : '(Slot 3)'}
                     </option>
                   ))}
                 </select>

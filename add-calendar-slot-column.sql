@@ -2,12 +2,12 @@
 -- ADD BOOKING SLOT COLUMN TO LEADS TABLE
 -- =====================================================
 -- This script adds a booking_slot column to support the new
--- slot-based calendar system with 2 columns (Slot 1 and Slot 2)
+-- slot-based calendar system with 3 columns (Slot 1, Slot 2, and Slot 3)
 
 -- Add booking_slot column
-ALTER TABLE leads 
-ADD COLUMN IF NOT EXISTS booking_slot INTEGER DEFAULT 1 
-CHECK (booking_slot IN (1, 2));
+ALTER TABLE leads
+ADD COLUMN IF NOT EXISTS booking_slot INTEGER DEFAULT 1
+CHECK (booking_slot IN (1, 2, 3));
 
 -- Add index for performance
 CREATE INDEX IF NOT EXISTS idx_leads_booking_slot 
@@ -15,7 +15,7 @@ ON leads(booking_slot)
 WHERE deleted_at IS NULL;
 
 -- Add comment for documentation
-COMMENT ON COLUMN leads.booking_slot IS 'Calendar slot assignment: 1 or 2 for dual-column booking system';
+COMMENT ON COLUMN leads.booking_slot IS 'Calendar slot assignment: 1, 2, or 3 for triple-column booking system';
 
 -- =====================================================
 -- MIGRATE EXISTING BOOKINGS TO SLOTS
