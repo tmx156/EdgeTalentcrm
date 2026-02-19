@@ -534,6 +534,9 @@ const gmailWebhookRoutes = require('./routes/gmail-webhook');
 app.use('/api/gmail/webhook', gmailWebhookRoutes);
 // Gravity Forms Webhook Integration (for importing leads from Gravity Forms)
 app.use('/api/gravity-forms-webhook', gravityFormsWebhookRoutes);
+// Generic Lead Webhook (for external landing pages — Vercel, Netlify, etc.)
+const leadWebhookRoutes = require('./routes/lead-webhook');
+app.use('/api/webhook/lead', leadWebhookRoutes);
 // Postcode lookup (OS Places API proxy)
 app.use('/api/postcode', postcodeRoutes);
 // Email Accounts API (for managing email account pool)
