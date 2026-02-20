@@ -1,0 +1,14 @@
+{
+  "version": "1.0.251",
+  "commitHash": "0479ef7",
+  "fullCommitHash": "0479ef7c7778ff1c7e63686675a43f28d1566c6d",
+  "commitMessage": "Add generic lead webhook for external landing pages",
+  "commitDate": "2026-02-19 23:49:19 +0000",
+  "author": "Tin",
+  "branch": "main",
+  "commitCount": 251,
+  "buildTimestamp": "2026-02-20T21:09:04.204Z",
+  "buildId": "0479ef7-1771621744205",
+  "releaseName": "Winter Update",
+  "seenKey": "main-0479ef7"
+}

@@ -5,6 +5,7 @@ import { useSocket } from '../context/SocketContext';
 import axios from 'axios';
 import ConnectionStatus from './ConnectionStatus';
 import MessageModal from './MessageModal';
+import PatchNotesModal, { PatchNotesProvider, PatchNotesButton } from './PatchNotesModal';
 import {
   FiHome,
   FiUsers,
@@ -18,6 +19,8 @@ import {
   FiBell,
   FiChevronDown,
   FiChevronUp,
+  FiChevronLeft,
+  FiChevronRight,
   FiMail,
   FiDollarSign,
   FiTrendingUp,
@@ -25,7 +28,8 @@ import {
   FiLock,
   FiPhone,
   FiImage,
-  FiFileText
+  FiFileText,
+  FiTag
 } from 'react-icons/fi';
 import { RiRobot2Line } from 'react-icons/ri';
 
@@ -35,6 +39,14 @@ const EdgeTalentLogo = '/images/edge-talent-logo.png';
 const Layout = ({ children }) => {
   const notificationsEnabled = String(process.env.REACT_APP_NOTIFICATIONS_ENABLED || 'true').toLowerCase() !== 'false';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    // Persist sidebar collapsed state in localStorage
+    try {
+      return localStorage.getItem('sidebarCollapsed') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [leadsDropdownOpen, setLeadsDropdownOpen] = useState(false);
   const [templatesDropdownOpen, setTemplatesDropdownOpen] = useState(false);
   const [messagesDropdownOpen, setMessagesDropdownOpen] = useState(false);
@@ -701,6 +713,18 @@ const Layout = ({ children }) => {
     return () => clearInterval(cleanupInterval);
   }, []);
 
+  // Persist sidebar collapsed state
+  useEffect(() => {
+    try {
+      localStorage.setItem('sidebarCollapsed', sidebarCollapsed.toString());
+    } catch {}
+  }, [sidebarCollapsed]);
+
+  // Toggle sidebar collapse
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!sidebarCollapsed);
+  };
+
   // Handle modal close
   const handleMessageModalClose = () => {
     setMessageModalOpen(false);
@@ -735,7 +759,7 @@ const Layout = ({ children }) => {
     { name: 'Diary', href: '/calendar', icon: FiCalendar },
     { name: 'Photos', href: '/photographer', icon: FiImage, photographerOnly: true },
     { name: 'Blocked Slots', href: '/blocked-slots', icon: FiLock, adminOnly: true },
-    { name: 'SalesApe AI', href: '/salesape', icon: RiRobot2Line, adminOnly: true },
+    // { name: 'SalesApe AI', href: '/salesape', icon: RiRobot2Line, adminOnly: true }, // DISABLED
     { name: 'Messages', href: '/messages', icon: FiMessageSquare },
     { name: 'Sales', href: '/sales', icon: FiTrendingUp, adminOnly: true },
     { name: 'Finance', href: '/finance', icon: FiDollarSign, adminOnly: true },
@@ -744,6 +768,7 @@ const Layout = ({ children }) => {
     { name: 'Templates', href: '/templates', icon: FiMail, adminOnly: true },
     { name: 'Contract Editor', href: '/contract-editor', icon: FiFileText, adminOnly: true },
     { name: 'Email Accounts', href: '/email-accounts', icon: FiMail, adminOnly: true },
+    { name: 'Price List', href: '/price-list', icon: FiTag, adminOnly: true },
     { name: 'Users', href: '/users', icon: FiUser, adminOnly: true },
   ];
 
@@ -865,7 +890,7 @@ const Layout = ({ children }) => {
                       </button>
                       
                       {/* Dropdown Menu */}
-                      {leadsDropdownOpen && (
+                      {leadsDropdownOpen && !sidebarCollapsed && (
                         <div className="mt-1 ml-6 space-y-1">
                           {leadsStatusOptions.map((option) => (
                             <button
@@ -905,7 +930,7 @@ const Layout = ({ children }) => {
                           <FiChevronDown className="h-4 w-4" />
                         )}
                       </button>
-                      {messagesDropdownOpen && (
+                      {messagesDropdownOpen && !sidebarCollapsed && (
                         <div className="mt-1 ml-6 space-y-1">
                           <button
                             onClick={() => handleMessagesNavigation('sms')}
@@ -944,7 +969,7 @@ const Layout = ({ children }) => {
                           <FiChevronDown className="h-4 w-4" />
                         )}
                       </button>
-                      {templatesDropdownOpen && (
+                      {templatesDropdownOpen && !sidebarCollapsed && (
                         <div className="mt-1 ml-6 space-y-1">
                           {templateCategories.map((cat) => (
                             <button
@@ -989,8 +1014,9 @@ const Layout = ({ children }) => {
             </nav>
           </div>
           
+          {/* Mobile Sign Out Button - Visible on mobile sidebar */}
           <div className="flex-shrink-0 flex border-t border-gray-200 p-4">
-            <div className="flex items-center">
+            <div className="flex items-center w-full">
               <div className="flex-shrink-0">
                 <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
                   <span className="text-sm font-medium text-white">
@@ -998,49 +1024,90 @@ const Layout = ({ children }) => {
                   </span>
                 </div>
               </div>
-              <div className="ml-3">
-                <p className="text-sm font-medium text-gray-700">{user?.name}</p>
+              <div className="ml-3 flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-700 truncate">{user?.name}</p>
                 <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
               </div>
+              <button
+                onClick={logout}
+                className="ml-2 p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                title="Sign out"
+              >
+                <FiLogOut className="h-5 w-5" />
+              </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Static sidebar for desktop */}
-      <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
+      {/* Collapsible sidebar for desktop */}
+      <div className={`hidden md:flex md:flex-col md:fixed md:inset-y-0 transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'md:w-16' : 'md:w-64'}`}>
         <div className="flex-1 flex flex-col min-h-0 border-r border-gray-200 bg-white">
-          <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
-            <div className="flex items-center flex-shrink-0 px-4">
+          {/* Collapse Toggle Button - Premium Design */}
+          <button
+            onClick={toggleSidebar}
+            className="absolute -right-5 top-1/2 -translate-y-1/2 z-50 group animate-arrow-attention"
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <div className="flex items-center">
+              {/* Premium pill-shaped container */}
+              <div className="flex items-center bg-white border border-gray-200 rounded-full pl-3 pr-2 py-2 shadow-lg hover:shadow-xl hover:border-blue-300 transition-all duration-300 group-hover:scale-105">
+                {/* Subtle glow effect */}
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                
+                {/* Arrow icon with premium styling */}
+                <div className="relative text-gray-500 group-hover:text-blue-600 transition-colors duration-300">
+                  {sidebarCollapsed ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path fillRule="evenodd" d="M16.28 11.47a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06-1.06L14.69 12 7.72 5.03a.75.75 0 011.06-1.06l7.5 7.5z" clipRule="evenodd" />
+                      <path fillRule="evenodd" d="M12.28 11.47a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06-1.06L10.69 12 3.72 5.03a.75.75 0 011.06-1.06l7.5 7.5z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path fillRule="evenodd" d="M7.72 12.53a.75.75 0 010-1.06l7.5-7.5a.75.75 0 111.06 1.06L9.31 12l6.97 6.97a.75.75 0 11-1.06 1.06l-7.5-7.5z" clipRule="evenodd" />
+                      <path fillRule="evenodd" d="M3.72 12.53a.75.75 0 010-1.06l7.5-7.5a.75.75 0 111.06 1.06L5.31 12l6.97 6.97a.75.75 0 11-1.06 1.06l-7.5-7.5z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+                
+                {/* Decorative dot indicator */}
+                <div className="ml-1.5 w-1.5 h-1.5 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 group-hover:from-blue-500 group-hover:to-indigo-600 transition-colors duration-300"></div>
+              </div>
+            </div>
+          </button>
+          <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto overflow-x-hidden">
+            <div className={`flex items-center flex-shrink-0 px-4 transition-all duration-300 ${sidebarCollapsed ? 'justify-center' : ''}`}>
               <img
                 src={EdgeTalentLogo}
                 alt="EDGE TALENT"
-                className="h-10 w-auto object-contain"
+                className={`h-10 w-auto object-contain transition-all duration-300 ${sidebarCollapsed ? 'h-8' : 'h-10'}`}
               />
             </div>
-            <nav className="mt-5 flex-1 px-2 bg-white space-y-1">
+            <nav className={`mt-5 flex-1 bg-white space-y-1 transition-all duration-300 ${sidebarCollapsed ? 'px-1' : 'px-2'}`}>
               {filteredNavigation.map((item) => (
                 <div key={item.name}>
                   {item.name === 'Leads' ? (
                     // Leads with dropdown
                     <div className="relative" ref={leadsDropdownRef}>
                       <button
-                        onClick={() => setLeadsDropdownOpen(!leadsDropdownOpen)}
-                        className={`group flex items-center justify-between w-full px-2 py-2 text-sm font-medium rounded-md ${
+                        onClick={() => sidebarCollapsed ? (toggleSidebar(), setLeadsDropdownOpen(true)) : setLeadsDropdownOpen(!leadsDropdownOpen)}
+                        className={`group flex items-center ${sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-2'} w-full py-2 text-sm font-medium rounded-md ${
                           isCurrentPath(item.href)
                             ? 'bg-blue-100 text-blue-900'
                             : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                         }`}
+                        title={sidebarCollapsed ? item.name : ''}
                       >
                         <div className="flex items-center">
-                          <item.icon className="mr-3 h-5 w-5" />
-                          {item.name}
+                          <item.icon className={`h-5 w-5 ${sidebarCollapsed ? '' : 'mr-3'}`} />
+                          {!sidebarCollapsed && item.name}
                         </div>
-                        {leadsDropdownOpen ? (
+                        {!sidebarCollapsed && (leadsDropdownOpen ? (
                           <FiChevronUp className="h-4 w-4" />
                         ) : (
                           <FiChevronDown className="h-4 w-4" />
-                        )}
+                        ))}
                       </button>
                       
                       {/* Dropdown Menu */}
@@ -1067,22 +1134,23 @@ const Layout = ({ children }) => {
                   ) : item.name === 'Messages' ? (
                     <div className="relative" ref={messagesDropdownRef}>
                       <button
-                        onClick={() => setMessagesDropdownOpen(!messagesDropdownOpen)}
-                        className={`group flex items-center justify-between w-full px-2 py-2 text-sm font-medium rounded-md ${
+                        onClick={() => sidebarCollapsed ? (toggleSidebar(), setMessagesDropdownOpen(true)) : setMessagesDropdownOpen(!messagesDropdownOpen)}
+                        className={`group flex items-center ${sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-2'} w-full py-2 text-sm font-medium rounded-md ${
                           isCurrentPath(item.href)
                             ? 'bg-blue-100 text-blue-900'
                             : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                         }`}
+                        title={sidebarCollapsed ? item.name : ''}
                       >
                         <div className="flex items-center">
-                          <item.icon className="mr-3 h-5 w-5" />
-                          {item.name}
+                          <item.icon className={`h-5 w-5 ${sidebarCollapsed ? '' : 'mr-3'}`} />
+                          {!sidebarCollapsed && item.name}
                         </div>
-                        {messagesDropdownOpen ? (
+                        {!sidebarCollapsed && (messagesDropdownOpen ? (
                           <FiChevronUp className="h-4 w-4" />
                         ) : (
                           <FiChevronDown className="h-4 w-4" />
-                        )}
+                        ))}
                       </button>
                       {messagesDropdownOpen && (
                         <div className="mt-1 ml-6 space-y-1">
@@ -1106,22 +1174,23 @@ const Layout = ({ children }) => {
                   ) : item.name === 'Templates' ? (
                     <div className="relative" ref={templatesDropdownRef}>
                       <button
-                        onClick={() => setTemplatesDropdownOpen(!templatesDropdownOpen)}
-                        className={`group flex items-center justify-between w-full px-2 py-2 text-sm font-medium rounded-md ${
+                        onClick={() => sidebarCollapsed ? (toggleSidebar(), setTemplatesDropdownOpen(true)) : setTemplatesDropdownOpen(!templatesDropdownOpen)}
+                        className={`group flex items-center ${sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-2'} w-full py-2 text-sm font-medium rounded-md ${
                           location.pathname.startsWith('/templates')
                             ? 'bg-blue-100 text-blue-900'
                             : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                         }`}
+                        title={sidebarCollapsed ? item.name : ''}
                       >
                         <div className="flex items-center">
-                          <FiMail className="mr-3 h-5 w-5" />
-                          {item.name}
+                          <FiMail className={`h-5 w-5 ${sidebarCollapsed ? '' : 'mr-3'}`} />
+                          {!sidebarCollapsed && item.name}
                         </div>
-                        {templatesDropdownOpen ? (
+                        {!sidebarCollapsed && (templatesDropdownOpen ? (
                           <FiChevronUp className="h-4 w-4" />
                         ) : (
                           <FiChevronDown className="h-4 w-4" />
-                        )}
+                        ))}
                       </button>
                       {templatesDropdownOpen && (
                         <div className="mt-1 ml-6 space-y-1">
@@ -1152,14 +1221,15 @@ const Layout = ({ children }) => {
                     // Regular navigation items
                     <Link
                       to={item.href}
-                      className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
+                      className={`group flex items-center ${sidebarCollapsed ? 'justify-center px-2' : 'px-2'} py-2 text-sm font-medium rounded-md ${
                         isCurrentPath(item.href)
                           ? 'bg-blue-100 text-blue-900'
                           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                       }`}
+                      title={sidebarCollapsed ? item.name : ''}
                     >
-                      <item.icon className="mr-3 h-5 w-5" />
-                      {item.name}
+                      <item.icon className={`h-5 w-5 ${sidebarCollapsed ? '' : 'mr-3'}`} />
+                      {!sidebarCollapsed && item.name}
                     </Link>
                   )}
                 </div>
@@ -1167,8 +1237,9 @@ const Layout = ({ children }) => {
             </nav>
           </div>
           
+          {/* Desktop User Profile / Sign Out */}
           <div className="flex-shrink-0 flex border-t border-gray-200 p-4">
-            <div className="flex items-center w-full">
+            <div className={`flex items-center w-full ${sidebarCollapsed ? 'justify-center' : ''}`}>
               <div className="flex-shrink-0">
                 <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
                   <span className="text-sm font-medium text-white">
@@ -1176,24 +1247,37 @@ const Layout = ({ children }) => {
                   </span>
                 </div>
               </div>
-              <div className="ml-3 flex-1">
-                <p className="text-sm font-medium text-gray-700">{user?.name}</p>
-                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
-              </div>
-              <button
-                onClick={logout}
-                className="ml-2 p-1 rounded-md text-gray-400 hover:text-gray-500"
-                title="Logout"
-              >
-                <FiLogOut className="h-5 w-5" />
-              </button>
+              {!sidebarCollapsed && (
+                <>
+                  <div className="ml-3 flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 truncate">{user?.name}</p>
+                    <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+                  </div>
+                  <button
+                    onClick={logout}
+                    className="ml-2 p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                    title="Sign out"
+                  >
+                    <FiLogOut className="h-5 w-5" />
+                  </button>
+                </>
+              )}
+              {sidebarCollapsed && (
+                <button
+                  onClick={logout}
+                  className="absolute -right-4 bottom-20 text-gray-400 hover:text-red-500 transition-colors"
+                  title="Sign out"
+                >
+                  <FiLogOut className="h-5 w-5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Main content */}
-      <div className="md:pl-64 flex flex-col flex-1">
+      <div className={`flex flex-col flex-1 transition-all duration-300 ${sidebarCollapsed ? 'md:pl-16' : 'md:pl-64'}`}>
         {/* Header */}
         <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30">
           <div className="max-w-full mx-auto px-3 sm:px-4 lg:px-8">
@@ -1353,6 +1437,11 @@ const Layout = ({ children }) => {
         onReply={handleReplySent}
       />
 
+      {/* Patch Notes System */}
+      <PatchNotesProvider>
+        <PatchNotesModal />
+        <PatchNotesButton />
+      </PatchNotesProvider>
     </div>
   );
 };

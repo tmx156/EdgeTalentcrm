@@ -101,17 +101,35 @@ const Reports = () => {
         params.booker = filters.userId;
       }
 
-      const response = await axios.get('/api/stats/leads', { params });
-      const counts = response.data;
+      // Fetch lead stats and sales revenue in parallel
+      // Sales API uses relational join: sales → leads (by date_booked + attended status)
+      const [leadsResponse, salesResponse] = await Promise.all([
+        axios.get('/api/stats/leads', { params }),
+        axios.get('/api/sales/stats', {
+          params: {
+            dateRange: 'custom',
+            startDate: startUTC,
+            endDate: endUTC,
+            ...(filters.userId !== 'all' ? { booker: filters.userId } : {})
+          }
+        }).catch(() => ({ data: {} })) // Graceful fallback if sales API fails
+      ]);
+
+      const counts = leadsResponse.data;
+      const salesStats = salesResponse.data;
 
       console.log('📊 Stats API response:', counts);
+      console.log('💰 Sales API response:', salesStats);
 
       // Map stats API response to Reports state
       const assigned = counts.assigned || 0;
       const booked = counts.booked || 0;
       const attended = counts.attendedFilter || 0;
-      const sales = counts.salesConverted || 0;
-      const revenue = counts.revenue || 0;
+      // Use sales count from sales API (filtered by sale creation date)
+      // This ensures sales count matches the revenue figure
+      const sales = salesStats.totalSales || 0;
+      // Revenue from sales API (filtered by sale creation date)
+      const revenue = salesStats.totalRevenue || 0;
 
       // Attendance sub-breakdown
       const arrived = counts.arrived || 0;
@@ -392,7 +410,9 @@ RATES:
             </div>
             <FiDollarSign className="h-10 w-10 text-yellow-200" />
           </div>
-          <p className="text-sm mt-2">{formatCurrency(stats.revenue)} revenue</p>
+          <p className="text-sm mt-2" title="Revenue from sales in selected date range">
+            {formatCurrency(stats.revenue)} revenue
+          </p>
         </div>
       </div>
 
@@ -598,9 +618,9 @@ RATES:
             </div>
 
             <div className="p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg">
-              <p className="text-sm text-gray-600">Average Sale Value</p>
+              <p className="text-sm text-gray-600">Revenue per Attended</p>
               <p className="text-2xl font-bold text-gray-900">
-                {stats.sales > 0 ? formatCurrency(stats.revenue / stats.sales) : formatCurrency(0)}
+                {stats.attended > 0 ? formatCurrency(stats.revenue / stats.attended) : formatCurrency(0)}
               </p>
             </div>
           </div>

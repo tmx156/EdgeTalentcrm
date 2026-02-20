@@ -1289,3 +1289,396 @@
     padding: 12px;
   }
 }
+
+
+/* ========================================
+   RESPONSIVE IMPROVEMENTS - 2024
+   ======================================== */
+
+/* Sidebar Arrow Attention Animation - Premium Feel */
+@keyframes arrow-attention {
+  0%, 100% {
+    transform: translateY(-50%) translateX(0) scale(1);
+  }
+  15% {
+    transform: translateY(-50%) translateX(-6px) scale(1.05);
+  }
+  30% {
+    transform: translateY(-50%) translateX(4px) scale(1.05);
+  }
+  45% {
+    transform: translateY(-50%) translateX(-3px) scale(1.02);
+  }
+  60% {
+    transform: translateY(-50%) translateX(0) scale(1);
+  }
+}
+
+@keyframes arrow-glow {
+  0%, 100% {
+    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06);
+  }
+  50% {
+    box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.2), 0 4px 6px -2px rgba(59, 130, 246, 0.1);
+  }
+}
+
+.animate-arrow-attention {
+  animation: arrow-attention 2.5s cubic-bezier(0.4, 0, 0.2, 1) 0.5s, arrow-glow 2s ease-in-out 0.5s;
+  animation-fill-mode: both;
+}
+
+/* Enhanced Mobile Utilities */
+@layer utilities {
+  /* Safe area insets for mobile devices */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+  
+  /* Touch action optimization */
+  .touch-pan-y {
+    touch-action: pan-y;
+  }
+  
+  /* Prevent text selection on UI elements */
+  .select-none-ui {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+/* Collapsible Sidebar Styles */
+.sidebar-collapsed .nav-text {
+  display: none;
+}
+
+.sidebar-collapsed .nav-icon {
+  margin-right: 0;
+}
+
+/* Mobile Header Improvements */
+@media (max-width: 768px) {
+  /* Ensure header items don't overflow */
+  header .flex.items-center.space-x-2,
+  header .flex.items-center.space-x-4 {
+    gap: 0.25rem;
+  }
+  
+  /* Smaller header text */
+  header h1 {
+    font-size: 1rem;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  /* Adjust notification bell position */
+  header .relative .absolute.-top-1.-right-1 {
+    top: -2px;
+    right: -2px;
+  }
+}
+
+/* Ensure all buttons are touch-friendly */
+button, 
+[role="button"],
+.clickable {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Exception for small icon-only buttons */
+button.btn-icon-only,
+.btn-icon-only {
+  min-height: 32px;
+  min-width: 32px;
+}
+
+/* Mobile-optimized form inputs */
+@media (max-width: 640px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"],
+  select,
+  textarea {
+    font-size: 16px; /* Prevent zoom on iOS */
+    min-height: 44px;
+  }
+  
+  /* Larger checkboxes and radio buttons on mobile */
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 20px;
+    min-width: 20px;
+  }
+}
+
+/* Responsive Grid Improvements */
+.responsive-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(1, 1fr);
+}
+
+@media (min-width: 480px) {
+  .responsive-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 768px) {
+  .responsive-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Card responsive improvements */
+@media (max-width: 640px) {
+  .card {
+    padding: 0.75rem;
+  }
+  
+  .card h1, .card h2, .card h3 {
+    font-size: 1rem;
+  }
+}
+
+/* Table responsive wrapper */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive table {
+  min-width: 640px;
+}
+
+/* Modal responsive improvements */
+@media (max-width: 640px) {
+  .modal-overlay {
+    align-items: flex-end;
+  }
+  
+  .modal-content {
+    border-radius: 1rem 1rem 0 0;
+    max-height: 90vh;
+    margin: 0;
+  }
+}
+
+/* Status badges responsive */
+@media (max-width: 640px) {
+  .status-badge {
+    font-size: 0.625rem;
+    padding: 0.125rem 0.375rem;
+  }
+}
+
+/* Notification dropdown responsive */
+@media (max-width: 640px) {
+  .notifications-dropdown {
+    position: fixed;
+    top: 60px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: calc(100vh - 80px);
+  }
+}
+
+/* Dropdown menu responsive */
+@media (max-width: 640px) {
+  .dropdown-menu {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-radius: 1rem 1rem 0 0;
+    max-height: 70vh;
+    overflow-y: auto;
+  }
+}
+
+/* Lead cards responsive */
+@media (max-width: 640px) {
+  .lead-card {
+    padding: 0.75rem;
+  }
+  
+  .lead-card .lead-name {
+    font-size: 0.875rem;
+  }
+  
+  .lead-card .lead-info {
+    font-size: 0.75rem;
+  }
+}
+
+/* Calendar responsive improvements */
+@media (max-width: 640px) {
+  .calendar-container {
+    padding: 0.5rem;
+  }
+  
+  .calendar-header {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .calendar-header h2 {
+    font-size: 1rem;
+  }
+}
+
+/* Filter sidebar responsive */
+@media (max-width: 1024px) {
+  .filter-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .filter-sidebar.open {
+    transform: translateX(0);
+  }
+}
+
+/* Pagination responsive */
+@media (max-width: 640px) {
+  .pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+  
+  .pagination button {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* Tab navigation responsive */
+@media (max-width: 640px) {
+  .tab-navigation {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  
+  .tab-navigation::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .tab-navigation .tab {
+    white-space: nowrap;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* Floating action button for mobile */
+.fab {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 40;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 769px) {
+  .fab {
+    display: none;
+  }
+}
+
+/* Mobile-optimized search bar */
+@media (max-width: 640px) {
+  .search-bar {
+    position: relative;
+  }
+  
+  .search-bar input {
+    padding-left: 2.5rem;
+    font-size: 16px; /* Prevent zoom */
+  }
+  
+  .search-bar .search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+}
+
+/* Stats cards responsive */
+@media (max-width: 640px) {
+  .stats-card .stats-number {
+    font-size: 1.5rem;
+  }
+  
+  .stats-card .stats-label {
+    font-size: 0.625rem;
+  }
+}
+
+/* Toast/Notification responsive */
+@media (max-width: 640px) {
+  .toast {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+  }
+}
+
+/* Collapsible sidebar animation */
+.sidebar-transition {
+  transition: width 0.3s ease, transform 0.3s ease;
+}
+
+.sidebar-transition .nav-item {
+  transition: padding 0.3s ease, justify-content 0.3s ease;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  body {
+    font-size: 12pt;
+  }
+  
+  .card {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+}

@@ -8,8 +8,8 @@ import LazyImage from '../components/LazyImage';
 import { getOptimizedImageUrl, preloadImages, clearImageQueue, loadImageWithPriority } from '../utils/imageUtils';
 import { getCurrentUKTime } from '../utils/timeUtils';
 import { useAuth } from '../context/AuthContext';
-import SalesApeButton from '../components/SalesApeButton';
-import SalesApeStatus from '../components/SalesApeStatus';
+// import SalesApeButton from '../components/SalesApeButton'; // DISABLED
+// import SalesApeStatus from '../components/SalesApeStatus'; // DISABLED
 import ImageGalleryModal from '../components/ImageGalleryModal';
 import PresentationGallery from '../components/PresentationGallery';
 import GmailEmailRenderer from '../components/GmailEmailRenderer';
@@ -2756,18 +2756,7 @@ const LeadDetail = () => {
                 </div>
               </div>
 
-              {/* SalesApe Integration */}
-              {!editing && (
-                <div className="mt-4">
-                  <SalesApeButton 
-                    lead={lead} 
-                    onSuccess={(data) => {
-                      // Refresh lead data after successful send
-                      fetchLead();
-                    }}
-                  />
-                </div>
-              )}
+              {/* SalesApe Integration - DISABLED */}
 
               {/* Images & Gallery Button - Admin only */}
               {!editing && user?.role === 'admin' && (
@@ -2880,8 +2869,7 @@ const LeadDetail = () => {
                 </button>
               )}
 
-              {/* SalesApe Status Display */}
-              <SalesApeStatus lead={lead} />
+              {/* SalesApe Status Display - DISABLED */}
             </div>
           </div>
         </div>

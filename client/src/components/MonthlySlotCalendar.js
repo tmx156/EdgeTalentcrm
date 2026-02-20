@@ -94,10 +94,17 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
   // Get booking count summary for a day
   const getBookingSummary = (day) => {
     const { slot1, slot2, slot3 } = getBookingsForDay(day);
-    const total = slot1.length + slot2.length + slot3.length;
-    const confirmed = [...slot1, ...slot2, ...slot3].filter(e => e.is_confirmed).length;
+    const allBookings = [...slot1, ...slot2, ...slot3];
+    const total = allBookings.length;
+    const confirmed = allBookings.filter(e => e.is_confirmed).length;
 
-    return { total, confirmed, slot1Count: slot1.length, slot2Count: slot2.length, slot3Count: slot3.length };
+    // Message stats
+    const unreadSms = allBookings.filter(e => e.hasUnreadSms).length;
+    const unreadEmail = allBookings.filter(e => e.hasUnreadEmail).length;
+    const readSms = allBookings.filter(e => e.hasReceivedSms && !e.hasUnreadSms).length;
+    const readEmail = allBookings.filter(e => e.hasReceivedEmail && !e.hasUnreadEmail).length;
+
+    return { total, confirmed, slot1Count: slot1.length, slot2Count: slot2.length, slot3Count: slot3.length, unreadSms, unreadEmail, readSms, readEmail };
   };
 
   // Check if a day is fully blocked (entire day blocked, not just specific time slots)
@@ -176,7 +183,7 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
               );
             }
 
-            const { total, confirmed, slot1Count, slot2Count, slot3Count } = getBookingSummary(day);
+            const { total, confirmed, slot1Count, slot2Count, slot3Count, unreadSms, unreadEmail, readSms, readEmail } = getBookingSummary(day);
             const isToday = day.toDateString() === today.toDateString();
             const isPast = day < today;
             const { slot1, slot2, slot3 } = getBookingsForDay(day);
@@ -268,8 +275,33 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
                           ) : null}
                         </div>
                       ))}
-                      {total > 3 && (
-                        <div className="text-xs text-gray-500 font-medium">+{total - 3} more</div>
+                      {/* Footer row: "+X more" and message badges */}
+                      {(total > 3 || unreadSms > 0 || unreadEmail > 0 || readSms > 0 || readEmail > 0) && (
+                        <div className="flex flex-wrap md:flex-nowrap items-center gap-1 md:gap-1.5 mt-0.5">
+                          {total > 3 && (
+                            <span className="text-xs text-gray-500 font-medium mr-auto">+{total - 3} more</span>
+                          )}
+                          {unreadSms > 0 && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-green-700 bg-green-100 px-1 py-0.5 rounded animate-pulse" title={`${unreadSms} unread SMS`}>
+                              <FiMessageSquare className="w-2.5 h-2.5" />{unreadSms}
+                            </span>
+                          )}
+                          {unreadEmail > 0 && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 bg-blue-100 px-1 py-0.5 rounded animate-pulse" title={`${unreadEmail} unread emails`}>
+                              <FiMail className="w-2.5 h-2.5" />{unreadEmail}
+                            </span>
+                          )}
+                          {readSms > 0 && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500 bg-gray-100 px-1 py-0.5 rounded" title={`${readSms} read SMS`}>
+                              <FiMessageSquare className="w-2.5 h-2.5" />{readSms}
+                            </span>
+                          )}
+                          {readEmail > 0 && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] text-gray-500 bg-gray-100 px-1 py-0.5 rounded" title={`${readEmail} read emails`}>
+                              <FiMail className="w-2.5 h-2.5" />{readEmail}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>

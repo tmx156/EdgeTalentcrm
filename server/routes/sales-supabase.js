@@ -4,6 +4,9 @@ const { auth } = require('../middleware/auth');
 const dbManager = require('../database-connection-manager');
 const MessagingService = require('../utils/messagingService');
 const emailAccountService = require('../utils/emailAccountService');
+const { createClient } = require('@supabase/supabase-js');
+const config = require('../config');
+const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
 
 // Function to send sale receipt via email and SMS
 const sendSaleReceipt = async (sale, lead, customEmail, customPhone, sendEmail = true, sendSMS = true) => {
@@ -338,36 +341,30 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Get sales statistics
+// RELATIONAL APPROACH: Sales joined to leads at database level.
+// Sales are filtered by the LEAD's appointment date (date_booked) and attended status.
+// This guarantees sales <= attended count.
 router.get('/stats', auth, async (req, res) => {
   try {
-    // Build filters for role-based access control
-    const filters = {};
-
-    // ROLE-BASED ACCESS CONTROL
-    // Only admins can see all sales stats, viewers can only see stats for sales they personally created
-    if (req.user.role !== 'admin') {
-      filters.eq = { user_id: req.user.id };
-      console.log(`🔒 Sales stats filtering: User ${req.user.name} (${req.user.role}) can only see stats for sales they personally created`);
-    } else {
-      console.log(`👑 Admin sales stats access: User ${req.user.name} can see all sales stats`);
-    }
-
-    // Apply date range filters if provided
     const { dateRange, paymentType } = req.query;
+    const bookerId = req.query.booker;
+
+    // --- Resolve date range ---
+    let startDate, endDate;
     if (dateRange) {
       const now = new Date();
-      let startDate, endDate;
-
       switch (dateRange) {
         case 'today':
-          startDate = new Date(now.setHours(0, 0, 0, 0));
-          endDate = new Date(now.setHours(23, 59, 59, 999));
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
           break;
-        case 'this_week':
-          const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
-          startDate = new Date(startOfWeek.setHours(0, 0, 0, 0));
+        case 'this_week': {
+          const d = new Date();
+          const day = d.getDay();
+          startDate = new Date(d.getFullYear(), d.getMonth(), d.getDate() - day);
           endDate = new Date();
           break;
+        }
         case 'this_month':
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
           endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
@@ -376,46 +373,112 @@ router.get('/stats', auth, async (req, res) => {
           startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
           endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
           break;
-        case 'this_quarter':
-          const quarterStart = Math.floor(now.getMonth() / 3) * 3;
-          startDate = new Date(now.getFullYear(), quarterStart, 1);
+        case 'this_quarter': {
+          const qs = Math.floor(now.getMonth() / 3) * 3;
+          startDate = new Date(now.getFullYear(), qs, 1);
           endDate = new Date();
           break;
+        }
         case 'this_year':
           startDate = new Date(now.getFullYear(), 0, 1);
           endDate = new Date();
           break;
+        case 'custom':
+          if (req.query.startDate) startDate = new Date(req.query.startDate);
+          if (req.query.endDate) endDate = new Date(req.query.endDate);
+          break;
         default:
           break;
       }
-
-      if (startDate && endDate) {
-        filters.gte = { created_at: startDate.toISOString() };
-        filters.lte = { created_at: endDate.toISOString() };
-      }
     }
 
-    // Get sales with proper filtering
-    const sales = await dbManager.query('sales', {
-      select: 'amount, payment_method, payment_type, created_at',
-      ...filters
+    console.log(`📊 Sales stats request:`, {
+      dateRange,
+      startDate: startDate?.toISOString(),
+      endDate: endDate?.toISOString(),
+      bookerId: bookerId || 'ALL',
+      role: req.user.role
     });
 
-    if (!sales) {
-      return res.json({
-        totalSales: 0,
-        totalRevenue: 0,
-        averageSaleValue: 0,
-        financeAgreements: 0
-      });
+    // Build relational query: sales → leads via !inner join
+    let query = supabase
+      .from('sales')
+      .select(`
+        id,
+        amount,
+        payment_method,
+        payment_type,
+        created_at,
+        lead_id,
+        leads!inner (
+          id,
+          date_booked,
+          status,
+          booking_status,
+          booker_id,
+          has_sale
+        )
+      `);
+
+    // Date range filter on the LEAD's appointment date
+    if (startDate && endDate) {
+      query = query
+        .gte('leads.date_booked', startDate.toISOString())
+        .lte('leads.date_booked', endDate.toISOString());
     }
 
-    const totalSales = sales.length;
-    const totalRevenue = sales.reduce((sum, sale) => sum + (parseFloat(sale.amount) || 0), 0);
-    const averageSaleValue = totalSales > 0 ? totalRevenue / totalSales : 0;
-    const financeAgreements = sales.filter(sale => sale.payment_type === 'finance').length;
+    // Attended filter: status Attended or Booked (post-filter booking_status below)
+    query = query.in('leads.status', ['Attended', 'Booked']);
 
-    console.log(`📊 Sales stats for user ${req.user.name} (${req.user.role}): ${totalSales} sales, £${totalRevenue} revenue`);
+    // Booker filter (admin only)
+    if (bookerId && req.user.role === 'admin') {
+      query = query.eq('leads.booker_id', bookerId);
+    }
+
+    // Role-based: non-admin only sees sales they created
+    if (req.user.role !== 'admin') {
+      query = query.eq('user_id', req.user.id);
+    }
+
+    // Payment type filter
+    if (paymentType && paymentType !== 'all') {
+      query = query.eq('payment_type', paymentType);
+    }
+
+    const { data: rawSales, error } = await query;
+
+    if (error) {
+      console.error('Sales stats relational query error:', error);
+      return res.status(500).json({ error: 'Failed to fetch sales stats' });
+    }
+
+    // Post-filter: for Booked leads, only keep those with attended booking_status
+    const attendedBookingStatuses = new Set(['Arrived', 'Left', 'No Sale', 'Complete', 'Review']);
+    const attendedSales = (rawSales || []).filter(sale => {
+      const lead = sale.leads;
+      if (!lead) return false;
+      if (lead.status === 'Attended') return true;
+      if (lead.status === 'Booked' && attendedBookingStatuses.has(lead.booking_status)) return true;
+      return false;
+    });
+
+    // Deduplicate: one sale per lead
+    const seenLeads = new Set();
+    const filteredSales = attendedSales.filter(sale => {
+      if (seenLeads.has(sale.lead_id)) return false;
+      seenLeads.add(sale.lead_id);
+      return true;
+    });
+
+    // Calculate statistics
+    const totalSales = filteredSales.length;
+    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (parseFloat(sale.amount) || 0), 0);
+    const averageSaleValue = totalSales > 0 ? totalRevenue / totalSales : 0;
+    const financeAgreements = filteredSales.filter(sale => sale.payment_type === 'finance').length;
+
+    console.log(`📅 Date Range: ${startDate?.toISOString()} → ${endDate?.toISOString()}`);
+    console.log(`👤 Booker: ${bookerId || 'ALL'}`);
+    console.log(`💰 Filtered Sales: ${totalSales} | Revenue: £${totalRevenue.toFixed(2)}`);
 
     res.json({
       totalSales,

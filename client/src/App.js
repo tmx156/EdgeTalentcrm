@@ -22,13 +22,14 @@ import BookersTemplates from './pages/BookersTemplates';
 import Finance from './pages/Finance';
 import Sales from './pages/Sales';
 import Messages from './pages/MessagesNew'; // Updated to use premium Gmail-style design
-import SalesApe from './pages/SalesApe';
+// import SalesApe from './pages/SalesApe'; // DISABLED - no longer using SalesApe
 import BlockedSlots from './pages/BlockedSlots';
 import PublicBooking from './pages/PublicBooking';
 import Photographer from './pages/Photographer';
 import ContractSigning from './pages/ContractSigning';
 import ContractEditor from './pages/ContractEditor';
 import EmailAccounts from './pages/EmailAccounts';
+import PriceList from './pages/PriceList';
 
 // Create browser history
 const history = createBrowserHistory();
@@ -103,10 +104,11 @@ function App() {
                           <Route path="/finance" element={<Finance />} />
                           <Route path="/sales" element={<Sales />} />
                           <Route path="/messages" element={<Messages />} />
-                          <Route path="/salesape" element={<SalesApe />} />
+                          {/* <Route path="/salesape" element={<SalesApe />} /> DISABLED */}
                           <Route path="/blocked-slots" element={<BlockedSlots />} />
                           <Route path="/photographer" element={<Photographer />} />
                           <Route path="/email-accounts" element={<EmailAccounts />} />
+                          <Route path="/price-list" element={<PriceList />} />
                           <Route path="/" element={<Navigate to="/dashboard" />} />
                         </Routes>
                       </Layout>

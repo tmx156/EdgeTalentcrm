@@ -610,6 +610,8 @@ const PackageSelectionModal = ({
                             name: individualItemsList.map(i => `${i.name}${i.quantity > 1 ? ` x${i.quantity}` : ''}`).join(', '),
                             code: 'individual',
                             price: totals.subtotal,
+                            vatInclusive: false,
+                            vatRate: 20,
                             includes: individualItemsList.flatMap(i => i.includes || []),
                             // Explicit flags based on actual purchased items (by name/code, not includes)
                             hasZCard: allItemNames.includes('z-card') || allItemNames.includes('zcard'),

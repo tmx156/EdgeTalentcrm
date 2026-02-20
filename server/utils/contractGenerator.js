@@ -303,7 +303,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 5px; border-right: 1px solid black; font-size: 9px; color: #666;" rowspan="2">${t.cash_initial_text || ''}</td>
           <td style="padding: 5px; border-right: 1px solid black;" rowspan="2"></td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="3">VAT@20%</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="3">VAT@${contractData.vatRate || 20}%</td>
           <td style="padding: 5px; text-align: right; font-weight: 500;">${formatCurrency(contractData.vatAmount)}</td>
         </tr>
         <tr>
@@ -525,14 +525,29 @@ function buildContractData(lead, packageData, invoiceData = {}) {
     // Notes
     notes: `Package: ${packageData.name || 'Standard Package'}`,
 
-    // Financials
-    subtotal: invoiceData.subtotal || packageData.price || 0,
-    vatAmount: invoiceData.vatAmount || (packageData.price * 0.2) || 0,
-    total: invoiceData.total || (packageData.price * 1.2) || 0,
+    // Financials - handle VAT-inclusive vs exclusive pricing
+    subtotal: invoiceData.subtotal || (
+      (packageData.vat_inclusive || packageData.vatInclusive)
+        ? packageData.price / (1 + (packageData.vatRate || packageData.vat_rate || 20) / 100)
+        : packageData.price
+    ) || 0,
+    vatRate: invoiceData.vatRate || packageData.vatRate || packageData.vat_rate || 20,
+    vatAmount: invoiceData.vatAmount || (
+      (packageData.vat_inclusive || packageData.vatInclusive)
+        ? packageData.price - (packageData.price / (1 + (packageData.vatRate || packageData.vat_rate || 20) / 100))
+        : packageData.price * ((packageData.vatRate || packageData.vat_rate || 20) / 100)
+    ) || 0,
+    total: invoiceData.total || (
+      (packageData.vat_inclusive || packageData.vatInclusive)
+        ? packageData.price
+        : packageData.price * (1 + (packageData.vatRate || packageData.vat_rate || 20) / 100)
+    ) || 0,
 
     // Payment
     paymentMethod: invoiceData.paymentMethod || 'card',
     authCode: invoiceData.authCode || '',
+    depositAmount: invoiceData.depositAmount || 0,
+    financeAmount: invoiceData.financeAmount || 0,
     viewerInitials: '',
 
     // Signatures

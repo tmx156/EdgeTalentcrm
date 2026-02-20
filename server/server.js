@@ -51,7 +51,7 @@ const smsRoutes = require('./routes/sms');
 const bookerAnalyticsRoutes = require('./routes/booker-analytics');
 const emailTestRoutes = require('./routes/email-test');
 const usersPublicRoutes = require('./routes/usersPublic');
-const salesapeRoutes = require('./routes/salesape');
+// const salesapeRoutes = require('./routes/salesape'); // DISABLED - no longer using SalesApe
 const blockedSlotsRoutes = require('./routes/blocked-slots');
 const callbackRemindersRoutes = require('./routes/callback-reminders');
 const gmailAuthRoutes = require('./routes/gmail-auth');
@@ -500,13 +500,12 @@ app.use('/api/sms', smsRoutes);
 // app.use('/api/legacy', legacyRoutes);
 app.use('/api/booker-analytics', bookerAnalyticsRoutes);
 app.use('/api/email-test', emailTestRoutes);
-app.use('/api/salesape', salesapeRoutes);
-// SalesApe Webhook Integration (for receiving updates from SalesApe)
-const { router: salesapeWebhookRouter } = require('./routes/salesape-webhook');
-app.use('/api/salesape-webhook', salesapeWebhookRouter);
-// SalesApe Dashboard API
-const salesapeDashboardRoutes = require('./routes/salesape-dashboard');
-app.use('/api/salesape-dashboard', salesapeDashboardRoutes);
+// DISABLED - no longer using SalesApe
+// app.use('/api/salesape', salesapeRoutes);
+// const { router: salesapeWebhookRouter } = require('./routes/salesape-webhook');
+// app.use('/api/salesape-webhook', salesapeWebhookRouter);
+// const salesapeDashboardRoutes = require('./routes/salesape-dashboard');
+// app.use('/api/salesape-dashboard', salesapeDashboardRoutes);
 // Blocked Slots API (for calendar availability management)
 app.use('/api/blocked-slots', blockedSlotsRoutes);
 app.use('/api/callback-reminders', callbackRemindersRoutes);
@@ -1075,16 +1074,14 @@ testDatabaseConnection().then(() => {
       console.error('❌ Failed to start callback reminder service:', e?.message || e);
     }
 
-    // Start SalesApe sync service (polls Airtable for status updates)
-    try {
-      const salesapeSyncService = require('./services/salesapeSync');
-      salesapeSyncService.start();
-      console.log('✅ SalesApe sync service started');
-    } catch (e) {
-      console.error('❌ Failed to start SalesApe sync service:', e?.message || e);
-      console.error('   This service polls SalesApe\'s Airtable for status updates');
-      console.error('   Webhook updates will still work if configured in SalesApe');
-    }
+    // DISABLED - no longer using SalesApe
+    // try {
+    //   const salesapeSyncService = require('./services/salesapeSync');
+    //   salesapeSyncService.start();
+    //   console.log('✅ SalesApe sync service started');
+    // } catch (e) {
+    //   console.error('❌ Failed to start SalesApe sync service:', e?.message || e);
+    // }
   });
 }).catch((error) => {
   // Start server even if Supabase connection fails

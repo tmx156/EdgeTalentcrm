@@ -205,8 +205,12 @@ router.get('/leads', auth, async (req, res) => {
 
     const isInDateRange = (dateStr, startDate, endDate) => {
       if (!dateStr) return false;
-      const d = new Date(dateStr);
-      return d >= new Date(startDate) && d <= new Date(endDate);
+      // Normalize all dates to timestamps for comparison
+      // This handles timezone differences between database and input
+      const d = new Date(dateStr).getTime();
+      const start = new Date(startDate).getTime();
+      const end = new Date(endDate).getTime();
+      return d >= start && d <= end;
     };
 
     const isEntryInRange = (entry, startDate, endDate) => {
@@ -361,7 +365,16 @@ router.get('/leads', auth, async (req, res) => {
       callBack: leads.filter(l => getCallStatus(l) === 'Call back' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
       wrongNumber: leads.filter(l => getCallStatus(l) === 'Wrong number' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
       // sales uses date_booked (appointment date on calendar)
-      salesConverted: leads.filter(l => l.has_sale > 0 && l.booker_id != null && wasAppointmentDateInRange(l)).length,
+      salesConverted: (() => {
+        const salesLeads = leads.filter(l => l.has_sale > 0 && l.booker_id != null && wasAppointmentDateInRange(l));
+        if (hasDateFilter) {
+          console.log(`🔍 Sales count debug: ${salesLeads.length} leads with sales in date range ${dateStart} to ${dateEnd}`);
+          salesLeads.slice(0, 3).forEach(l => {
+            console.log(`   Lead ${l.id?.slice(-8)}: date_booked=${l.date_booked}, has_sale=${l.has_sale}`);
+          });
+        }
+        return salesLeads.length;
+      })(),
       notQualified: leads.filter(l => getCallStatus(l) === 'Not Qualified' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
       noPhoto: leads.filter(l => (getCallStatus(l) === 'No photo' || l.status === 'No photo') && hasNotProgressed(l) && wasAssignedInRange(l)).length,
       // Attendance sub-breakdown (for Reports page) - uses date_booked like attendedFilter
@@ -385,7 +398,7 @@ router.get('/leads', auth, async (req, res) => {
       revenue: 0 // sale_amount column doesn't exist on leads table yet
     };
 
-    console.log(`✅ Lead counts: Total=${result.total}, New=${result.new}, Booked=${result.booked}, Attended=${result.attendedFilter}, Cancelled=${result.cancelledFilter}`);
+    console.log(`✅ Lead counts: Total=${result.total}, New=${result.new}, Booked=${result.booked}, Attended=${result.attendedFilter}, Sales=${result.salesConverted}, Cancelled=${result.cancelledFilter}`);
 
     res.json(result);
   } catch (error) {

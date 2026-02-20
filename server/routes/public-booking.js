@@ -14,7 +14,7 @@ const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const MessagingService = require('../utils/messagingService');
-const salesapeService = require('../utils/salesapeService');
+// const salesapeService = require('../utils/salesapeService'); // DISABLED - no longer using SalesApe
 const axios = require('axios');
 
 // Initialize Supabase with service role for public access
@@ -23,34 +23,11 @@ const supabase = createClient(
   config.supabase.serviceRoleKey || config.supabase.anonKey
 );
 
-// SalesApe Configuration
-const SALESAPE_CONFIG = {
-  AIRTABLE_URL: 'https://api.airtable.com/v0/appoT1TexUksGanE8/tblTJGg187Ub84aXf',
-  PAT_CODE: process.env.SALESAPE_PAT_CODE || process.env.SALESAPE_PAT
-};
-
-// Default booker for SalesApe/public bookings (SalesApe AI)
+// DISABLED - no longer using SalesApe
+// const SALESAPE_CONFIG = { ... };
 let DEFAULT_SALESAPE_BOOKER_ID = null;
-
-// Look up SalesApe AI's user ID on startup
 async function initDefaultBooker() {
-  try {
-    const { data: salesapeai, error } = await supabase
-      .from('users')
-      .select('id, name')
-      .ilike('name', '%salesape%')
-      .limit(1)
-      .single();
-
-    if (salesapeai && !error) {
-      DEFAULT_SALESAPE_BOOKER_ID = salesapeai.id;
-      console.log(`✅ SalesApe bookings will be assigned to: ${salesapeai.name} (${salesapeai.id})`);
-    } else {
-      console.warn('⚠️ Could not find SalesApe AI user for SalesApe bookings');
-    }
-  } catch (err) {
-    console.error('Error looking up default booker:', err.message);
-  }
+  // SalesApe disabled - no default booker needed
 }
 
 // Initialize on module load
@@ -409,34 +386,7 @@ router.post('/book/:identifier', async (req, res) => {
       // Don't fail the booking if confirmation fails
     }
 
-    // Update SalesAPE - notify that meeting was booked
-    // Note: SalesApe Airtable doesn't have "Event Type" field, just log the booking
-    if (lead.salesape_record_id || lead.airtable_record_id) {
-      try {
-        // Just log the booking - SalesApe will get updated via their webhook monitoring
-        console.log('📅 Meeting booked for SalesApe lead:', {
-          leadId: leadId,
-          leadName: lead.name,
-          salesapeRecordId: lead.salesape_record_id
-        });
-
-        // Skip Airtable POST - SalesApe doesn't have "Event Type" field
-        // SalesApe will detect the booking via their own monitoring
-
-        // Update our local database to track goal hit
-        await supabase
-          .from('leads')
-          .update({
-            salesape_goal_hit: true,
-            salesape_status: 'Goal Hit',
-            salesape_last_updated: new Date().toISOString()
-          })
-          .eq('id', leadId);
-      } catch (salesapeError) {
-        console.error('Error notifying SalesAPE:', salesapeError.response?.data || salesapeError.message);
-        // Don't fail the booking if SalesAPE notification fails
-      }
-    }
+    // DISABLED - SalesApe no longer in use
 
     // Emit socket event for real-time updates
     if (global.io) {

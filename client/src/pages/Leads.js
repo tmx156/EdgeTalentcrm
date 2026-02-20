@@ -1882,14 +1882,7 @@ const Leads = () => {
                       <FiUserPlus className="h-4 w-4" />
                       <span className="hidden sm:inline">Assign Selected</span>
                     </button>
-                    <button
-                      onClick={handleBulkSendToSalesApe}
-                      className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-md hover:from-purple-700 hover:to-indigo-700 transition-all duration-200 flex items-center space-x-2 shadow-lg"
-                      title="Send selected leads to SalesApe AI for automated contact"
-                    >
-                      <RiRobot2Line className="h-4 w-4" />
-                      <span className="hidden sm:inline">Send to SalesApe AI</span>
-                    </button>
+                    {/* SalesApe button - DISABLED */}
                     <button
                       onClick={(e) => {
                         console.log('🔍 Delete button clicked!', {

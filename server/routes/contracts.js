@@ -185,6 +185,7 @@ router.post('/create', auth, async (req, res) => {
 
         // Financials from edited form
         subtotal: contractDetails.subtotal || 0,
+        vatRate: contractDetails.vatRate || 20,
         vatAmount: contractDetails.vatAmount || 0,
         total: contractDetails.total || 0,
 
