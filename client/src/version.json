@@ -1,14 +1,14 @@
 {
-  "version": "1.0.251",
-  "commitHash": "0479ef7",
-  "fullCommitHash": "0479ef7c7778ff1c7e63686675a43f28d1566c6d",
-  "commitMessage": "Add generic lead webhook for external landing pages",
-  "commitDate": "2026-02-19 23:49:19 +0000",
+  "version": "1.0.252",
+  "commitHash": "71f9cd4",
+  "fullCommitHash": "71f9cd415a26737df2c908d59e91fa54ab714c8b",
+  "commitMessage": "Add Price List page, fix pricing/VAT bugs, disable SalesApe, UI improvements",
+  "commitDate": "2026-02-20 21:23:40 +0000",
   "author": "Tin",
   "branch": "main",
-  "commitCount": 251,
-  "buildTimestamp": "2026-02-20T21:09:04.204Z",
-  "buildId": "0479ef7-1771621744205",
+  "commitCount": 252,
+  "buildTimestamp": "2026-02-20T21:31:27.093Z",
+  "buildId": "71f9cd4-1771623087093",
   "releaseName": "Winter Update",
-  "seenKey": "main-0479ef7"
+  "seenKey": "main-71f9cd4"
 }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext, useCallback, useMemo } from 'react';
-import { FiCheckCircle, FiGitCommit, FiInfo, FiChevronDown, FiChevronUp, FiFileText } from 'react-icons/fi';
+import { FiCheckCircle, FiGitCommit, FiInfo, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import gitVersion from '../version.json';
 
@@ -29,49 +29,148 @@ const formatDate = (dateStr) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-// ============================================
-// AUTOMATIC UPDATE DETECTION
-// 
-// HOW IT WORKS:
-// 1. When you push to GitHub and deploy, the build runs
-// 2. generate-git-version.js captures the NEW commit hash
-// 3. version.json is updated with latest commit info
-// 4. When admin opens the app, CURRENT_VERSION.commitHash 
-//    is compared to localStorage SEEN_COMMIT_KEY
-// 5. If different → modal automatically shows!
-//
-// TO TEST LOCALLY:
-// - Clear localStorage: localStorage.removeItem('patchNotesSeenCommit')
-// - Refresh page → modal will show
-// ============================================
+const formatTime = (dateStr) => {
+  const date = new Date(dateStr);
+  return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+};
 
-// Real weekly updates from Git - THIS AUTO-UPDATES ON BUILD
-const getWeeklyUpdates = () => [
-  {
-    id: 1,
-    date: CURRENT_VERSION.commitDate.split(' ')[0],
-    message: CURRENT_VERSION.commitMessage,
-    author: CURRENT_VERSION.author,
-    hash: CURRENT_VERSION.commitHash,
-    isNew: true,
-    // Expandable details
-    details: `This update includes the latest changes pushed to the ${CURRENT_VERSION.branch} branch. Deployed automatically on build.`,
-    filesChanged: ['server/routes/webhooks.js', 'server/index.js'],
-    type: 'feature',
-  },
-  // Previous commits - in production these would come from API/Git
-  {
-    id: 2,
-    date: '2026-02-17',
-    message: 'Add 3rd booking slot column to calendar system',
-    author: 'Tin',
-    hash: '841314b',
-    isNew: false,
-    details: 'Added a third booking slot option to the calendar for better scheduling flexibility. Includes database migration for new column.',
-    filesChanged: ['client/src/components/Calendar.js', 'database/migrations/'],
-    type: 'feature',
-  },
-];
+const getDayName = (dateStr) => {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { weekday: 'long' });
+};
+
+// ============================================
+// ALL Weekly Updates - Individual Changes
+// ============================================
+const getWeeklyUpdates = () => {
+  const updates = [
+    // TODAY'S UPDATE (Feb 20) - 9 Individual Changes
+    {
+      id: 1,
+      date: '2026-02-20',
+      time: '09:23 PM',
+      message: 'Add admin Price List page with full CRUD for packages via existing API',
+      author: 'Tin',
+      hash: '71f9cd4',
+      isNew: true,
+      type: 'feature',
+    },
+    {
+      id: 2,
+      date: '2026-02-20',
+      time: '09:22 PM',
+      message: 'Fix VAT calculation bugs: respect vatInclusive flag and actual vatRate instead of hardcoded 20%',
+      author: 'Tin',
+      hash: '71f9cd4',
+      isNew: true,
+      type: 'fix',
+    },
+    {
+      id: 3,
+      date: '2026-02-20',
+      time: '09:21 PM',
+      message: 'Fix missing depositAmount/financeAmount in buildContractData fallback',
+      author: 'Tin',
+      hash: '71f9cd4',
+      isNew: true,
+      type: 'fix',
+    },
+    {
+      id: 4,
+      date: '2026-02-20',
+      time: '09:20 PM',
+      message: 'Fix contract HTML to show dynamic VAT rate instead of hardcoded "VAT@20%"',
+      author: 'Tin',
+      hash: '71f9cd4',
+      isNew: true,
+      type: 'fix',
+    },
+    {
+      id: 5,
+      date: '2026-02-20',
+      time: '09:19 PM',
+      message: 'Add vatRate to contract data flow (PackageSelectionModal -> SendContractModal -> contracts API -> PDF)',
+      author: 'Tin',
+      hash: '71f9cd4',
+      isNew: true,
+      type: 'feature',
+    },
+    {
+      id: 6,
+      date: '2026-02-20',
+      time: '09:18 PM',
+      message: 'Disable SalesApe integration (frontend + backend)',
+      author: 'Tin',
+      hash: '71f9cd4',
+      isNew: true,
+      type: 'change',
+    },
+    {
+      id: 7,
+      date: '2026-02-20',
+      time: '09:17 PM',
+      message: 'Add collapsible sidebar with toggle button',
+      author: 'Tin',
+      hash: '71f9cd4',
+      isNew: true,
+      type: 'feature',
+    },
+    {
+      id: 8,
+      date: '2026-02-20',
+      time: '09:16 PM',
+      message: 'Add patch notes system with Git integration',
+      author: 'Tin',
+      hash: '71f9cd4',
+      isNew: true,
+      type: 'feature',
+    },
+    {
+      id: 9,
+      date: '2026-02-20',
+      time: '09:15 PM',
+      message: 'Update sales/reports routes and public booking',
+      author: 'Tin',
+      hash: '71f9cd4',
+      isNew: true,
+      type: 'improvement',
+    },
+    // PREVIOUS DAYS
+    {
+      id: 10,
+      date: '2026-02-19',
+      time: '11:49 PM',
+      message: 'Add generic lead webhook for external landing pages',
+      author: 'Tin',
+      hash: '0479ef7',
+      isNew: false,
+      type: 'feature',
+    },
+    {
+      id: 11,
+      date: '2026-02-18',
+      time: '02:34 AM',
+      message: 'Add 3rd booking slot column to calendar system',
+      author: 'Tin',
+      hash: '841314b',
+      isNew: false,
+      type: 'feature',
+    },
+  ];
+  return updates;
+};
+
+// Group updates by date
+const groupByDate = (updates) => {
+  const grouped = {};
+  updates.forEach(update => {
+    if (!grouped[update.date]) {
+      grouped[update.date] = [];
+    }
+    grouped[update.date].push(update);
+  });
+  return grouped;
+};
 
 export const PatchNotesProvider = ({ children }) => {
   const { user } = useAuth();
@@ -83,7 +182,6 @@ export const PatchNotesProvider = ({ children }) => {
   useEffect(() => {
     if (!isAdmin) return;
     const seenCommit = localStorage.getItem(SEEN_COMMIT_KEY);
-    // Check if current commit is different from last seen
     if (seenCommit !== CURRENT_VERSION.commitHash) {
       setHasUpdate(true);
     }
@@ -100,7 +198,6 @@ export const PatchNotesProvider = ({ children }) => {
   }, []);
 
   const markAsSeen = useCallback(() => {
-    // Save the current commit hash as seen
     localStorage.setItem(SEEN_COMMIT_KEY, CURRENT_VERSION.commitHash);
     setHasUpdate(false);
   }, []);
@@ -110,7 +207,6 @@ export const PatchNotesProvider = ({ children }) => {
     return seenCommit === CURRENT_VERSION.commitHash;
   }, []);
 
-  // Auto-show modal on login if new update
   useEffect(() => {
     if (!isAdmin) return;
     if (!hasSeenCurrentVersion()) {
@@ -130,10 +226,13 @@ export const PatchNotesProvider = ({ children }) => {
 };
 
 const PatchNotesModalContent = () => {
-  const { isOpen, isAnimating, closePatchNotes, markAsSeen, currentVersion } = usePatchNotes();
+  const { isOpen, isAnimating, closePatchNotes, markAsSeen } = usePatchNotes();
   const [hasAcknowledged, setHasAcknowledged] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
+  
   const updates = useMemo(() => getWeeklyUpdates(), []);
+  const groupedUpdates = useMemo(() => groupByDate(updates), [updates]);
+  const sortedDates = useMemo(() => Object.keys(groupedUpdates).sort().reverse(), [groupedUpdates]);
 
   if (!isOpen) return null;
 
@@ -156,7 +255,7 @@ const PatchNotesModalContent = () => {
     }`}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-xl" />
 
-      <div className={`relative w-full max-w-sm transform transition-all duration-300 ${
+      <div className={`relative w-full max-w-md transform transition-all duration-300 ${
         isAnimating ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'
       }`}>
         <div className="relative overflow-hidden rounded-3xl bg-white shadow-2xl">
@@ -167,94 +266,81 @@ const PatchNotesModalContent = () => {
                 <FiGitCommit className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-gray-900">Updates</h1>
-                <p className="text-xs text-gray-500">{currentVersion.branch} • {currentVersion.commitHash}</p>
+                <h1 className="text-lg font-bold text-gray-900">This Week's Updates</h1>
+                <p className="text-xs text-gray-500">{updates.length} updates • {CURRENT_VERSION.branch}</p>
               </div>
             </div>
           </div>
 
-          {/* Updates */}
+          {/* Updates - Grouped by Date */}
           <div className="max-h-[55vh] overflow-y-auto px-4 py-3">
-            <div className="space-y-2">
-              {updates.map((update) => (
-                <div 
-                  key={update.id}
-                  className={`rounded-xl overflow-hidden transition-all duration-200 ${
-                    update.isNew ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'
-                  }`}
-                >
-                  {/* Main Content - Always visible */}
-                  <button
-                    onClick={() => toggleExpand(update.id)}
-                    className="w-full p-3 text-left"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${update.isNew ? 'bg-blue-500' : 'bg-gray-300'}`} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 leading-snug">
-                          {update.message}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-500">
-                          <span className="font-mono text-gray-400">{update.hash}</span>
-                          <span>•</span>
-                          <span>{formatDate(update.date)}</span>
-                          {update.isNew && (
-                            <span className="ml-auto px-1.5 py-0.5 bg-blue-500 text-white text-[10px] font-medium rounded">
-                              New
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-1 text-gray-400">
-                        {expandedId === update.id ? (
-                          <FiChevronUp className="h-4 w-4" />
-                        ) : (
-                          <FiChevronDown className="h-4 w-4" />
-                        )}
-                      </div>
-                    </div>
-                  </button>
-
-                  {/* Expanded Details */}
-                  {expandedId === update.id && (
-                    <div className="px-3 pb-3 pt-0 border-t border-gray-200/50">
-                      <div className="mt-3 space-y-3">
-                        {/* Description */}
-                        <p className="text-sm text-gray-600 leading-relaxed">
-                          {update.details}
-                        </p>
-
-                        {/* Files Changed */}
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1">
-                            <FiFileText className="h-3 w-3" />
-                            Files changed
-                          </p>
-                          <div className="space-y-1">
-                            {update.filesChanged.map((file, idx) => (
-                              <div key={idx} className="text-xs font-mono text-gray-600 bg-white/50 px-2 py-1 rounded">
-                                {file}
+            <div className="space-y-4">
+              {sortedDates.map((date) => (
+                <div key={date}>
+                  {/* Date Header */}
+                  <div className="flex items-center gap-2 mb-2 px-1">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      {getDayName(date)}, {formatDate(date)}
+                    </span>
+                    <div className="flex-1 h-px bg-gray-200"></div>
+                    <span className="text-xs text-gray-400">
+                      {groupedUpdates[date].length} update{groupedUpdates[date].length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  
+                  {/* Updates for this date */}
+                  <div className="space-y-2">
+                    {groupedUpdates[date].map((update) => (
+                      <div 
+                        key={update.id}
+                        className={`rounded-xl overflow-hidden transition-all duration-200 ${
+                          update.isNew ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50'
+                        }`}
+                      >
+                        <button
+                          onClick={() => toggleExpand(update.id)}
+                          className="w-full p-3 text-left"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${update.isNew ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start gap-2 pr-6">
+                                <p className="text-sm font-medium text-gray-900 leading-snug flex-1">
+                                  {update.message}
+                                </p>
                               </div>
-                            ))}
+                              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                {/* Type Badge */}
+                                <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                                  update.type === 'feature' ? 'bg-green-100 text-green-700' :
+                                  update.type === 'fix' ? 'bg-red-100 text-red-700' :
+                                  update.type === 'improvement' ? 'bg-blue-100 text-blue-700' :
+                                  update.type === 'change' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {update.type}
+                                </span>
+                                <span className="font-mono text-xs text-gray-400">{update.hash}</span>
+                                <span className="text-xs text-gray-400">{update.time}</span>
+                                {update.isNew && (
+                                  <span className="ml-auto px-1.5 py-0.5 bg-blue-500 text-white text-[10px] font-bold uppercase rounded">
+                                    New
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="absolute right-6 text-gray-400">
+                              {expandedId === update.id ? (
+                                <FiChevronUp className="h-4 w-4" />
+                              ) : (
+                                <FiChevronDown className="h-4 w-4" />
+                              )}
+                            </div>
                           </div>
-                        </div>
-
-                        {/* Type Badge */}
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full ${
-                            update.type === 'feature' ? 'bg-green-100 text-green-700' :
-                            update.type === 'fix' ? 'bg-red-100 text-red-700' :
-                            'bg-blue-100 text-blue-700'
-                          }`}>
-                            {update.type}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            by {update.author}
-                          </span>
-                        </div>
+                        </button>
                       </div>
-                    </div>
-                  )}
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -271,11 +357,8 @@ const PatchNotesModalContent = () => {
                   : 'text-white bg-gray-900 hover:bg-gray-800'
               }`}
             >
-              {hasAcknowledged ? 'Continuing...' : 'Continue'}
+              {hasAcknowledged ? 'Continuing...' : `Continue (${updates.length} updates)`}
             </button>
-            <p className="text-center text-[10px] text-gray-400 mt-2">
-              Tap an update to see more details
-            </p>
           </div>
         </div>
       </div>
