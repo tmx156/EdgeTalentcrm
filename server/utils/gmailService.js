@@ -15,6 +15,7 @@ console.log('📧 Primary Account (GMAIL_EMAIL):', process.env.GMAIL_EMAIL || 'N
 console.log('📧 Secondary Account (GMAIL_EMAIL_2):', process.env.GMAIL_EMAIL_2 || 'Not set');
 console.log('📧 Tertiary Account (GMAIL_EMAIL_3):', process.env.GMAIL_EMAIL_3 || 'Not set');
 console.log('📧 4th Account (GMAIL_EMAIL_4):', process.env.GMAIL_EMAIL_4 || 'Not set');
+console.log('📧 5th Account (GMAIL_EMAIL_5):', process.env.GMAIL_EMAIL_5 || 'Not set');
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,6 +52,14 @@ const ACCOUNTS = {
     clientSecret: process.env.GMAIL_CLIENT_SECRET_4,
     refreshToken: process.env.GMAIL_REFRESH_TOKEN_4,
     redirectUri: process.env.GMAIL_REDIRECT_URI_4 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback4',
+    displayName: 'Edge Talent'
+  },
+  quinary: {
+    email: process.env.GMAIL_EMAIL_5 || 'book@edgetalent.co.uk',
+    clientId: process.env.GMAIL_CLIENT_ID_5,
+    clientSecret: process.env.GMAIL_CLIENT_SECRET_5,
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN_5,
+    redirectUri: process.env.GMAIL_REDIRECT_URI_5 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback5',
     displayName: 'Edge Talent'
   }
 };
@@ -170,21 +179,11 @@ async function getGmailClient(accountKeyOrConfig = 'primary') {
           : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
             'https://edgetalentcrm-production.up.railway.app';
         
-        const authEndpoint = accountKey === 'secondary'
-          ? `${railwayUrl}/api/gmail/auth2`
-          : accountKey === 'tertiary'
-          ? `${railwayUrl}/api/gmail/auth3`
-          : accountKey === 'quaternary'
-          ? `${railwayUrl}/api/gmail/auth4`
-          : `${railwayUrl}/api/gmail/auth`;
+        const authEndpointMap = { secondary: 'auth2', tertiary: 'auth3', quaternary: 'auth4', quinary: 'auth5' };
+        const authEndpoint = `${railwayUrl}/api/gmail/${authEndpointMap[accountKey] || 'auth'}`;
 
-        const tokenVar = accountKey === 'secondary'
-          ? 'GMAIL_REFRESH_TOKEN_2'
-          : accountKey === 'tertiary'
-          ? 'GMAIL_REFRESH_TOKEN_3'
-          : accountKey === 'quaternary'
-          ? 'GMAIL_REFRESH_TOKEN_4'
-          : 'GMAIL_REFRESH_TOKEN';
+        const tokenVarMap = { secondary: 'GMAIL_REFRESH_TOKEN_2', tertiary: 'GMAIL_REFRESH_TOKEN_3', quaternary: 'GMAIL_REFRESH_TOKEN_4', quinary: 'GMAIL_REFRESH_TOKEN_5' };
+        const tokenVar = tokenVarMap[accountKey] || 'GMAIL_REFRESH_TOKEN';
 
         const errorMsg = `OAuth token expired or revoked for ${account.email}. ` +
           `Please re-authenticate: ${authEndpoint}. ` +
@@ -529,7 +528,7 @@ async function sendEmail(to, subject, text, options = {}) {
 
       // Note: Automatic fallback to primary account is handled in emailService.js
       // to avoid recursive calls and maintain proper error handling
-      if (accountKey === 'secondary' || accountKey === 'tertiary' || accountKey === 'quaternary') {
+      if (accountKey === 'secondary' || accountKey === 'tertiary' || accountKey === 'quaternary' || accountKey === 'quinary') {
         console.log(`💡 [${emailId}] Fallback to primary account will be attempted by emailService`);
       }
     }

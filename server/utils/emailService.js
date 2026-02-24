@@ -96,7 +96,7 @@ async function sendEmail(to, subject, text, attachments = [], accountKey = 'prim
     } else {
       // Check if it's an invalid_grant error and we're using secondary/tertiary account or database account
       // Automatically fallback: try default database account first, then primary env var
-      const shouldFallback = emailResult.isInvalidGrant && (accountKey === 'secondary' || accountKey === 'tertiary' || accountKey === 'quaternary' || isDbAccount);
+      const shouldFallback = emailResult.isInvalidGrant && (accountKey === 'secondary' || accountKey === 'tertiary' || accountKey === 'quaternary' || accountKey === 'quinary' || isDbAccount);
 
       if (shouldFallback) {
         console.log(`⚠️ [${emailId}] ${accountDisplay} token expired, attempting fallback...`);
@@ -193,21 +193,11 @@ async function sendEmail(to, subject, text, attachments = [], accountKey = 'prim
           : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') ||
             'https://edgetalentcrm-production.up.railway.app';
 
-        const authEndpoint = accountKey === 'secondary'
-          ? `${railwayUrl}/api/gmail/auth2`
-          : accountKey === 'tertiary'
-          ? `${railwayUrl}/api/gmail/auth3`
-          : accountKey === 'quaternary'
-          ? `${railwayUrl}/api/gmail/auth4`
-          : `${railwayUrl}/api/gmail/auth`;
+        const authEndpointMap = { secondary: 'auth2', tertiary: 'auth3', quaternary: 'auth4', quinary: 'auth5' };
+        const authEndpoint = `${railwayUrl}/api/gmail/${authEndpointMap[accountKey] || 'auth'}`;
 
-        const tokenVar = accountKey === 'secondary'
-          ? 'GMAIL_REFRESH_TOKEN_2'
-          : accountKey === 'tertiary'
-          ? 'GMAIL_REFRESH_TOKEN_3'
-          : accountKey === 'quaternary'
-          ? 'GMAIL_REFRESH_TOKEN_4'
-          : 'GMAIL_REFRESH_TOKEN';
+        const tokenVarMap = { secondary: 'GMAIL_REFRESH_TOKEN_2', tertiary: 'GMAIL_REFRESH_TOKEN_3', quaternary: 'GMAIL_REFRESH_TOKEN_4', quinary: 'GMAIL_REFRESH_TOKEN_5' };
+        const tokenVar = tokenVarMap[accountKey] || 'GMAIL_REFRESH_TOKEN';
 
         console.log(`❌ ACTION REQUIRED: Re-authenticate at ${authEndpoint}`);
         console.log(`❌ Then update ${tokenVar} in Railway environment variables`);

@@ -76,6 +76,26 @@ router.get('/dropdown', auth, async (req, res) => {
       });
     }
 
+    if (ACCOUNTS.quaternary && ACCOUNTS.quaternary.email) {
+      dropdown.push({
+        id: 'quaternary',
+        name: '4th Email (Env)',
+        email: ACCOUNTS.quaternary.email,
+        is_default: false,
+        isEnvVar: true
+      });
+    }
+
+    if (ACCOUNTS.quinary && ACCOUNTS.quinary.email) {
+      dropdown.push({
+        id: 'quinary',
+        name: '5th Email (Env)',
+        email: ACCOUNTS.quinary.email,
+        is_default: false,
+        isEnvVar: true
+      });
+    }
+
     // Also add database accounts if any
     const accounts = await emailAccountService.getAllAccounts();
     const dbAccounts = accounts
