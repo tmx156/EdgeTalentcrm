@@ -759,7 +759,7 @@ class MessagingService {
   }
 
   // Send email
-  // emailAccount can be: 'primary', 'secondary', 'tertiary', a UUID string, or a database account object
+  // emailAccount can be: 'primary', 'secondary', 'tertiary', 'quaternary', 'quinary', a UUID string, or a database account object
   static async sendEmail(message, emailAccount = 'primary') {
     const messageId = message.id || 'unknown';
     const accountDisplay = typeof emailAccount === 'object' && emailAccount.email
@@ -808,7 +808,7 @@ class MessagingService {
       );
       
       // If secondary/tertiary account fails with invalid_grant, try primary account as fallback
-      if (!emailResult.success && (emailAccount === 'secondary' || emailAccount === 'tertiary') && emailResult.isInvalidGrant) {
+      if (!emailResult.success && ['secondary', 'tertiary', 'quaternary', 'quinary'].includes(emailAccount) && emailResult.isInvalidGrant) {
         console.log(`⚠️ [MSG-${messageId}] ${emailAccount} account token expired, attempting fallback to primary account...`);
         
         try {
@@ -856,11 +856,11 @@ class MessagingService {
             : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
               'https://edgetalentcrm-production.up.railway.app';
           
-          const authEndpoint = emailAccount === 'secondary' 
-            ? `${railwayUrl}/api/gmail/auth2`
-            : `${railwayUrl}/api/gmail/auth`;
-          
-          const tokenVar = emailAccount === 'secondary' ? 'GMAIL_REFRESH_TOKEN_2' : 'GMAIL_REFRESH_TOKEN';
+          const authEndpointMap = { secondary: 'auth2', tertiary: 'auth3', quaternary: 'auth4', quinary: 'auth5' };
+          const authEndpoint = `${railwayUrl}/api/gmail/${authEndpointMap[emailAccount] || 'auth'}`;
+
+          const tokenVarMap = { secondary: 'GMAIL_REFRESH_TOKEN_2', tertiary: 'GMAIL_REFRESH_TOKEN_3', quaternary: 'GMAIL_REFRESH_TOKEN_4', quinary: 'GMAIL_REFRESH_TOKEN_5' };
+          const tokenVar = tokenVarMap[emailAccount] || 'GMAIL_REFRESH_TOKEN';
           
           console.log(`❌ ACTION REQUIRED: Re-authenticate ${emailAccount} account at ${authEndpoint}`);
           console.log(`❌ Then update ${tokenVar} in Railway environment variables`);

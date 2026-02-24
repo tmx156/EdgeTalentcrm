@@ -195,8 +195,8 @@ class EmailAccountService {
       if (user && user.assigned_email_account_id) {
         const assignedId = user.assigned_email_account_id;
 
-        // Check if it's an env var account ('primary', 'secondary', or 'tertiary')
-        if (assignedId === 'primary' || assignedId === 'secondary' || assignedId === 'tertiary') {
+        // Check if it's an env var account ('primary', 'secondary', 'tertiary', 'quaternary', 'quinary')
+        if (['primary', 'secondary', 'tertiary', 'quaternary', 'quinary'].includes(assignedId)) {
           console.log(`📧 User has env var email account assigned: ${assignedId}`);
           return { type: 'env', accountKey: assignedId };
         }
@@ -520,7 +520,7 @@ class EmailAccountService {
       // Priority 1: Direct email account ID passed
       if (emailAccountId) {
         // Check if it's an env var account
-        if (emailAccountId === 'primary' || emailAccountId === 'secondary' || emailAccountId === 'tertiary') {
+        if (['primary', 'secondary', 'tertiary', 'quaternary', 'quinary'].includes(emailAccountId)) {
           console.log(`📧 Using directly specified env var account: ${emailAccountId}`);
           return { type: 'env', accountKey: emailAccountId };
         }
@@ -544,8 +544,8 @@ class EmailAccountService {
         const templateEmailAccount = template?.email_account || template?.email_account_id;
 
         if (templateEmailAccount) {
-          // If it's a legacy key ('primary', 'secondary', or 'tertiary'), use env vars
-          if (templateEmailAccount === 'primary' || templateEmailAccount === 'secondary' || templateEmailAccount === 'tertiary') {
+          // If it's a legacy key ('primary', 'secondary', 'tertiary', 'quaternary', 'quinary'), use env vars
+          if (['primary', 'secondary', 'tertiary', 'quaternary', 'quinary'].includes(templateEmailAccount)) {
             console.log(`📧 Using template-specified legacy account: ${templateEmailAccount}`);
             return { type: 'env', accountKey: templateEmailAccount };
           }
