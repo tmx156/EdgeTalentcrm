@@ -14,6 +14,7 @@ console.log('📧 Gmail Service: Initializing Multi-Account Support...');
 console.log('📧 Primary Account (GMAIL_EMAIL):', process.env.GMAIL_EMAIL || 'Not set');
 console.log('📧 Secondary Account (GMAIL_EMAIL_2):', process.env.GMAIL_EMAIL_2 || 'Not set');
 console.log('📧 Tertiary Account (GMAIL_EMAIL_3):', process.env.GMAIL_EMAIL_3 || 'Not set');
+console.log('📧 4th Account (GMAIL_EMAIL_4):', process.env.GMAIL_EMAIL_4 || 'Not set');
 
 // UUID validation regex
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -42,6 +43,14 @@ const ACCOUNTS = {
     clientSecret: process.env.GMAIL_CLIENT_SECRET_3,
     refreshToken: process.env.GMAIL_REFRESH_TOKEN_3,
     redirectUri: process.env.GMAIL_REDIRECT_URI_3 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback3',
+    displayName: 'Edge Talent'
+  },
+  quaternary: {
+    email: process.env.GMAIL_EMAIL_4 || 'appt@edgetalent.co.uk',
+    clientId: process.env.GMAIL_CLIENT_ID_4,
+    clientSecret: process.env.GMAIL_CLIENT_SECRET_4,
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN_4,
+    redirectUri: process.env.GMAIL_REDIRECT_URI_4 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback4',
     displayName: 'Edge Talent'
   }
 };
@@ -165,12 +174,16 @@ async function getGmailClient(accountKeyOrConfig = 'primary') {
           ? `${railwayUrl}/api/gmail/auth2`
           : accountKey === 'tertiary'
           ? `${railwayUrl}/api/gmail/auth3`
+          : accountKey === 'quaternary'
+          ? `${railwayUrl}/api/gmail/auth4`
           : `${railwayUrl}/api/gmail/auth`;
 
         const tokenVar = accountKey === 'secondary'
           ? 'GMAIL_REFRESH_TOKEN_2'
           : accountKey === 'tertiary'
           ? 'GMAIL_REFRESH_TOKEN_3'
+          : accountKey === 'quaternary'
+          ? 'GMAIL_REFRESH_TOKEN_4'
           : 'GMAIL_REFRESH_TOKEN';
 
         const errorMsg = `OAuth token expired or revoked for ${account.email}. ` +
@@ -516,7 +529,7 @@ async function sendEmail(to, subject, text, options = {}) {
 
       // Note: Automatic fallback to primary account is handled in emailService.js
       // to avoid recursive calls and maintain proper error handling
-      if (accountKey === 'secondary' || accountKey === 'tertiary') {
+      if (accountKey === 'secondary' || accountKey === 'tertiary' || accountKey === 'quaternary') {
         console.log(`💡 [${emailId}] Fallback to primary account will be attempted by emailService`);
       }
     }
