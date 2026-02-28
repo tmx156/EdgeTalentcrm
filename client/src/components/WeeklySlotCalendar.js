@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { FiCheckCircle, FiClock, FiMessageSquare, FiMail } from 'react-icons/fi';
+import { toLocalDateStr } from '../utils/timeUtils';
 
 // Time slots configuration matching updated schedule
 // 🔵 = Male, 🩷 = Female, 💛🔵 = Child/Male (striped), ⚫ = Blank/Unavailable
@@ -65,7 +66,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
     const index = new Map();
     events.forEach(event => {
       if (!event.date_booked) return;
-      const eventDateStr = new Date(event.date_booked).toISOString().split('T')[0];
+      const eventDateStr = toLocalDateStr(new Date(event.date_booked));
       const key = `${eventDateStr}_${event.time_booked || ''}_${event.booking_slot || 1}`;
       if (!index.has(key)) {
         index.set(key, []);
@@ -81,7 +82,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
     
     const index = new Map();
     blockedSlots.forEach(block => {
-      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+      const blockDateStr = toLocalDateStr(new Date(block.date));
       if (!index.has(blockDateStr)) {
         index.set(blockDateStr, []);
       }
@@ -92,7 +93,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
 
   // Check if a slot is blocked - OPTIMIZED: Use pre-indexed map
   const isSlotBlocked = (day, timeSlot = null, slotNumber = null) => {
-    const dateStr = day.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(day);
     const dayBlocks = blockedSlotsByDate.get(dateStr) || [];
     
     if (dayBlocks.length === 0) return false;
@@ -126,7 +127,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
 
   // Get all events for a slot (returns array)
   const getEventsForDayTimeSlot = (day, time, slot) => {
-    const dayStr = day.toISOString().split('T')[0];
+    const dayStr = toLocalDateStr(day);
     const key = `${dayStr}_${time}_${slot}`;
     return eventsBySlot.get(key) || [];
   };
@@ -213,8 +214,8 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
               const isToday = day.toDateString() === new Date().toDateString();
               // Check for full day block (no time_slot and no slot_number)
               const isDayBlocked = blockedSlots && blockedSlots.some(block => {
-                const dateStr = day.toISOString().split('T')[0];
-                const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                const dateStr = toLocalDateStr(day);
+                const blockDateStr = toLocalDateStr(new Date(block.date));
                 return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
               });
               
@@ -278,7 +279,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                   const slot1Overflow = slot1All.length > 1 ? slot1All.slice(1) : [];
                   const slot2Overflow = slot2All.length > 1 ? slot2All.slice(1) : [];
                   const slot3Overflow = slot3All.length > 1 ? slot3All.slice(1) : [];
-                  const dayStr = day.toISOString().split('T')[0];
+                  const dayStr = toLocalDateStr(day);
 
                   return (
                     <div

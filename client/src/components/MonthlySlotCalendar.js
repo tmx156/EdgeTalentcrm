@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { FiCheckCircle, FiClock, FiMessageSquare, FiMail } from 'react-icons/fi';
+import { toLocalDateStr } from '../utils/timeUtils';
 
 // Get status color for a booking (matches SlotCalendar colors)
 const getStatusColor = (event) => {
@@ -37,7 +38,7 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
     const index = new Map();
     events.forEach(event => {
       if (!event.date_booked) return;
-      const dateStr = new Date(event.date_booked).toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(new Date(event.date_booked));
       if (!index.has(dateStr)) {
         index.set(dateStr, []);
       }
@@ -81,7 +82,7 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
   const getBookingsForDay = (day) => {
     if (!day) return { slot1: [], slot2: [], slot3: [] };
 
-    const dayStr = day.toISOString().split('T')[0];
+    const dayStr = toLocalDateStr(day);
     const dayBookings = eventsByDate.get(dayStr) || [];
 
     const slot1 = dayBookings.filter(e => e.booking_slot === 1);
@@ -111,11 +112,11 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
   const isDayFullyBlocked = (day) => {
     if (!day || !blockedSlots || blockedSlots.length === 0) return false;
     
-    const dateStr = day.toISOString().split('T')[0];
-    
+    const dateStr = toLocalDateStr(day);
+
     // Check if there's a full day block (no time_slot specified)
     return blockedSlots.some(block => {
-      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+      const blockDateStr = toLocalDateStr(new Date(block.date));
       // Full day block: date matches AND no time_slot AND no slot_number (blocks all slots for entire day)
       return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
     });

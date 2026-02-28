@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { FiCalendar, FiLock, FiUnlock, FiX } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
+import { toLocalDateStr } from '../utils/timeUtils';
 import axios from 'axios';
 
 const BlockedSlots = () => {
   const { user } = useAuth();
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(toLocalDateStr(new Date()));
   const [blockedSlots, setBlockedSlots] = useState([]);
   const [loading, setLoading] = useState(false);
   const [blockReason, setBlockReason] = useState('');

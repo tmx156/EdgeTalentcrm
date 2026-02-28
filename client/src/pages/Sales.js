@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { FiDollarSign, FiTrendingUp, FiCalendar, FiUser, FiCreditCard, FiFilter, FiEye, FiPlus, FiTrash2, FiMail, FiMessageSquare, FiSend, FiFileText, FiImage, FiCheckCircle, FiClock, FiDownload, FiExternalLink, FiChevronDown } from 'react-icons/fi';
 import axios from 'axios';
+import { toLocalDateStr } from '../utils/timeUtils';
 import SalesCommunicationModal from '../components/SalesCommunicationModal';
 import MessageHistory from '../components/MessageHistory';
 import OptimizedImage from '../components/OptimizedImage';
@@ -39,7 +40,7 @@ const Sales = () => {
     totalAmount: '',
     paymentAmount: '',
     frequency: 'monthly',
-    startDate: new Date().toISOString().split('T')[0],
+    startDate: toLocalDateStr(new Date()),
     notes: ''
   });
 
@@ -149,7 +150,7 @@ const Sales = () => {
       totalAmount: sale.amount,
       paymentAmount: '',
       frequency: 'monthly',
-      startDate: new Date().toISOString().split('T')[0],
+      startDate: toLocalDateStr(new Date()),
       notes: `Finance agreement for ${sale.lead_name}`
     });
     setShowCreateFinanceModal(true);
@@ -171,7 +172,7 @@ const Sales = () => {
         totalAmount: '',
         paymentAmount: '',
         frequency: 'monthly',
-        startDate: new Date().toISOString().split('T')[0],
+        startDate: toLocalDateStr(new Date()),
         notes: ''
       });
       

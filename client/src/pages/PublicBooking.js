@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiCheck, FiChevronLeft, FiChevronRight, FiUser, FiMail, FiCalendar, FiClock, FiEdit2 } from 'react-icons/fi';
+import { toLocalDateStr } from '../utils/timeUtils';
 
 const PublicBooking = () => {
   const { leadId } = useParams();
@@ -53,8 +54,8 @@ const PublicBooking = () => {
       setLoading(true);
       const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-      const startStr = startDate.toISOString().split('T')[0];
-      const endStr = endDate.toISOString().split('T')[0];
+      const startStr = toLocalDateStr(startDate);
+      const endStr = toLocalDateStr(endDate);
 
       const [leadResponse, calendarResponse, blockedResponse] = await Promise.all([
         axios.get(`/api/public/booking/lead/${leadId}`),
@@ -96,7 +97,7 @@ const PublicBooking = () => {
 
   const isDateBlocked = (date) => {
     if (!date) return true;
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(date);
     return blockedSlots.some(block => block.date?.split('T')[0] === dateStr && !block.time_slot);
   };
 
@@ -109,7 +110,7 @@ const PublicBooking = () => {
 
   const getBookedTimes = (date) => {
     if (!date) return [];
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(date);
     const bookedTimes = calendarData
       .filter(b => b.booking_date?.split('T')[0] === dateStr && b.lead_status !== 'Cancelled')
       .map(b => b.booking_time);
@@ -159,7 +160,7 @@ const PublicBooking = () => {
       setSubmitting(true);
       setError(null);
       const response = await axios.post(`/api/public/booking/book/${leadId}`, {
-        date: selectedDate.toISOString().split('T')[0],
+        date: toLocalDateStr(selectedDate),
         time: selectedTime,
         name: name,
         email: email

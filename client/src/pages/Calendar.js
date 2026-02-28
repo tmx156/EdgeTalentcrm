@@ -21,7 +21,7 @@ import ImageLightbox from '../components/ImageLightbox';
 import LazyImage from '../components/LazyImage';
 import OptimizedImage from '../components/OptimizedImage';
 import { getOptimizedImageUrl, getCloudinaryUrl, getBlurPlaceholder } from '../utils/imageUtils';
-import { getCurrentUKTime } from '../utils/timeUtils';
+import { getCurrentUKTime, toLocalDateStr } from '../utils/timeUtils';
 import { decodeEmailContent, isEmailContentEncoded } from '../utils/emailContentDecoder';
 import GmailEmailRenderer from '../components/GmailEmailRenderer';
 import CalendarMessageModal from '../components/CalendarMessageModal';
@@ -109,7 +109,7 @@ const Calendar = () => {
       const bookedSlots = events.filter(event => {
         if (!event.date_booked) return false;
         const eventDate = new Date(event.date_booked);
-        return eventDate.toISOString().split('T')[0] === selectedDateStr;
+        return toLocalDateStr(eventDate) === selectedDateStr;
       });
 
       // Calculate available slots
@@ -400,7 +400,7 @@ const Calendar = () => {
       
       if (currentView === 'daily') {
         // For daily view, fetch blocked slots for the current date
-        const dateStr = currentDate.toISOString().split('T')[0];
+        const dateStr = toLocalDateStr(currentDate);
         startDate = dateStr;
         endDate = dateStr;
       } else if (currentView === 'weekly') {
@@ -409,17 +409,17 @@ const Calendar = () => {
         const day = weekStart.getDay();
         const diff = weekStart.getDate() - day + (day === 0 ? -6 : 1);
         weekStart.setDate(diff);
-        startDate = weekStart.toISOString().split('T')[0];
-        
+        startDate = toLocalDateStr(weekStart);
+
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
-        endDate = weekEnd.toISOString().split('T')[0];
+        endDate = toLocalDateStr(weekEnd);
       } else {
         // For monthly view, fetch blocked slots for the current month
         const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
         const monthEnd = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-        startDate = monthStart.toISOString().split('T')[0];
-        endDate = monthEnd.toISOString().split('T')[0];
+        startDate = toLocalDateStr(monthStart);
+        endDate = toLocalDateStr(monthEnd);
       }
       
       const response = await axios.get('/api/blocked-slots', {
@@ -947,9 +947,9 @@ const Calendar = () => {
   // Prevent viewing blocked days in daily view
   useEffect(() => {
     if (currentView === 'daily' && blockedSlots.length > 0) {
-      const dateStr = currentDate.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(currentDate);
       const isDayBlocked = blockedSlots.some(block => {
-        const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+        const blockDateStr = toLocalDateStr(new Date(block.date));
         // Full day block: date matches AND no time_slot AND no slot_number
         return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
       });
@@ -1662,9 +1662,9 @@ const Calendar = () => {
     const localDateTime = new Date(year, month, date, hours, minutes, 0, 0);
     const localEndDateTime = new Date(year, month, date, hours, minutes + 30, 0, 0);
     
-    // Create ISO string that preserves local time (avoiding UTC conversion)
-    // This is the key fix - we manually construct the ISO string to avoid timezone shifts
-    const localISOString = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00.000Z`;
+    // Store just the date portion (YYYY-MM-DD) - no timezone suffix needed
+    // The time is stored separately in time_booked
+    const localDateStr = toLocalDateStr(localDateTime);
     
     // Debug logging to show the time handling
     console.log('🕐 Time Debug:', {
@@ -1704,7 +1704,7 @@ const Calendar = () => {
       const { _id, ...leadDataWithoutId } = leadForm;
       const createData = {
         ...leadDataWithoutId,
-        date_booked: localISOString,
+        date_booked: localDateStr,
         time_booked: leadForm.time_booked || `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
         booking_slot: leadForm.booking_slot || selectedSlot || 1,
         // Include the _id if we have one (from lead details page)
@@ -1758,7 +1758,7 @@ const Calendar = () => {
           title: `${leadForm.name} - ${displayStatus}`,
           phone: leadForm.phone,
           email: leadForm.email,
-          date_booked: leadResult.date_booked || localISOString,
+          date_booked: leadResult.date_booked || localDateStr,
           time_booked: leadResult.time_booked || leadForm.time_booked,
           booking_slot: leadResult.booking_slot || leadForm.booking_slot || 1,
           status: 'Booked',
@@ -3000,9 +3000,9 @@ const Calendar = () => {
                   const maxAttempts = 30; // Prevent infinite loop
                   let attempts = 0;
                   while (attempts < maxAttempts) {
-                    const dateStr = newDate.toISOString().split('T')[0];
+                    const dateStr = toLocalDateStr(newDate);
                     const isDayBlocked = blockedSlots.some(block => {
-                      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                      const blockDateStr = toLocalDateStr(new Date(block.date));
                       return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
                     });
                     if (!isDayBlocked) break;
@@ -3041,9 +3041,9 @@ const Calendar = () => {
                   const maxAttempts = 30; // Prevent infinite loop
                   let attempts = 0;
                   while (attempts < maxAttempts) {
-                    const dateStr = newDate.toISOString().split('T')[0];
+                    const dateStr = toLocalDateStr(newDate);
                     const isDayBlocked = blockedSlots.some(block => {
-                      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                      const blockDateStr = toLocalDateStr(new Date(block.date));
                       return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
                     });
                     if (!isDayBlocked) break;
@@ -3093,18 +3093,18 @@ const Calendar = () => {
             })}
             onDayClick={(day) => {
               // Check if the day is fully blocked before switching to daily view
-              const dateStr = day.toISOString().split('T')[0];
+              const dateStr = toLocalDateStr(day);
               const isDayBlocked = blockedSlots.some(block => {
-                const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                const blockDateStr = toLocalDateStr(new Date(block.date));
                 // Full day block: date matches AND no time_slot AND no slot_number
                 return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
               });
-              
+
               if (isDayBlocked) {
                 alert('This day is blocked and cannot be viewed');
                 return;
               }
-              
+
               console.log('Day clicked:', day);
               // Switch to daily view for selected day
               setCurrentDate(day);
@@ -3135,8 +3135,8 @@ const Calendar = () => {
               if (!event.date_booked) return false;
               
               const eventDate = new Date(event.date_booked);
-              const selectedDateStr = currentDate.toISOString().split('T')[0];
-              const eventDateStr = eventDate.toISOString().split('T')[0];
+              const selectedDateStr = toLocalDateStr(currentDate);
+              const eventDateStr = toLocalDateStr(eventDate);
               
               // Filter by search term
               if (searchTerm) {
@@ -3177,7 +3177,7 @@ const Calendar = () => {
                 ...leadForm,
                 time_booked: time,
                 booking_slot: slot,
-                date_booked: currentDate.toISOString().split('T')[0]
+                date_booked: toLocalDateStr(currentDate)
               });
               // Set flag for secondary template visibility - true if NOT coming from Leads page
               setIsDirectCalendarClick(!leadForm._id);
@@ -3251,16 +3251,16 @@ const Calendar = () => {
                   ...leadForm,
                   time_booked: time,
                   booking_slot: slot,
-                  date_booked: day.toISOString().split('T')[0]
+                  date_booked: toLocalDateStr(day)
                 });
                 // Set flag for secondary template visibility - true if NOT coming from Leads page
                 setIsDirectCalendarClick(!leadForm._id);
                 setShowLeadFormModal(true);
               } else {
                 // Clicked on day header - check if day is blocked before switching to daily view
-                const dateStr = day.toISOString().split('T')[0];
+                const dateStr = toLocalDateStr(day);
                 const isDayBlocked = blockedSlots.some(block => {
-                  const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+                  const blockDateStr = toLocalDateStr(new Date(block.date));
                   // Full day block: date matches AND no time_slot AND no slot_number
                   return blockDateStr === dateStr && !block.time_slot && !block.slot_number;
                 });
@@ -5223,7 +5223,7 @@ const Calendar = () => {
                     }
                   }}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  min={new Date().toISOString().split('T')[0]}
+                  min={toLocalDateStr(new Date())}
                 />
               </div>
               <div>

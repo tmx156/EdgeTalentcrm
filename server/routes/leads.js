@@ -1135,13 +1135,13 @@ router.get('/calendar', auth, async (req, res) => {
     // Apply date range filter if provided
     // NOTE: Calendar now uses a wide range (5 years back to 5 years forward) to get ALL bookings
     if (start && end) {
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-      
-      // Use the provided date range directly (calendar sends wide range for all bookings)
+      // Use date strings directly - date_booked is stored as YYYY-MM-DD in the database
+      // Do NOT convert to ISO/UTC as this shifts dates during BST
+      const startStr = start.split('T')[0];
+      const endStr = end.split('T')[0];
       query = query
-        .gte('date_booked', startDate.toISOString())
-        .lte('date_booked', endDate.toISOString());
+        .gte('date_booked', startStr)
+        .lte('date_booked', endStr + 'T23:59:59');
     }
     // If no date range provided, fetch ALL bookings (no date filter)
     
@@ -1154,13 +1154,12 @@ router.get('/calendar', auth, async (req, res) => {
       .not('status', 'in', '(Cancelled,Rejected)'); // ✅ Exclude cancelled/rejected from count
 
     if (start && end) {
-      const startDate = new Date(start);
-      const endDate = new Date(end);
-      
-      // Use the provided date range directly for count query
+      // Use date strings directly - match the main query format
+      const startStr = start.split('T')[0];
+      const endStr = end.split('T')[0];
       countQuery
-        .gte('date_booked', startDate.toISOString())
-        .lte('date_booked', endDate.toISOString());
+        .gte('date_booked', startStr)
+        .lte('date_booked', endStr + 'T23:59:59');
     }
     // If no date range provided, count ALL bookings (no date filter)
 
@@ -1493,19 +1492,17 @@ router.get('/calendar/export-csv', auth, async (req, res) => {
 
     console.log(`📥 Exporting calendar CSV for date: ${date}`);
 
-    // Parse the date - add 'T00:00:00' to ensure it's treated as local time, not UTC
-    const [year, month, day] = date.split('-');
-    const startOfDayUTC = `${year}-${month}-${day}T00:00:00.000Z`;
-    const endOfDayUTC = `${year}-${month}-${day}T23:59:59.999Z`;
+    // Use plain date string - date_booked is stored as YYYY-MM-DD in the database
+    const dateStr = date.split('T')[0]; // Ensure we only have the date portion
 
-    console.log(`📅 Querying bookings between ${startOfDayUTC} and ${endOfDayUTC}`);
+    console.log(`📅 Querying bookings for date: ${dateStr}`);
 
     // Fetch all leads for this date
     const { data: leads, error } = await supabase
       .from('leads')
       .select('id, name, phone, date_booked, notes, status, postcode, email, booking_history')
-      .gte('date_booked', startOfDayUTC)
-      .lte('date_booked', endOfDayUTC)
+      .gte('date_booked', dateStr)
+      .lte('date_booked', dateStr + 'T23:59:59')
       .is('deleted_at', null)
       .neq('postcode', 'ZZGHOST')
       .not('status', 'in', '(Cancelled,Rejected)')
@@ -2594,16 +2591,17 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
     console.log(`🔍 Booking Debug for ${lead.name}:`, {
       oldStatus,
       newStatus: req.body.status,
-      oldDateBooked: oldDateBooked ? new Date(oldDateBooked).toISOString() : null,
-      newDateBooked: req.body.date_booked ? new Date(req.body.date_booked).toISOString() : null,
+      oldDateBooked: oldDateBooked || null,
+      newDateBooked: req.body.date_booked || null,
       isNewBooking: (oldStatus === 'New' || !oldDateBooked) && req.body.date_booked && req.body.status === 'Booked',
-      isReschedule: oldStatus === 'Booked' && req.body.status === 'Booked' && oldDateBooked && req.body.date_booked && new Date(oldDateBooked).getTime() !== new Date(req.body.date_booked).getTime(),
-      hasDateChange: oldDateBooked && req.body.date_booked && new Date(oldDateBooked).getTime() !== new Date(req.body.date_booked).getTime()
+      isReschedule: oldStatus === 'Booked' && req.body.status === 'Booked' && oldDateBooked && req.body.date_booked && (oldDateBooked || '').split('T')[0] !== (req.body.date_booked || '').split('T')[0],
+      hasDateChange: oldDateBooked && req.body.date_booked && (oldDateBooked || '').split('T')[0] !== (req.body.date_booked || '').split('T')[0]
     });
     // Track changes for booking history - only for significant changes
+    // Compare just the date portion (YYYY-MM-DD) to handle both old ISO format and new plain date format
     const isStatusChange = oldStatus !== req.body.status && req.body.status;
-    const isDateChange = oldDateBooked && req.body.date_booked && new Date(oldDateBooked).getTime() !== new Date(req.body.date_booked).getTime();
-    const isReschedule = oldStatus === 'Booked' && req.body.status === 'Booked' && oldDateBooked && req.body.date_booked && new Date(oldDateBooked).getTime() !== new Date(req.body.date_booked).getTime();
+    const isDateChange = oldDateBooked && req.body.date_booked && (oldDateBooked || '').split('T')[0] !== (req.body.date_booked || '').split('T')[0];
+    const isReschedule = oldStatus === 'Booked' && req.body.status === 'Booked' && oldDateBooked && req.body.date_booked && (oldDateBooked || '').split('T')[0] !== (req.body.date_booked || '').split('T')[0];
     const isNewBooking = (oldStatus === 'New' || !oldDateBooked) && req.body.date_booked && req.body.status === 'Booked';
     // Handle cancellation - set to Cancelled and clear booking date
     const isCancellation = req.body.status === 'Cancelled' || (req.body.status === 'New' && oldStatus === 'Booked' && !req.body.date_booked);
@@ -4382,6 +4380,57 @@ router.post('/upload-analyze', auth, adminAuth, async (req, res) => {
       }
     }
 
+    // Build row-level duplicate detail for the review UI
+    const duplicateRows = [];
+
+    // In-file duplicates: for each phone group with 2+ entries, mark all but the first
+    for (const [normalized, entries] of Object.entries(phoneMap)) {
+      if (entries.length >= 2) {
+        for (let j = 1; j < entries.length; j++) {
+          const entry = entries[j];
+          const rowData = rawRows[entry.rowNum - 2]; // rowNum is 1-based + header
+          duplicateRows.push({
+            rowIndex: entry.rowNum - 2,
+            rowNum: entry.rowNum,
+            name: entry.name,
+            phone: entry.phone,
+            email: (mapping.email && rowData[mapping.email]) ? rowData[mapping.email].toString().trim() : '',
+            type: 'in_file',
+            matchInfo: `Same phone as row${entries.filter((_, k) => k !== j).map(e => e.rowNum).length > 1 ? 's' : ''} ${entries.filter((_, k) => k !== j).map(e => e.rowNum).join(', ')}`
+          });
+        }
+      }
+    }
+
+    // DB duplicates: match upload rows against existing leads
+    const dbNormalizedMap = new Map();
+    for (const dup of dbDuplicates) {
+      const norm = dup.phone.replace(/[^0-9]/g, '').slice(-10);
+      dbNormalizedMap.set(norm, dup);
+    }
+
+    for (let i = 0; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      const phone = (mapping.phone && row[mapping.phone]) ? row[mapping.phone].toString().trim() : '';
+      if (!phone) continue;
+      const norm = phone.replace(/[^0-9]/g, '').slice(-10);
+      const match = dbNormalizedMap.get(norm);
+      if (match) {
+        // Avoid duplicating if already marked as in-file dup
+        if (!duplicateRows.find(d => d.rowIndex === i)) {
+          duplicateRows.push({
+            rowIndex: i,
+            rowNum: i + 2,
+            name: (mapping.name && row[mapping.name]) ? row[mapping.name].toString().trim() : '',
+            phone,
+            email: (mapping.email && row[mapping.email]) ? row[mapping.email].toString().trim() : '',
+            type: 'db_match',
+            matchInfo: `Exists in CRM: ${match.existingName} (${match.existingStatus})`
+          });
+        }
+      }
+    }
+
     // Build summary
     const errorRowCount = errors.length;
     const validRows = totalRows - errorRowCount;
@@ -4402,6 +4451,7 @@ router.post('/upload-analyze', auth, adminAuth, async (req, res) => {
       warnings: warnings.slice(0, 50),
       inFileDuplicates: inFileDuplicates.slice(0, 50),
       dbDuplicates: dbDuplicates.slice(0, 50),
+      duplicateRows: duplicateRows.slice(0, 200),
       summary,
       truncated: {
         errors: errors.length > 50,
@@ -4447,7 +4497,7 @@ router.post('/upload-simple', auth, adminAuth, (req, res, next) => {
     console.log('📤 Simple upload request received');
 
     // ===== MODE 2: Mapped import from preview (fileId + columnMapping) =====
-    const { fileId, columnMapping } = req.body || {};
+    const { fileId, columnMapping, excludeRowIndices } = req.body || {};
     if (fileId && columnMapping) {
       console.log('📋 Mapped import mode — fileId:', fileId);
       const mapping = typeof columnMapping === 'string' ? JSON.parse(columnMapping) : columnMapping;
@@ -4469,6 +4519,7 @@ router.post('/upload-simple', auth, adminAuth, (req, res, next) => {
       const errors = [];
 
       for (let i = 0; i < rawRows.length; i++) {
+        if (excludeRowIndices && Array.isArray(excludeRowIndices) && excludeRowIndices.includes(i)) continue; // User chose to exclude this row
         const row = rawRows[i];
         const rowNum = i + 2; // +2 for header row + 1-based indexing (matches analyze)
         try {

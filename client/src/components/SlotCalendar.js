@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { FiCheckCircle, FiClock, FiUser, FiMessageSquare, FiMail } from 'react-icons/fi';
+import { toLocalDateStr } from '../utils/timeUtils';
 
 // Time slots configuration matching the visual design
 // Striped pattern for child/male slots: bg-gradient-to-r from-yellow-100 to-blue-100
@@ -102,12 +103,12 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
   const eventsBySlot = useMemo(() => {
     if (!events || events.length === 0) return new Map();
 
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(selectedDate);
     const index = new Map();
 
     events.forEach(event => {
       if (!event.date_booked) return;
-      const eventDateStr = new Date(event.date_booked).toISOString().split('T')[0];
+      const eventDateStr = toLocalDateStr(new Date(event.date_booked));
       if (eventDateStr !== dateStr) return;
 
       const key = `${event.time_booked || ''}_${event.booking_slot || 1}`;
@@ -126,7 +127,7 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
     
     const index = new Map();
     blockedSlots.forEach(block => {
-      const blockDateStr = new Date(block.date).toISOString().split('T')[0];
+      const blockDateStr = toLocalDateStr(new Date(block.date));
       if (!index.has(blockDateStr)) {
         index.set(blockDateStr, []);
       }
@@ -137,7 +138,7 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
 
   // Check if a slot is blocked - OPTIMIZED: Use pre-indexed map
   const isSlotBlocked = (timeSlot = null, slotNumber = null) => {
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    const dateStr = toLocalDateStr(selectedDate);
     const dayBlocks = blockedSlotsByDate.get(dateStr) || [];
     
     if (dayBlocks.length === 0) return false;

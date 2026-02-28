@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Send, FileText, Mail, Copy, Check, Loader, AlertTriangle, ExternalLink, Clock, CheckCircle, Edit2, Eye, ChevronRight, ChevronLeft, User, MapPin, Phone, CreditCard, Package, PoundSterling, Image, ArrowLeft, RefreshCw, Download, Save, Link } from 'lucide-react';
+import { toLocalDateStr } from '../utils/timeUtils';
 
 /**
  * SendContractModal - Modal for creating and sending contracts to customers
@@ -299,7 +300,7 @@ const SendContractModal = ({
           ? (invoiceData?.financeFrequency || 'monthly') 
           : 'monthly',
         financeStartDate: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r')
-          ? (invoiceData?.financeStartDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+          ? (invoiceData?.financeStartDate || toLocalDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)))
           : '',
         financeDueDay: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r')
           ? (invoiceData?.financeDueDay || 1)
@@ -1146,7 +1147,7 @@ const SendContractModal = ({
                               contractDetails.paymentMethod !== 'payl8r') {
                             const defaultStartDate = new Date();
                             defaultStartDate.setDate(defaultStartDate.getDate() + 30);
-                            updateField('financeStartDate', defaultStartDate.toISOString().split('T')[0]);
+                            updateField('financeStartDate', toLocalDateStr(defaultStartDate));
                             updateField('financeFrequency', 'monthly');
                             updateField('financeDueDay', 1);
                             updateField('financeDuration', 12);

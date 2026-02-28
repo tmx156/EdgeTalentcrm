@@ -5,7 +5,7 @@ import { RiRobot2Line } from 'react-icons/ri';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { getCurrentUKTime, getTodayUK, getStartOfDayUK, getEndOfDayUK, ukTimeToUTC } from '../utils/timeUtils';
+import { getCurrentUKTime, getTodayUK, getStartOfDayUK, getEndOfDayUK, ukTimeToUTC, toLocalDateStr } from '../utils/timeUtils';
 import LeadAnalysisModal from '../components/LeadAnalysisModal';
 import LazyImage from '../components/LazyImage';
 import VirtualLeadsList from '../components/VirtualLeadsList';
@@ -1549,7 +1549,7 @@ const Leads = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `lead-analysis-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `lead-analysis-${toLocalDateStr(new Date())}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1589,7 +1589,7 @@ const Leads = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `selected-leads-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `selected-leads-${toLocalDateStr(new Date())}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Mail, MessageSquare, DollarSign, CreditCard } from 'lucide-react';
+import { toLocalDateStr } from '../utils/timeUtils';
 
 const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
   const [formData, setFormData] = useState({
@@ -8,7 +9,7 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
     paymentType: existingSale?.paymentType || 'full_payment',
     financeAmount: '',
     financeFrequency: 'monthly',
-    financeStartDate: new Date().toISOString().split('T')[0],
+    financeStartDate: toLocalDateStr(new Date()),
     notes: existingSale?.notes || '',
     images: [],
     emailReceipt: false,
@@ -80,7 +81,7 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
         paymentType: existingSale.paymentType || 'full_payment',
         financeAmount: '',
         financeFrequency: 'monthly',
-        financeStartDate: new Date().toISOString().split('T')[0],
+        financeStartDate: toLocalDateStr(new Date()),
         notes: existingSale.notes || '',
         images: [],
         emailReceipt: false,
@@ -95,7 +96,7 @@ const SaleModal = ({ isOpen, onClose, lead, existingSale, onSaveSuccess }) => {
         paymentType: 'full_payment',
         financeAmount: '',
         financeFrequency: 'monthly',
-        financeStartDate: new Date().toISOString().split('T')[0],
+        financeStartDate: toLocalDateStr(new Date()),
         notes: '',
         images: [],
         emailReceipt: false,

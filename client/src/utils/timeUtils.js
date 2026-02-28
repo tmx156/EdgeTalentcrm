@@ -118,6 +118,19 @@ export const getEndOfDayUK = (date = new Date()) => {
   return ukDate;
 };
 
+/**
+ * Extract YYYY-MM-DD from a Date using LOCAL time (not UTC).
+ * Replaces the broken .toISOString().split('T')[0] pattern which
+ * converts to UTC first and shifts dates during BST.
+ */
+export const toLocalDateStr = (date) => {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 
 
 
