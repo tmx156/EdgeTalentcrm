@@ -63,21 +63,46 @@ const parseCSVLine = (line) => {
   return result;
 };
 
+// Helper: Normalize phone number for consistent comparison across all duplicate checks
+// Strips all non-digits, removes UK country code (44), removes leading 0, returns core digits
+const normalizePhone = (phone) => {
+  if (!phone) return '';
+  let digits = phone.toString().replace(/[^0-9]/g, '');
+  if (digits.startsWith('44') && digits.length > 10) digits = digits.slice(2);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  return digits;
+};
+
 // Helper: Parse UK date to ISO string using UTC (avoids timezone shifting)
+// Returns { value, warning } so callers can surface parse failures to the user
 const parseEntryDateToISO = (raw) => {
-  if (!raw) return null;
+  if (!raw) return { value: null, warning: null };
   const str = raw.toString().trim();
-  if (!str) return null;
+  if (!str) return { value: null, warning: null };
+
+  // Try DD/MM/YYYY or DD-MM-YYYY (with optional HH:MM)
   const ukMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
   if (ukMatch) {
     const [, day, month, year, hours, minutes] = ukMatch;
-    return new Date(Date.UTC(
-      parseInt(year), parseInt(month) - 1, parseInt(day),
-      parseInt(hours || 0), parseInt(minutes || 0)
-    )).toISOString();
+    const d = parseInt(day), m = parseInt(month), y = parseInt(year);
+    // Validate day/month ranges
+    if (m < 1 || m > 12) return { value: null, warning: `Invalid month (${m}) in date "${str}"` };
+    if (d < 1 || d > 31) return { value: null, warning: `Invalid day (${d}) in date "${str}"` };
+    const date = new Date(Date.UTC(y, m - 1, d, parseInt(hours || 0), parseInt(minutes || 0)));
+    // Check the date didn't roll over (e.g. 31/02 becomes March)
+    if (date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) {
+      return { value: null, warning: `Invalid date "${str}" (day doesn't exist in that month)` };
+    }
+    return { value: date.toISOString(), warning: null };
   }
+
+  // Fallback: try native JS date parsing
   const parsed = new Date(raw);
-  return !isNaN(parsed.getTime()) ? parsed.toISOString() : null;
+  if (!isNaN(parsed.getTime())) {
+    return { value: parsed.toISOString(), warning: null };
+  }
+
+  return { value: null, warning: `Could not parse date "${str}"` };
 };
 
 // Helper: Clean up stale preview files older than 1 hour
@@ -2052,29 +2077,22 @@ router.post('/', auth, async (req, res) => {
 
     // Check for existing leads with the same name and phone to prevent duplicates using Supabase
     if (finalBody.name && finalBody.phone) {
-      // Normalize phone number for better duplicate detection
-      const normalizedPhone = finalBody.phone.replace(/[\s\-\(\)]/g, '');
+      const normalizedPhoneVal = normalizePhone(finalBody.phone);
       const normalizedName = finalBody.name.trim().toLowerCase();
-      
-      console.log(`📊 Duplicate check: Looking for "${normalizedName}" with phone "${normalizedPhone}"`);
-      
+
+      console.log(`📊 Duplicate check: Looking for "${normalizedName}" with phone "${normalizedPhoneVal}"`);
+
       // Use Supabase to check for duplicates
       const existingLeads = await dbManager.query('leads', {
         select: 'id, name, phone, status, date_booked',
         is: { deleted_at: null },
-        // Note: Supabase doesn't support complex WHERE clauses like SQLite, so we'll filter in JavaScript
-        // This is a limitation we'll need to work around
       });
-      
-      // Filter for duplicates in JavaScript (not ideal but necessary for now)
+
+      // Filter for duplicates using consistent normalizePhone
       const duplicateLeads = existingLeads.filter(lead => {
         const leadName = lead.name ? lead.name.trim().toLowerCase() : '';
-        const leadPhone = lead.phone ? lead.phone.replace(/[\s\-\(\)]/g, '') : '';
-        return leadName === normalizedName && (
-          lead.phone === finalBody.phone || 
-          leadPhone === normalizedPhone || 
-          leadPhone === finalBody.phone.replace(/[\s\-\(\)]/g, '')
-        );
+        const leadPhone = normalizePhone(lead.phone);
+        return leadName === normalizedName && leadPhone === normalizedPhoneVal;
       });
       
       if (duplicateLeads.length > 0) {
@@ -4307,12 +4325,12 @@ router.post('/upload-analyze', auth, adminAuth, async (req, res) => {
         } else if (digitsOnly.length > 15) {
           errors.push({ row: rowNum, issue: `Invalid phone: "${phone}" (too long)` });
         } else {
-          // Track for in-file duplicate detection
-          const normalizedPhone = digitsOnly.slice(-10); // last 10 digits for comparison
-          if (!phoneMap[normalizedPhone]) {
-            phoneMap[normalizedPhone] = [];
+          // Track for in-file duplicate detection using shared normalizePhone
+          const normPhone = normalizePhone(phone);
+          if (!phoneMap[normPhone]) {
+            phoneMap[normPhone] = [];
           }
-          phoneMap[normalizedPhone].push({ rowNum, name, phone });
+          phoneMap[normPhone].push({ rowNum, name, phone });
           allPhones.push(phone);
         }
       }
@@ -4320,6 +4338,17 @@ router.post('/upload-analyze', auth, adminAuth, async (req, res) => {
       // Validate email format
       if (email && !email.includes('@')) {
         warnings.push({ row: rowNum, issue: `Invalid email format: "${email}"` });
+      }
+
+      // Validate entry date if mapped
+      if (mapping.entry_date && row[mapping.entry_date]) {
+        const dateRaw = row[mapping.entry_date].toString().trim();
+        if (dateRaw) {
+          const { warning } = parseEntryDateToISO(dateRaw);
+          if (warning) {
+            warnings.push({ row: rowNum, issue: `${warning} — date will be blank` });
+          }
+        }
       }
     }
 
@@ -4336,42 +4365,32 @@ router.post('/upload-analyze', auth, adminAuth, async (req, res) => {
       }
     }
 
-    // DB duplicate check — query existing leads by phone
+    // DB duplicate check — query existing leads and compare with normalized phones
     let dbDuplicates = [];
     if (allPhones.length > 0) {
       try {
-        // Batch in groups of 200 to avoid query limits
-        const batchSize = 200;
-        const existingLeads = [];
-        for (let b = 0; b < allPhones.length; b += batchSize) {
-          const batch = allPhones.slice(b, b + batchSize);
-          const { data, error } = await supabase
-            .from('leads')
-            .select('name, phone, status')
-            .in('phone', batch);
-          if (!error && data) {
-            existingLeads.push(...data);
-          }
-        }
+        // Build a set of normalized upload phones for fast lookup
+        const uploadNormSet = new Set(allPhones.map(p => normalizePhone(p)));
 
-        // Also try normalized matching (strip leading 0, +44 etc)
-        const normalizePhone = (p) => {
-          let d = p.replace(/[^0-9]/g, '');
-          if (d.startsWith('44') && d.length > 10) d = d.slice(2);
-          if (d.startsWith('0')) d = d.slice(1);
-          return d;
-        };
+        // Query all leads with phones from DB and filter by normalized match
+        const { data: existingLeads, error } = await supabase
+          .from('leads')
+          .select('name, phone, status')
+          .not('phone', 'is', null)
+          .is('deleted_at', null);
 
-        const existingPhoneSet = new Set();
-        for (const lead of existingLeads) {
-          const key = normalizePhone(lead.phone);
-          if (!existingPhoneSet.has(key)) {
-            existingPhoneSet.add(key);
-            dbDuplicates.push({
-              phone: lead.phone,
-              existingName: lead.name,
-              existingStatus: lead.status
-            });
+        if (!error && existingLeads) {
+          const existingPhoneSet = new Set();
+          for (const lead of existingLeads) {
+            const key = normalizePhone(lead.phone);
+            if (uploadNormSet.has(key) && !existingPhoneSet.has(key)) {
+              existingPhoneSet.add(key);
+              dbDuplicates.push({
+                phone: lead.phone,
+                existingName: lead.name,
+                existingStatus: lead.status
+              });
+            }
           }
         }
       } catch (dbErr) {
@@ -4402,10 +4421,10 @@ router.post('/upload-analyze', auth, adminAuth, async (req, res) => {
       }
     }
 
-    // DB duplicates: match upload rows against existing leads
+    // DB duplicates: match upload rows against existing leads using shared normalizePhone
     const dbNormalizedMap = new Map();
     for (const dup of dbDuplicates) {
-      const norm = dup.phone.replace(/[^0-9]/g, '').slice(-10);
+      const norm = normalizePhone(dup.phone);
       dbNormalizedMap.set(norm, dup);
     }
 
@@ -4413,7 +4432,7 @@ router.post('/upload-analyze', auth, adminAuth, async (req, res) => {
       const row = rawRows[i];
       const phone = (mapping.phone && row[mapping.phone]) ? row[mapping.phone].toString().trim() : '';
       if (!phone) continue;
-      const norm = phone.replace(/[^0-9]/g, '').slice(-10);
+      const norm = normalizePhone(phone);
       const match = dbNormalizedMap.get(norm);
       if (match) {
         // Avoid duplicating if already marked as in-file dup
@@ -4510,81 +4529,91 @@ router.post('/upload-simple', auth, adminAuth, (req, res, next) => {
       }
 
       const rawRows = JSON.parse(fs.readFileSync(previewPath, 'utf8'));
-      // Clean up temp file
-      fs.unlinkSync(previewPath);
 
       console.log(`📊 Mapped import: ${rawRows.length} rows, mapping:`, mapping);
 
-      const processedLeads = [];
+      const leadsToInsert = [];
       const errors = [];
 
+      // Phase 1: Validate and prepare all leads before touching the DB
       for (let i = 0; i < rawRows.length; i++) {
-        if (excludeRowIndices && Array.isArray(excludeRowIndices) && excludeRowIndices.includes(i)) continue; // User chose to exclude this row
+        if (excludeRowIndices && Array.isArray(excludeRowIndices) && excludeRowIndices.includes(i)) continue;
         const row = rawRows[i];
         const rowNum = i + 2; // +2 for header row + 1-based indexing (matches analyze)
+
+        const mapped = {};
+
+        // Apply user-provided column mapping
+        if (mapping.name && row[mapping.name]) mapped.name = row[mapping.name].toString().trim();
+        if (mapping.phone && row[mapping.phone]) mapped.phone = row[mapping.phone].toString().trim();
+        if (mapping.email && row[mapping.email]) mapped.email = row[mapping.email].toString().trim();
+        if (mapping.postcode && row[mapping.postcode]) mapped.postcode = row[mapping.postcode].toString().trim();
+        if (mapping.age && row[mapping.age]) mapped.age = row[mapping.age].toString().trim();
+        if (mapping.lead_source && row[mapping.lead_source]) mapped.lead_source = row[mapping.lead_source].toString().trim();
+        if (mapping.parent_phone && row[mapping.parent_phone]) mapped.parent_phone = row[mapping.parent_phone].toString().trim();
+        if (mapping.image_url && row[mapping.image_url]) mapped.image_url = row[mapping.image_url].toString().trim();
+        if (mapping.gender && row[mapping.gender]) mapped.gender = row[mapping.gender].toString().trim();
+
+        // Parse entry date (UTC to avoid timezone shifting)
+        if (mapping.entry_date && row[mapping.entry_date]) {
+          mapped.entry_date = parseEntryDateToISO(row[mapping.entry_date]).value;
+        }
+
+        // Must have name or phone
+        if (!mapped.name && !mapped.phone) {
+          errors.push(`Row ${rowNum}: Missing both name and phone — skipped`);
+          continue;
+        }
+
+        let bookingCode = null;
         try {
-          const mapped = {};
+          bookingCode = await generateBookingCode(mapped.name || 'Lead');
+        } catch (bcErr) {
+          console.warn(`⚠️ Booking code generation failed for row ${rowNum}:`, bcErr.message);
+        }
 
-          // Apply user-provided column mapping
-          if (mapping.name && row[mapping.name]) mapped.name = row[mapping.name].toString().trim();
-          if (mapping.phone && row[mapping.phone]) mapped.phone = row[mapping.phone].toString().trim();
-          if (mapping.email && row[mapping.email]) mapped.email = row[mapping.email].toString().trim();
-          if (mapping.postcode && row[mapping.postcode]) mapped.postcode = row[mapping.postcode].toString().trim();
-          if (mapping.age && row[mapping.age]) mapped.age = row[mapping.age].toString().trim();
-          if (mapping.lead_source && row[mapping.lead_source]) mapped.lead_source = row[mapping.lead_source].toString().trim();
-          if (mapping.parent_phone && row[mapping.parent_phone]) mapped.parent_phone = row[mapping.parent_phone].toString().trim();
-          if (mapping.image_url && row[mapping.image_url]) mapped.image_url = row[mapping.image_url].toString().trim();
-          if (mapping.gender && row[mapping.gender]) mapped.gender = row[mapping.gender].toString().trim();
+        const lead = {
+          id: uuidv4(),
+          name: mapped.name || `Lead ${rowNum}`,
+          phone: mapped.phone || null,
+          email: mapped.email || null,
+          postcode: mapped.postcode || '',
+          image_url: mapped.image_url || '',
+          parent_phone: mapped.parent_phone || '',
+          lead_source: mapped.lead_source || null,
+          entry_date: mapped.entry_date || null,
+          gender: mapped.gender || null,
+          status: 'New',
+          booker_id: null,
+          date_booked: null,
+          is_confirmed: false,
+          booking_status: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
 
-          // Parse entry date (UTC to avoid timezone shifting)
-          if (mapping.entry_date && row[mapping.entry_date]) {
-            mapped.entry_date = parseEntryDateToISO(row[mapping.entry_date]);
+        if (mapped.age) {
+          const ageVal = parseInt(mapped.age);
+          if (!isNaN(ageVal) && ageVal > 0) {
+            lead.age = ageVal;
           }
+        }
 
-          // Must have name or phone
-          if (!mapped.name && !mapped.phone) {
-            errors.push(`Row ${rowNum}: Missing both name and phone — skipped`);
-            continue;
-          }
+        leadsToInsert.push(lead);
+      }
 
-          let bookingCode = null;
-          try {
-            bookingCode = await generateBookingCode(mapped.name || 'Lead');
-          } catch (bcErr) {
-            console.warn(`⚠️ Booking code generation failed for row ${rowNum}:`, bcErr.message);
-          }
-
-          const leadToInsert = {
-            id: uuidv4(),
-            name: mapped.name || `Lead ${rowNum}`,
-            phone: mapped.phone || null,
-            email: mapped.email || null,
-            postcode: mapped.postcode || '',
-            image_url: mapped.image_url || '',
-            parent_phone: mapped.parent_phone || '',
-            lead_source: mapped.lead_source || null,
-            entry_date: mapped.entry_date || null,
-            gender: mapped.gender || null,
-            status: 'New',
-            booker_id: null,
-            date_booked: null,
-            is_confirmed: false,
-            booking_status: null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-
-          if (mapped.age) {
-            const ageVal = parseInt(mapped.age);
-            if (!isNaN(ageVal) && ageVal > 0) {
-              leadToInsert.age = ageVal;
-            }
-          }
-
-          await dbManager.insert('leads', leadToInsert);
-          processedLeads.push(leadToInsert);
-        } catch (rowErr) {
-          errors.push(`Row ${rowNum}: ${rowErr.message}`);
+      // Phase 2: Batch insert — all or nothing per batch
+      const processedLeads = [];
+      const batchSize = 500;
+      for (let b = 0; b < leadsToInsert.length; b += batchSize) {
+        const batch = leadsToInsert.slice(b, b + batchSize);
+        try {
+          const { error } = await supabase.from('leads').insert(batch);
+          if (error) throw error;
+          processedLeads.push(...batch);
+        } catch (batchErr) {
+          console.error(`❌ Batch insert failed (rows ${b + 1}-${b + batch.length}):`, batchErr.message);
+          errors.push(`Batch insert failed for ${batch.length} leads: ${batchErr.message}`);
         }
       }
 
@@ -4593,6 +4622,13 @@ router.post('/upload-simple', auth, adminAuth, (req, res, next) => {
       if (global.io && processedLeads.length > 0) {
         global.io.emit('leads_bulk_imported', { count: processedLeads.length, action: 'mapped_upload', timestamp: new Date() });
         global.io.emit('stats_update_needed', { type: 'mapped_upload', timestamp: new Date() });
+      }
+
+      // Clean up temp file after import is fully done
+      try {
+        if (fs.existsSync(previewPath)) fs.unlinkSync(previewPath);
+      } catch (cleanupErr) {
+        console.warn('⚠️ Failed to clean up preview file:', cleanupErr.message);
       }
 
       return res.json({
@@ -4652,89 +4688,99 @@ router.post('/upload-simple', auth, adminAuth, (req, res, next) => {
     const columnKeys = Object.keys(rawRows[0]);
     console.log('🔍 Columns found:', columnKeys);
 
-    const processedLeads = [];
+    const leadsToInsert = [];
     const errors = [];
 
+    // Phase 1: Validate and prepare all leads before touching the DB
     for (let i = 0; i < rawRows.length; i++) {
       const row = rawRows[i];
       const rowNum = i + 1;
+
+      const mapped = {};
+
+      for (const key of columnKeys) {
+        const val = row[key];
+        if (!val || val.toString().trim() === '') continue;
+        const lk = key.toLowerCase().trim();
+
+        if (lk.includes('name') && !mapped.name) {
+          mapped.name = val.toString().trim();
+        } else if (lk === 'age' && !mapped.age) {
+          mapped.age = val.toString().trim();
+        } else if (lk.includes('email') && !mapped.email) {
+          mapped.email = val.toString().trim();
+        } else if ((lk.includes('phone') || lk.includes('mobile') || lk.includes('tel')) && !lk.includes('parent') && !mapped.phone) {
+          mapped.phone = val.toString().trim();
+        } else if ((lk.includes('postcode') || lk.includes('postal') || lk.includes('zip')) && !mapped.postcode) {
+          mapped.postcode = val.toString().trim();
+        } else if (lk.includes('image') && lk.includes('url') && !mapped.image_url) {
+          mapped.image_url = val.toString().trim();
+        } else if (lk.includes('parent') && lk.includes('phone') && !mapped.parent_phone) {
+          mapped.parent_phone = val.toString().trim();
+        } else if (lk.includes('source') && !mapped.lead_source) {
+          mapped.lead_source = val.toString().trim();
+        } else if (lk.includes('entry') && lk.includes('date') && !mapped.entry_date) {
+          mapped.entry_date = parseEntryDateToISO(val).value;
+        } else if ((lk.includes('gender') || lk === 'sex') && !mapped.gender) {
+          mapped.gender = val.toString().trim();
+        }
+      }
+
+      // Must have name or phone
+      if (!mapped.name && !mapped.phone) {
+        errors.push(`Row ${rowNum}: Missing both name and phone — skipped`);
+        continue;
+      }
+
+      let bookingCode = null;
       try {
-        const mapped = {};
+        bookingCode = await generateBookingCode(mapped.name || 'Lead');
+      } catch (bcErr) {
+        console.warn(`⚠️ Booking code generation failed for row ${rowNum}:`, bcErr.message);
+      }
 
-        for (const key of columnKeys) {
-          const val = row[key];
-          if (!val || val.toString().trim() === '') continue;
-          const lk = key.toLowerCase().trim();
+      const lead = {
+        id: uuidv4(),
+        name: mapped.name || `Lead ${rowNum}`,
+        phone: mapped.phone || null,
+        email: mapped.email || null,
+        postcode: mapped.postcode || '',
+        image_url: mapped.image_url || '',
+        parent_phone: mapped.parent_phone || '',
+        lead_source: mapped.lead_source || null,
+        entry_date: mapped.entry_date || null,
+        gender: mapped.gender || null,
+        status: 'New',
+        booker_id: null,
+        date_booked: null,
+        is_confirmed: false,
+        booking_status: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
 
-          if (lk.includes('name') && !mapped.name) {
-            mapped.name = val.toString().trim();
-          } else if (lk === 'age' && !mapped.age) {
-            mapped.age = val.toString().trim();
-          } else if (lk.includes('email') && !mapped.email) {
-            mapped.email = val.toString().trim();
-          } else if ((lk.includes('phone') || lk.includes('mobile') || lk.includes('tel')) && !lk.includes('parent') && !mapped.phone) {
-            mapped.phone = val.toString().trim();
-          } else if ((lk.includes('postcode') || lk.includes('postal') || lk.includes('zip')) && !mapped.postcode) {
-            mapped.postcode = val.toString().trim();
-          } else if (lk.includes('image') && lk.includes('url') && !mapped.image_url) {
-            mapped.image_url = val.toString().trim();
-          } else if (lk.includes('parent') && lk.includes('phone') && !mapped.parent_phone) {
-            mapped.parent_phone = val.toString().trim();
-          } else if (lk.includes('source') && !mapped.lead_source) {
-            mapped.lead_source = val.toString().trim();
-          } else if (lk.includes('entry') && lk.includes('date') && !mapped.entry_date) {
-            mapped.entry_date = parseEntryDateToISO(val);
-          } else if ((lk.includes('gender') || lk === 'sex') && !mapped.gender) {
-            mapped.gender = val.toString().trim();
-          }
+      if (mapped.age) {
+        const ageVal = parseInt(mapped.age);
+        if (!isNaN(ageVal) && ageVal > 0) {
+          lead.age = ageVal;
         }
+      }
 
-        // Must have name or phone
-        if (!mapped.name && !mapped.phone) {
-          errors.push(`Row ${rowNum}: Missing both name and phone — skipped`);
-          continue;
-        }
+      leadsToInsert.push(lead);
+    }
 
-        // Build lead object
-        let bookingCode = null;
-        try {
-          bookingCode = await generateBookingCode(mapped.name || 'Lead');
-        } catch (bcErr) {
-          console.warn(`⚠️ Booking code generation failed for row ${rowNum}:`, bcErr.message);
-        }
-
-        const leadToInsert = {
-          id: uuidv4(),
-          name: mapped.name || `Lead ${rowNum}`,
-          phone: mapped.phone || null,
-          email: mapped.email || null,
-          postcode: mapped.postcode || '',
-          image_url: mapped.image_url || '',
-          parent_phone: mapped.parent_phone || '',
-          lead_source: mapped.lead_source || null,
-          entry_date: mapped.entry_date || null,
-          gender: mapped.gender || null,
-          status: 'New',
-          booker_id: null,
-          date_booked: null,
-          is_confirmed: false,
-          booking_status: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        // Add age if valid
-        if (mapped.age) {
-          const ageVal = parseInt(mapped.age);
-          if (!isNaN(ageVal) && ageVal > 0) {
-            leadToInsert.age = ageVal;
-          }
-        }
-
-        await dbManager.insert('leads', leadToInsert);
-        processedLeads.push(leadToInsert);
-      } catch (rowErr) {
-        errors.push(`Row ${rowNum}: ${rowErr.message}`);
+    // Phase 2: Batch insert — all or nothing per batch
+    const processedLeads = [];
+    const batchSize = 500;
+    for (let b = 0; b < leadsToInsert.length; b += batchSize) {
+      const batch = leadsToInsert.slice(b, b + batchSize);
+      try {
+        const { error } = await supabase.from('leads').insert(batch);
+        if (error) throw error;
+        processedLeads.push(...batch);
+      } catch (batchErr) {
+        console.error(`❌ Batch insert failed (rows ${b + 1}-${b + batch.length}):`, batchErr.message);
+        errors.push(`Batch insert failed for ${batch.length} leads: ${batchErr.message}`);
       }
     }
 
@@ -5034,8 +5080,8 @@ router.post('/upload-process', auth, adminAuth, async (req, res) => {
     console.log(`❌ Generated ${errors.length} errors`);
 
     if (processedLeads.length === 0) {
-      fs.unlinkSync(tempFilePath);
-      return res.status(400).json({ 
+      try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch (e) { console.warn('⚠️ Cleanup failed:', e.message); }
+      return res.status(400).json({
         message: 'No valid leads found after processing',
         errors: errors.slice(0, 10)
       });
@@ -5073,7 +5119,7 @@ router.post('/upload-process', auth, adminAuth, async (req, res) => {
     const analysisResult = await analyseLeads(processedLeads, existingLeads, legacyLeads);
 
     // Clean up temporary file
-    fs.unlinkSync(tempFilePath);
+    try { if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch (e) { console.warn('⚠️ Cleanup failed:', e.message); }
 
     res.json({
       message: 'Lead processing complete',
@@ -5400,12 +5446,28 @@ router.post('/bulk-create', auth, adminAuth, async (req, res) => {
     }
 
     console.log(`🔄 Starting bulk import of ${leads.length} leads by user ${req.user.id}`);
-    
-    let importedCount = 0;
+
     let duplicateCount = 0;
     const importErrors = [];
-    const importedLeads = [];
+    const leadsToInsert = [];
 
+    // Phase 1: Fetch existing leads once for duplicate checking (instead of per-lead)
+    let existingLeads = [];
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, name, phone, email')
+        .is('deleted_at', null);
+      if (!error && data) existingLeads = data;
+    } catch (fetchErr) {
+      console.warn('⚠️ Could not fetch existing leads for duplicate check:', fetchErr.message);
+    }
+
+    const existingPhoneSet = new Set(existingLeads.filter(l => l.phone).map(l => normalizePhone(l.phone)));
+    const existingEmailSet = new Set(existingLeads.filter(l => l.email).map(l => l.email.toLowerCase()));
+    const existingNamePhoneSet = new Set(existingLeads.filter(l => l.name && l.phone).map(l => `${l.name}::${normalizePhone(l.phone)}`));
+
+    // Phase 2: Validate and prepare all leads
     for (let leadData of leads) {
       // Map both imageUrl and image_url to image_url
       if (leadData.imageUrl && !leadData.image_url) {
@@ -5414,108 +5476,103 @@ router.post('/bulk-create', auth, adminAuth, async (req, res) => {
       if (leadData.image_url && leadData.imageUrl) {
         delete leadData.imageUrl;
       }
+
+      // Duplicate check against pre-fetched existing leads
+      const duplicateChecks = [];
+
+      if (leadData.phone) {
+        const norm = normalizePhone(leadData.phone);
+        if (existingPhoneSet.has(norm)) {
+          duplicateChecks.push(`Phone: ${leadData.phone} matches existing lead`);
+        }
+      }
+
+      if (leadData.email) {
+        if (existingEmailSet.has(leadData.email.toLowerCase())) {
+          duplicateChecks.push(`Email: ${leadData.email} matches existing lead`);
+        }
+      }
+
+      if (leadData.name && leadData.phone) {
+        const key = `${leadData.name}::${normalizePhone(leadData.phone)}`;
+        if (existingNamePhoneSet.has(key)) {
+          duplicateChecks.push(`Name+Phone: ${leadData.name} + ${leadData.phone} already exists`);
+        }
+      }
+
+      if (duplicateChecks.length > 0) {
+        duplicateCount++;
+        importErrors.push(`Duplicate found for ${leadData.name}: ${duplicateChecks.join(', ')}`);
+        console.log(`❌ Duplicate skipped: ${leadData.name} - ${duplicateChecks.join(', ')}`);
+        continue;
+      }
+
+      // Generate booking code
+      let bookingCode = null;
       try {
-        // Enhanced duplicate check: phone, email, and name+phone combinations
-        const duplicateChecks = [];
-        
-        // Check phone duplicates
-        if (leadData.phone) {
-          const phoneDuplicates = await dbManager.query('leads', {
-            select: 'id, name, phone',
-            eq: { phone: leadData.phone },
-            is: { deleted_at: null }
-          });
-          if (phoneDuplicates && phoneDuplicates.length > 0) {
-            duplicateChecks.push(`Phone: ${leadData.phone} matches existing lead ${phoneDuplicates[0].name}`);
-          }
-        }
-        
-        // Check email duplicates
-        if (leadData.email) {
-          const emailDuplicates = await dbManager.query('leads', {
-            select: 'id, name, email',
-            eq: { email: leadData.email },
-            is: { deleted_at: null }
-          });
-          if (emailDuplicates && emailDuplicates.length > 0) {
-            duplicateChecks.push(`Email: ${leadData.email} matches existing lead ${emailDuplicates[0].name}`);
-          }
-        }
-        
-        // Check name+phone combination duplicates
-        if (leadData.name && leadData.phone) {
-          const namePhoneDuplicates = await dbManager.query('leads', {
-            select: 'id, name, phone',
-            eq: { name: leadData.name, phone: leadData.phone },
-            is: { deleted_at: null }
-          });
-          if (namePhoneDuplicates && namePhoneDuplicates.length > 0) {
-            duplicateChecks.push(`Name+Phone: ${leadData.name} + ${leadData.phone} already exists`);
-          }
-        }
+        bookingCode = await generateBookingCode(leadData.name);
+      } catch (bcError) {
+        console.warn(`⚠️ Failed to generate booking code for ${leadData.name}:`, bcError.message);
+      }
 
-        if (duplicateChecks.length > 0) {
-          duplicateCount++;
-          importErrors.push(`Duplicate found for ${leadData.name}: ${duplicateChecks.join(', ')}`);
-          console.log(`❌ Duplicate skipped: ${leadData.name} - ${duplicateChecks.join(', ')}`);
-          continue;
-        }
+      const lead = {
+        id: uuidv4(),
+        name: leadData.name,
+        phone: leadData.phone || null,
+        email: leadData.email || null,
+        postcode: leadData.postcode,
+        image_url: leadData.image_url,
+        parent_phone: leadData.parent_phone,
+        age: leadData.age,
+        gender: leadData.gender || null,
+        notes: leadData.notes || null,
+        lead_source: leadData.lead_source || null,
+        booker_id: null,
+        status: 'New',
+        date_booked: null,
+        is_confirmed: false,
+        booking_status: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
 
-        // Generate booking code for public booking link
-        let bookingCode = null;
-        try {
-          bookingCode = await generateBookingCode(leadData.name);
-        } catch (bcError) {
-          console.warn(`⚠️ Failed to generate booking code for ${leadData.name}:`, bcError.message);
-        }
+      if (lead.retargeting && typeof lead.retargeting === 'object') {
+        lead.retargeting = JSON.stringify(lead.retargeting);
+      }
 
-        // Prepare lead data with proper ID and booker assignment
-        const leadToInsert = {
-          id: uuidv4(),
-          name: leadData.name,
-          phone: leadData.phone || null,
-          email: leadData.email || null,
-          postcode: leadData.postcode,
-          image_url: leadData.image_url,
-          parent_phone: leadData.parent_phone,
-          age: leadData.age,
-          gender: leadData.gender || null,
-          notes: leadData.notes || null,
-          lead_source: leadData.lead_source || null,
-          booker_id: null, // Never assign booker for uploaded leads
-          status: 'New', // Always create uploaded leads as 'New'
-          date_booked: null, // Never set dateBooked for uploaded leads
-          is_confirmed: false,
-          booking_status: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        
-        // If retargeting is present and is an object, stringify it
-        if (leadToInsert.retargeting && typeof leadToInsert.retargeting === 'object') {
-          leadToInsert.retargeting = JSON.stringify(leadToInsert.retargeting);
-        }
-        
-        // Insert the lead using Supabase
-        await dbManager.insert('leads', leadToInsert);
-        
-        importedLeads.push(leadToInsert);
-        importedCount++;
-        console.log(`✅ Imported: ${leadToInsert.name} (${leadToInsert.phone})`);
+      leadsToInsert.push(lead);
 
-        // Update user's leads assigned count
-        const users = await dbManager.query('users', {
-          select: 'leads_assigned',
-          eq: { id: req.user.id }
+      // Track newly added leads so in-batch duplicates are caught too
+      if (leadData.phone) existingPhoneSet.add(normalizePhone(leadData.phone));
+      if (leadData.email) existingEmailSet.add(leadData.email.toLowerCase());
+      if (leadData.name && leadData.phone) existingNamePhoneSet.add(`${leadData.name}::${normalizePhone(leadData.phone)}`);
+    }
+
+    // Phase 3: Batch insert — all or nothing per batch
+    const importedLeads = [];
+    const batchSize = 500;
+    for (let b = 0; b < leadsToInsert.length; b += batchSize) {
+      const batch = leadsToInsert.slice(b, b + batchSize);
+      try {
+        const { error } = await supabase.from('leads').insert(batch);
+        if (error) throw error;
+        importedLeads.push(...batch);
+      } catch (batchErr) {
+        console.error(`❌ Batch insert failed (leads ${b + 1}-${b + batch.length}):`, batchErr.message);
+        importErrors.push(`Batch insert failed for ${batch.length} leads: ${batchErr.message}`);
+      }
+    }
+
+    const importedCount = importedLeads.length;
+
+    // Update user's leads_assigned count once using atomic SQL increment
+    if (importedCount > 0 && req.user && req.user.id) {
+      try {
+        await supabase.rpc('exec_sql', {
+          sql: `UPDATE users SET leads_assigned = COALESCE(leads_assigned, 0) + ${parseInt(importedCount)} WHERE id = '${req.user.id}'`
         });
-        
-        if (users && users.length > 0) {
-          await dbManager.update('users', {
-            leads_assigned: (users[0].leads_assigned || 0) + 1
-          }, { id: req.user.id });
-        }
-      } catch (error) {
-        importErrors.push(`Failed to import ${leadData.name}: ${error.message}`);
+      } catch (statsErr) {
+        console.warn('⚠️ Failed to update user leads_assigned count:', statsErr.message);
       }
     }
 
@@ -5526,15 +5583,15 @@ router.post('/bulk-create', auth, adminAuth, async (req, res) => {
         action: 'bulk_import',
         timestamp: new Date()
       });
-      
+
       global.io.emit('stats_update_needed', {
         type: 'bulk_import',
         timestamp: new Date()
       });
     }
-    
+
     console.log(`📊 Bulk import completed: ${importedCount} imported, ${duplicateCount} duplicates skipped, ${importErrors.length} errors`);
-    
+
     res.json({
       message: `Successfully imported ${importedCount} leads${duplicateCount > 0 ? `, ${duplicateCount} duplicates skipped` : ''}`,
       imported: importedCount,
