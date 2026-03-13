@@ -171,11 +171,7 @@ router.get('/agreements', auth, async (req, res) => {
 
     // Get finance agreements from Supabase
     const agreements = await dbManager.query('finance', {
-      select: `
-        id, lead_id, sale_id, total_amount, deposit_amount, monthly_payment,
-        term_months, interest_rate, start_date, status, remaining_balance,
-        agreement_number, total_paid, created_at
-      `,
+      select: '*',
       ...filters,
       order: { created_at: 'desc' }
     });

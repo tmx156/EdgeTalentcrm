@@ -160,7 +160,13 @@ const ContractEditor = () => {
     finance_provider_text: '',
     finance_info_text: '',
     // Payment section
-    cash_initial_text: ''
+    cash_initial_text: '',
+    // Finance contract template fields
+    creditor_trading_as: '',
+    key_information_text: '',
+    customer_agreement_text: '',
+    creditor_acknowledgement_text: '',
+    cca_notice: ''
   });
 
   const [originalTemplate, setOriginalTemplate] = useState(null);
@@ -227,6 +233,35 @@ const ContractEditor = () => {
       label: 'Payment Section',
       fields: ['cash_initial_text'],
       page: 1
+    },
+    // Finance contract template sections (only shown when finance preview is active)
+    finance_creditor: {
+      label: 'Finance - Creditor Info',
+      description: 'Creditor details shown on the finance agreement',
+      fields: ['creditor_trading_as'],
+      page: 2,
+      financeOnly: true
+    },
+    key_information: {
+      label: 'Finance - Key Information',
+      description: 'CCA 1974 key information text shown on page 2',
+      fields: ['key_information_text'],
+      page: 2,
+      financeOnly: true
+    },
+    finance_agreements: {
+      label: 'Finance - Agreement Texts',
+      description: 'Customer agreement and creditor acknowledgement texts',
+      fields: ['customer_agreement_text', 'creditor_acknowledgement_text'],
+      page: 2,
+      financeOnly: true
+    },
+    finance_cca: {
+      label: 'Finance - CCA Notice',
+      description: 'Consumer Credit Act notice',
+      fields: ['cca_notice'],
+      page: 2,
+      financeOnly: true
     }
   };
 
@@ -255,7 +290,13 @@ const ContractEditor = () => {
     finance_provider_text: 'Finance Provider Text (e.g., "FINANCE VIA PAYL8R")',
     finance_info_text: 'Finance Info Text (e.g., "Complete docs before receipt")',
     // Payment section
-    cash_initial_text: 'Cash Initial Text (viewer instruction for cash payments)'
+    cash_initial_text: 'Cash Initial Text (viewer instruction for cash payments)',
+    // Finance contract template fields
+    creditor_trading_as: 'Trading As (company legal name)',
+    key_information_text: 'Key Information & Acknowledgement Text',
+    customer_agreement_text: 'Customer Agreement Text',
+    creditor_acknowledgement_text: 'Creditor Acknowledgement Text',
+    cca_notice: 'CCA 1974 Notice Text'
   };
 
   // Fetch actual contract HTML from server
@@ -493,12 +534,12 @@ const ContractEditor = () => {
           >
             <option value="">Jump to section...</option>
             <optgroup label="Page 1">
-              {Object.entries(sections).filter(([_, s]) => s.page === 1).map(([key, section]) => (
+              {Object.entries(sections).filter(([_, s]) => s.page === 1 && (previewMode === 'finance' ? true : !s.financeOnly)).map(([key, section]) => (
                 <option key={key} value={key}>{section.label}</option>
               ))}
             </optgroup>
             <optgroup label="Page 2">
-              {Object.entries(sections).filter(([_, s]) => s.page === 2).map(([key, section]) => (
+              {Object.entries(sections).filter(([_, s]) => s.page === 2 && (previewMode === 'finance' ? true : !s.financeOnly)).map(([key, section]) => (
                 <option key={key} value={key}>{section.label}</option>
               ))}
             </optgroup>
@@ -621,7 +662,7 @@ const ContractEditor = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       {fieldLabels[field]}
                     </label>
-                    {field === 'terms_and_conditions' ? (
+                    {field === 'terms_and_conditions' || field === 'key_information_text' ? (
                       <RichTextEditor
                         value={template[field] || ''}
                         onChange={(val) => handleChange(field, val)}
@@ -629,7 +670,7 @@ const ContractEditor = () => {
                         placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
                         showFontSize={true}
                       />
-                    ) : field.startsWith('confirmation') || field === 'signature_instruction' ? (
+                    ) : field.startsWith('confirmation') || field === 'signature_instruction' || field === 'customer_agreement_text' || field === 'creditor_acknowledgement_text' || field === 'cca_notice' ? (
                       <RichTextEditor
                         value={template[field] || ''}
                         onChange={(val) => handleChange(field, val)}

@@ -16,6 +16,7 @@ const ContractSigning = () => {
   const [contract, setContract] = useState(null);
   const [template, setTemplate] = useState(null);
   const [contractHTML, setContractHTML] = useState('');
+  const [contractType, setContractType] = useState('invoice'); // 'invoice' or 'finance'
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -23,7 +24,7 @@ const ContractSigning = () => {
   const [scale, setScale] = useState(1);
   const [scaledHeight, setScaledHeight] = useState('auto');
 
-  // Signature states
+  // Signature states - will be set based on contract type
   const [signatures, setSignatures] = useState({
     main: null,
     notAgency: null,
@@ -56,6 +57,12 @@ const ContractSigning = () => {
         setContract(data.contract);
         setTemplate(data.template);
         setContractHTML(data.html || '');
+        const type = data.contractType || data.contract?.contractType || 'invoice';
+        setContractType(type);
+        // Set appropriate signature state based on contract type
+        if (type === 'finance') {
+          setSignatures({ customer: null });
+        }
       } catch (err) {
         setError(err.message);
       } finally {
@@ -145,7 +152,9 @@ const ContractSigning = () => {
 
   // Handle signature submission
   const handleSubmit = async () => {
-    const requiredSignatures = ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase'];
+    const requiredSignatures = contractType === 'finance'
+      ? ['customer']
+      : ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase'];
     const missingSignatures = requiredSignatures.filter(key => !signatures[key]);
 
     if (missingSignatures.length > 0) {
@@ -211,13 +220,15 @@ const ContractSigning = () => {
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md text-center">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Contract Signed!</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            {contractType === 'finance' ? 'Agreement Signed!' : 'Contract Signed!'}
+          </h1>
           <p className="text-gray-600 mb-6">Thank you. A confirmation email has been sent.</p>
           {pdfUrl && (
             <a href={pdfUrl} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
               <FileText className="w-5 h-5" />
-              <span>Download Signed Contract</span>
+              <span>Download Signed {contractType === 'finance' ? 'Agreement' : 'Contract'}</span>
             </a>
           )}
         </div>
@@ -226,11 +237,13 @@ const ContractSigning = () => {
   }
 
   const contractData = contract?.data || {};
+  const isFinance = contractType === 'finance';
+  const totalRequiredSignatures = isFinance ? 1 : 5;
   const signatureCount = Object.values(signatures).filter(Boolean).length;
 
   // Which signatures are on which page
-  const page1Signatures = ['main'];
-  const page2Signatures = ['notAgency', 'noCancel', 'passDetails', 'happyPurchase'];
+  const page1Signatures = isFinance ? [] : ['main'];
+  const page2Signatures = isFinance ? ['customer'] : ['notAgency', 'noCancel', 'passDetails', 'happyPurchase'];
   const currentPageSignatures = currentPage === 1 ? page1Signatures : page2Signatures;
 
   return (
@@ -240,13 +253,15 @@ const ContractSigning = () => {
         {/* Progress Header */}
         <div className="bg-white rounded-t-lg p-3 sm:p-4 flex items-center justify-between border-b">
           <div className="min-w-0 flex-1">
-            <h1 className="text-sm sm:text-lg font-bold text-gray-900 truncate">Edge Talent Contract</h1>
+            <h1 className="text-sm sm:text-lg font-bold text-gray-900 truncate">
+              {isFinance ? 'Edge Talent Finance Agreement' : 'Edge Talent Contract'}
+            </h1>
             <p className="text-xs sm:text-sm text-gray-500 truncate">{contractData.customerName}</p>
           </div>
           <div className="text-right ml-2 flex-shrink-0">
-            <p className="text-xs sm:text-sm text-gray-500">Signatures: {signatureCount}/5</p>
+            <p className="text-xs sm:text-sm text-gray-500">Signatures: {signatureCount}/{totalRequiredSignatures}</p>
             <div className="w-20 sm:w-32 h-2 bg-gray-200 rounded-full mt-1">
-              <div className="h-2 bg-green-500 rounded-full transition-all" style={{ width: `${(signatureCount/5)*100}%` }}></div>
+              <div className="h-2 bg-green-500 rounded-full transition-all" style={{ width: `${(signatureCount/totalRequiredSignatures)*100}%` }}></div>
             </div>
           </div>
         </div>
@@ -255,11 +270,11 @@ const ContractSigning = () => {
         <div className="bg-gray-100 flex border-b">
           <button onClick={() => setCurrentPage(1)}
             className={`flex-1 py-2 sm:py-3 text-xs sm:text-sm text-center font-medium transition-colors ${currentPage === 1 ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>
-            Page 1: Invoice
+            {isFinance ? 'Page 1: Agreement' : 'Page 1: Invoice'}
           </button>
           <button onClick={() => setCurrentPage(2)}
             className={`flex-1 py-2 sm:py-3 text-xs sm:text-sm text-center font-medium transition-colors ${currentPage === 2 ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>
-            Page 2: Confirm
+            {isFinance ? 'Page 2: Terms & Signing' : 'Page 2: Confirm'}
           </button>
         </div>
 
@@ -397,11 +412,13 @@ const ContractSigning = () => {
         {/* Submit Footer */}
         <div className="bg-white rounded-b-lg p-3 sm:p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-2">
           <p className="text-xs sm:text-sm text-gray-500">
-            {signatureCount < 5 ? `${5 - signatureCount} signature(s) remaining` : 'All signatures complete!'}
+            {signatureCount < totalRequiredSignatures
+              ? `${totalRequiredSignatures - signatureCount} signature(s) remaining`
+              : 'All signatures complete!'}
           </p>
-          <button onClick={handleSubmit} disabled={submitting || signatureCount < 5}
+          <button onClick={handleSubmit} disabled={submitting || signatureCount < totalRequiredSignatures}
             className="w-full sm:w-auto px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
-            {submitting ? <><Loader className="w-5 h-5 animate-spin" /><span>Submitting...</span></> : <><Check className="w-5 h-5" /><span>Submit Contract</span></>}
+            {submitting ? <><Loader className="w-5 h-5 animate-spin" /><span>Submitting...</span></> : <><Check className="w-5 h-5" /><span>Submit {isFinance ? 'Agreement' : 'Contract'}</span></>}
           </button>
         </div>
 

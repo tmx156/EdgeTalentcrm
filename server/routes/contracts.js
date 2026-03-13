@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const { generateContractPDF, generateContractHTML, buildContractData, getActiveTemplate } = require('../utils/contractGenerator');
+const { generateFinanceContractHTML, generateFinanceContractPDF, getActiveFinanceTemplate, calculateFinanceFields } = require('../utils/financeContractGenerator');
 const { uploadToS3 } = require('../utils/s3Service');
 const { sendEmail } = require('../utils/emailService');
 const { sendSMS } = require('../utils/smsService');
@@ -137,15 +138,84 @@ router.post('/create', auth, async (req, res) => {
       return res.status(404).json({ message: 'Lead not found' });
     }
 
+    // Determine contract type: 'finance' for finance payment, 'invoice' for everything else
+    const isFinanceContract = contractDetails?.paymentMethod === 'finance' || req.body.contractType === 'finance';
+    const contractType = isFinanceContract ? 'finance' : 'invoice';
+
     // Use contractDetails from the pre-screen form if provided, otherwise build from lead/package
     let contractData;
 
-    if (contractDetails) {
+    if (contractDetails && isFinanceContract) {
+      // FINANCE CONTRACT - completely different data shape
+      contractData = {
+        date: new Date().toISOString(),
+        signedAt: null,
+
+        // Customer info
+        customerNumber: lead.id?.toString().slice(-6) || '',
+        customerName: contractDetails.customerName || lead.name || '',
+        address: contractDetails.address || '',
+        postcode: contractDetails.postcode || '',
+        phone: contractDetails.phone || '',
+        email: contractDetails.email || '',
+        dateOfBirth: contractDetails.dateOfBirth || '',
+        yearsAtAddress: contractDetails.yearsAtAddress || '',
+
+        // Affordability Assessment
+        monthlyIncome: parseFloat(contractDetails.monthlyIncome) || 0,
+        priorityOutgoings: parseFloat(contractDetails.priorityOutgoings) || 0,
+        otherOutgoings: parseFloat(contractDetails.otherOutgoings) || 0,
+        agreedInstalment: parseFloat(contractDetails.agreedInstalment) || 0,
+
+        // Loan & Repayment Terms
+        cashPrice: parseFloat(contractDetails.cashPrice) || 0,
+        deposit: parseFloat(contractDetails.deposit) || 0,
+        adminFee: parseFloat(contractDetails.adminFee) || 0,
+        interestRate: parseFloat(contractDetails.interestRate) || 0,
+        numberOfInstalments: parseInt(contractDetails.numberOfInstalments) || 12,
+        duration: parseInt(contractDetails.duration) || 12,
+
+        // Repayment Schedule
+        repaymentFrequency: contractDetails.repaymentFrequency || 'monthly',
+        commencingFrom: contractDetails.commencingFrom || '',
+
+        // Creditor info (auto-populated from admin)
+        creditorName: contractDetails.creditorName || '',
+        creditorDate: contractDetails.creditorDate || new Date().toISOString(),
+
+        // Reference
+        agreementNumber: contractDetails.invoiceNumber || `FIN-${Date.now().toString().slice(-8)}`,
+        invoiceNumber: contractDetails.invoiceNumber || `FIN-${Date.now().toString().slice(-8)}`,
+
+        // Payment method
+        paymentMethod: 'finance',
+
+        // For finance agreement auto-creation
+        total: parseFloat(contractDetails.cashPrice) || 0,
+        depositAmount: parseFloat(contractDetails.deposit) || 0,
+        financeAmount: (parseFloat(contractDetails.cashPrice) || 0) - (parseFloat(contractDetails.deposit) || 0),
+        financeFrequency: contractDetails.repaymentFrequency || 'monthly',
+        financeStartDate: contractDetails.commencingFrom || '',
+        financeDuration: parseInt(contractDetails.numberOfInstalments) || 12,
+
+        // Signatures (only 'customer' for finance)
+        signatures: {
+          customer: null
+        },
+
+        // Selected photo IDs for delivery after signing
+        selectedPhotoIds: selectedPhotoIds || []
+      };
+
+      // Calculate APR from loan terms
+      const financeCalc = calculateFinanceFields(contractData);
+      contractData.apr = financeCalc.apr;
+    } else if (contractDetails) {
       // Log if we're handling individual items (no valid package UUID)
       if (!validPackageId && packageId) {
         console.log(`📦 Processing individual items - packageId "${packageId}" is not a valid UUID, using null`);
       }
-      // Use the edited contract details from the pre-screen form
+      // INVOICE CONTRACT - existing flow (card/cash/payl8r)
       contractData = {
         // Dates - convert to ISO strings for JSONB storage
         date: new Date().toISOString(),
@@ -285,6 +355,7 @@ router.post('/create', auth, async (req, res) => {
         expires_at: expiresAt.toISOString(),
         status: 'draft',
         contract_data: serializedContractData, // Use serialized version
+        contract_type: contractType,
         created_by: req.user.id
       })
       .select()
@@ -365,6 +436,8 @@ router.post('/send/:contractId', auth, async (req, res) => {
 
     const customerName = contract.contract_data?.customerName || contract.lead?.name || 'Customer';
     const contractData = contract.contract_data || {};
+    const contractType = contract.contract_type || 'invoice';
+    const isFinanceContract = contractType === 'finance';
     const totalAmount = contractData.total ? `£${parseFloat(contractData.total).toFixed(2)}` : '';
     const packageInfo = contractData.notes || '';
 
@@ -424,11 +497,15 @@ router.post('/send/:contractId', auth, async (req, res) => {
 
         if (template && template.email_body) {
           // Use database template
-          emailSubject = replaceVariables(template.subject) || 'Edge Talent - Your Contract is Ready for Signing';
+          emailSubject = replaceVariables(template.subject) || (isFinanceContract
+            ? 'Edge Talent - Your Finance Agreement is Ready for Signing'
+            : 'Edge Talent - Your Contract is Ready for Signing');
           emailHtml = replaceVariables(template.email_body);
         } else {
           // Fallback to hardcoded template
-          emailSubject = `Edge Talent - Your Contract is Ready for Signing`;
+          emailSubject = isFinanceContract
+            ? 'Edge Talent - Your Finance Agreement is Ready for Signing'
+            : 'Edge Talent - Your Contract is Ready for Signing';
           emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -484,7 +561,7 @@ router.post('/send/:contractId', auth, async (req, res) => {
           <li><strong>Click the button above</strong> to open your contract</li>
           <li><strong>Review the contract</strong> - Check all your details are correct</li>
           <li><strong>Sign in the signature boxes</strong> - Use your mouse or finger to sign</li>
-          <li><strong>Complete all 5 signatures</strong> on both pages</li>
+          <li><strong>Complete ${isFinanceContract ? 'your signature' : 'all 5 signatures'}</strong> on ${isFinanceContract ? 'page 2' : 'both pages'}</li>
           <li><strong>Click "Submit Signed Contract"</strong> to finish</li>
         </ol>
       </div>
@@ -633,6 +710,7 @@ router.get('/verify/:token', async (req, res) => {
         expires_at,
         status,
         contract_data,
+        contract_type,
         lead:leads(id, name, email, phone)
       `)
       .eq('contract_token', token)
@@ -652,12 +730,19 @@ router.get('/verify/:token', async (req, res) => {
       return res.status(400).json({ message: 'This contract has already been signed' });
     }
 
-    // Fetch the active contract template from database
-    const template = await getActiveTemplate();
-    console.log('📋 Verify endpoint - returning template:', template?.id ? `DB template (${template.id})` : 'DEFAULT');
+    const contractType = contract.contract_type || 'invoice';
 
-    // Generate contract HTML for the signing page to render
-    const contractHTML = generateContractHTML(contract.contract_data, template);
+    // Generate HTML based on contract type
+    let contractHTML, template;
+    if (contractType === 'finance') {
+      template = await getActiveFinanceTemplate();
+      contractHTML = generateFinanceContractHTML(contract.contract_data, template);
+      console.log('📋 Verify endpoint - returning FINANCE contract');
+    } else {
+      template = await getActiveTemplate();
+      contractHTML = generateContractHTML(contract.contract_data, template);
+      console.log('📋 Verify endpoint - returning template:', template?.id ? `DB template (${template.id})` : 'DEFAULT');
+    }
 
     // Return contract data, template, AND pre-rendered HTML for signing page
     res.json({
@@ -666,10 +751,12 @@ router.get('/verify/:token', async (req, res) => {
         id: contract.id,
         status: contract.status,
         expiresAt: contract.expires_at,
-        data: contract.contract_data
+        data: contract.contract_data,
+        contractType: contractType
       },
       template: template,
-      html: contractHTML
+      html: contractHTML,
+      contractType: contractType
     });
   } catch (error) {
     console.error('Error verifying contract:', error);
@@ -724,8 +811,11 @@ router.get('/preview/:token', async (req, res) => {
     console.log('📄 Found contract, generating PDF...');
     console.log('Contract data keys:', Object.keys(contract.contract_data || {}));
 
-    // Generate PDF
-    const pdfBuffer = await generateContractPDF(contract.contract_data);
+    // Generate PDF (use correct generator based on contract type)
+    const previewContractType = contract.contract_type || 'invoice';
+    const pdfBuffer = previewContractType === 'finance'
+      ? await generateFinanceContractPDF(contract.contract_data)
+      : await generateContractPDF(contract.contract_data);
 
     console.log('✅ PDF generated successfully, size:', pdfBuffer.length, 'bytes');
 
@@ -755,10 +845,6 @@ router.post('/sign/:token', async (req, res) => {
       return res.status(400).json({ message: 'Contract token is required' });
     }
 
-    if (!signatures || !signatures.main) {
-      return res.status(400).json({ message: 'Main signature is required' });
-    }
-
     // Verify contract exists and is valid
     const { data: contract, error: fetchError } = await supabase
       .from('contracts')
@@ -778,6 +864,18 @@ router.post('/sign/:token', async (req, res) => {
       return res.status(410).json({ message: 'This contract link has expired' });
     }
 
+    // Validate required signatures based on contract type
+    const contractType = contract.contract_type || 'invoice';
+    if (contractType === 'finance') {
+      if (!signatures || !signatures.customer) {
+        return res.status(400).json({ message: 'Customer signature is required' });
+      }
+    } else {
+      if (!signatures || !signatures.main) {
+        return res.status(400).json({ message: 'Main signature is required' });
+      }
+    }
+
     // Merge signatures and any updated data into contract data
     const signedContractData = {
       ...contract.contract_data,
@@ -786,11 +884,13 @@ router.post('/sign/:token', async (req, res) => {
       signedAt: new Date().toISOString()
     };
 
-    // Generate signed PDF
+    // Generate signed PDF (use correct generator based on contract type)
     let pdfUrl = null;
     try {
-      console.log(`📄 Generating signed PDF for contract ${contract.id}...`);
-      const pdfBuffer = await generateContractPDF(signedContractData);
+      console.log(`📄 Generating signed PDF for ${contractType} contract ${contract.id}...`);
+      const pdfBuffer = contractType === 'finance'
+        ? await generateFinanceContractPDF(signedContractData)
+        : await generateContractPDF(signedContractData);
       console.log(`✅ PDF generated successfully, size: ${pdfBuffer.length} bytes`);
 
       // Upload to S3
@@ -951,36 +1051,63 @@ router.post('/sign/:token', async (req, res) => {
           const dueDay = parseInt(signedContractData.financeDueDay) || 1;
           const duration = parseInt(signedContractData.financeDuration) || 12;
           
-          // Calculate payment amount based on user's chosen duration
-          const paymentAmount = financeAmount / duration;
-          
+          // Calculate finance fields (interest, APR, totals) for storage
+          const storedCalc = calculateFinanceFields(signedContractData);
+
           // Calculate term months based on frequency and duration
-          // Convert duration (number of payments) to months
           const termMonthsMap = {
-            'weekly': Math.ceil(duration / 4.33),  // ~4.33 weeks per month
-            'bi-weekly': Math.ceil(duration / 2.17),  // ~2.17 bi-weeks per month
+            'weekly': Math.ceil(duration / 4.33),
+            'bi-weekly': Math.ceil(duration / 2.17),
             'monthly': duration
           };
           const termMonths = termMonthsMap[frequency] || duration;
-          
+
+          // Use calculated totalAmountPayable (includes interest + admin fee)
+          // for payment tracking, not just the raw credit amount
+          const totalPayable = storedCalc.totalAmountPayable || financeAmount;
+          const paymentAmount = duration > 0 ? totalPayable / duration : 0;
+
           const financeAgreementData = {
             id: financeAgreementId,
             lead_id: contract.lead_id,
             sale_id: saleRecord?.id || null,
-            agreement_number: `FIN-${Date.now().toString().slice(-8)}`,
-            total_amount: totalAmount,
+            contract_id: contract.id,
+            agreement_number: signedContractData.agreementNumber || `FIN-${Date.now().toString().slice(-8)}`,
+            total_amount: totalPayable,
             deposit_amount: depositAmount,
             monthly_payment: paymentAmount,
             payment_frequency: frequency,
             term_months: termMonths,
-            interest_rate: 0,
+            interest_rate: parseFloat(signedContractData.interestRate) || 0,
             start_date: startDate,
             next_payment_date: startDate,
             status: 'active',
-            remaining_balance: financeAmount,
-            total_paid: depositAmount, // Deposit counts as amount paid
+            remaining_balance: totalPayable,
+            total_paid: 0,
             created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+
+            // Finance contract detail fields
+            cash_price: parseFloat(signedContractData.cashPrice) || 0,
+            admin_fee: parseFloat(signedContractData.adminFee) || 0,
+            apr: storedCalc.apr || 0,
+            total_charge_for_credit: storedCalc.totalChargeForCredit || 0,
+            total_amount_payable: storedCalc.totalAmountPayable || 0,
+
+            // Customer details
+            customer_dob: signedContractData.dateOfBirth || null,
+            years_at_address: signedContractData.yearsAtAddress || null,
+
+            // Affordability assessment
+            monthly_income: parseFloat(signedContractData.monthlyIncome) || 0,
+            priority_outgoings: parseFloat(signedContractData.priorityOutgoings) || 0,
+            other_outgoings: parseFloat(signedContractData.otherOutgoings) || 0,
+            disposable_balance: storedCalc.disposableBalance || 0,
+            agreed_instalment: parseFloat(signedContractData.agreedInstalment) || 0,
+
+            // Creditor info
+            creditor_name: signedContractData.creditorName || null,
+            creditor_date: signedContractData.creditorDate || null
           };
           
           const { data: insertedFinance, error: financeError } = await supabase
@@ -1686,12 +1813,15 @@ router.get('/:contractId/pdf', auth, async (req, res) => {
       return res.status(404).json({ message: 'Contract not found' });
     }
 
-    // Generate PDF
-    const pdfBuffer = await generateContractPDF(contract.contract_data);
+    // Generate PDF (use correct generator based on contract type)
+    const pdfContractType = contract.contract_type || 'invoice';
+    const pdfBuffer = pdfContractType === 'finance'
+      ? await generateFinanceContractPDF(contract.contract_data)
+      : await generateContractPDF(contract.contract_data);
 
     // Set headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="contract_${contractId}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${pdfContractType === 'finance' ? 'finance_agreement' : 'contract'}_${contractId}.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
     console.error('Error generating PDF:', error);

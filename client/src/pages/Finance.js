@@ -746,26 +746,18 @@ const Finance = () => {
                       <dt className="text-sm font-medium text-gray-500">Customer</dt>
                       <dd className="text-sm text-gray-900">{selectedAgreement?.lead_name || 'N/A'}</dd>
                     </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Total Amount</dt>
-                      <dd className="text-sm text-gray-900">{formatCurrency(selectedAgreement?.total_amount || 0)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Payment Amount</dt>
-                      <dd className="text-sm text-gray-900">{formatCurrency(selectedAgreement?.monthly_payment || 0)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Frequency</dt>
-                      <dd className="text-sm text-gray-900">{getFrequencyLabel(selectedAgreement?.payment_frequency || 'monthly')}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Start Date</dt>
-                      <dd className="text-sm text-gray-900">{selectedAgreement?.start_date ? formatDate(selectedAgreement.start_date) : 'N/A'}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Next Payment Due</dt>
-                      <dd className="text-sm text-gray-900">{selectedAgreement?.next_payment_date ? formatDate(selectedAgreement.next_payment_date) : 'N/A'}</dd>
-                    </div>
+                    {selectedAgreement?.customer_dob && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Date of Birth</dt>
+                        <dd className="text-sm text-gray-900">{selectedAgreement.customer_dob}</dd>
+                      </div>
+                    )}
+                    {selectedAgreement?.years_at_address && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Years at Address</dt>
+                        <dd className="text-sm text-gray-900">{selectedAgreement.years_at_address}</dd>
+                      </div>
+                    )}
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Status</dt>
                       <dd className="text-sm text-gray-900">
@@ -774,6 +766,12 @@ const Finance = () => {
                         </span>
                       </dd>
                     </div>
+                    {selectedAgreement?.creditor_name && (
+                      <div>
+                        <dt className="text-sm font-medium text-gray-500">Creditor</dt>
+                        <dd className="text-sm text-gray-900">{selectedAgreement.creditor_name}</dd>
+                      </div>
+                    )}
                   </dl>
                 </div>
 
@@ -816,6 +814,95 @@ const Finance = () => {
                   )}
                 </div>
               </div>
+
+              {/* Loan & Repayment Terms - only shown for finance contracts with these fields */}
+              {selectedAgreement?.cash_price != null && (
+                <div className="mt-6 border-t pt-4">
+                  <h4 className="font-medium text-gray-900 mb-3">Loan & Repayment Terms</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-amber-600">Cash Price</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.cash_price)}</dd>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-amber-600">Deposit</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.deposit_amount || 0)}</dd>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-amber-600">Amount of Credit</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency((selectedAgreement.cash_price || 0) - (selectedAgreement.deposit_amount || 0))}</dd>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-amber-600">Admin Fee</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.admin_fee || 0)}</dd>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-amber-600">Interest Rate</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{parseFloat(selectedAgreement.interest_rate || 0).toFixed(1)}%</dd>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-amber-600">APR</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{parseFloat(selectedAgreement.apr || 0).toFixed(1)}%</dd>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-amber-600">Total Charge for Credit</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.total_charge_for_credit || 0)}</dd>
+                    </div>
+                    <div className="bg-amber-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-amber-600">Total Amount Payable</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.total_amount_payable || 0)}</dd>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-3">
+                    <div className="bg-green-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-green-600">Frequency</dt>
+                      <dd className="text-sm font-semibold text-gray-900 capitalize">{selectedAgreement.payment_frequency || 'monthly'}</dd>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-green-600">Repayment Amount</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.monthly_payment || 0)}</dd>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-green-600">Start Date</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{selectedAgreement.start_date ? formatDate(selectedAgreement.start_date) : 'N/A'}</dd>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-green-600">Next Payment Due</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{selectedAgreement.next_payment_date ? formatDate(selectedAgreement.next_payment_date) : 'N/A'}</dd>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Affordability Assessment - only shown for finance contracts with these fields */}
+              {selectedAgreement?.monthly_income != null && (
+                <div className="mt-4 border-t pt-4">
+                  <h4 className="font-medium text-gray-900 mb-3">Affordability Assessment</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-blue-600">Monthly Income</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.monthly_income)}</dd>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-blue-600">Priority Outgoings</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.priority_outgoings || 0)}</dd>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-blue-600">Other Outgoings</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.other_outgoings || 0)}</dd>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-blue-600">Disposable Balance</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.disposable_balance || 0)}</dd>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <dt className="text-xs font-medium text-blue-600">Agreed Instalment</dt>
+                      <dd className="text-sm font-semibold text-gray-900">{formatCurrency(selectedAgreement.agreed_instalment || 0)}</dd>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-6 flex justify-end">
                 <button

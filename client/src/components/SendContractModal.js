@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Send, FileText, Mail, Copy, Check, Loader, AlertTriangle, ExternalLink, Clock, CheckCircle, Edit2, Eye, ChevronRight, ChevronLeft, User, MapPin, Phone, CreditCard, Package, PoundSterling, Image, ArrowLeft, RefreshCw, Download, Save, Link } from 'lucide-react';
+import { X, Send, FileText, Mail, Copy, Check, Loader, AlertTriangle, ExternalLink, Clock, CheckCircle, Edit2, Eye, ChevronRight, ChevronLeft, User, MapPin, Phone, CreditCard, Package, PoundSterling, Image, ArrowLeft, RefreshCw, Download, Save, Link, Calendar, DollarSign } from 'lucide-react';
 import { toLocalDateStr } from '../utils/timeUtils';
+import { useAuth } from '../context/AuthContext';
 
 /**
  * SendContractModal - Modal for creating and sending contracts to customers
@@ -18,6 +19,7 @@ const SendContractModal = ({
   onBackToPackages,
   onBackToPhotos
 }) => {
+  const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
@@ -176,14 +178,33 @@ const SendContractModal = ({
     total: 0,
     paymentMethod: 'card',
     authCode: '',
-    // Finance-specific fields
+    // Finance-specific fields (invoice flow)
     depositAmount: 0,
     financeAmount: 0,
     // Finance agreement configuration (for auto-creating finance agreements)
     financeFrequency: 'monthly',
     financeStartDate: '',
     financeDueDay: 1,
-    financeDuration: 12  // Number of payments (months by default)
+    financeDuration: 12,  // Number of payments (months by default)
+
+    // Finance contract fields (new finance agreement form)
+    dateOfBirth: '',
+    yearsAtAddress: '',
+    monthlyIncome: 0,
+    priorityOutgoings: 0,
+    otherOutgoings: 0,
+    agreedInstalment: 0,
+    cashPrice: 0,
+    deposit: 0,
+    adminFee: 0,
+    interestRate: 0,
+    apr: 0,
+    numberOfInstalments: 12,
+    duration: 12,
+    repaymentFrequency: 'monthly',
+    commencingFrom: '',
+    creditorName: '',
+    creditorDate: ''
   });
 
   // Initialize contract details from lead and package data
@@ -244,6 +265,8 @@ const SendContractModal = ({
         }
       };
 
+      const initPaymentMethod = invoiceData?.paymentMethod || 'card';
+
       setContractDetails({
         // Customer details from lead
         customerName: lead.name || '',
@@ -293,21 +316,42 @@ const SendContractModal = ({
         vatRate: packageData?.vatRate || 20,
         vatAmount: vatAmount,
         total: total,
-        paymentMethod: invoiceData?.paymentMethod || 'card',
+        paymentMethod: initPaymentMethod,
         authCode: invoiceData?.authCode || '',
-        // Finance agreement configuration (default if finance/payl8r selected)
-        financeFrequency: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r') 
-          ? (invoiceData?.financeFrequency || 'monthly') 
+        // Finance agreement configuration (default if payl8r selected - old flow)
+        financeFrequency: initPaymentMethod === 'payl8r'
+          ? (invoiceData?.financeFrequency || 'monthly')
           : 'monthly',
-        financeStartDate: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r')
+        financeStartDate: initPaymentMethod === 'payl8r'
           ? (invoiceData?.financeStartDate || toLocalDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)))
           : '',
-        financeDueDay: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r')
+        financeDueDay: initPaymentMethod === 'payl8r'
           ? (invoiceData?.financeDueDay || 1)
           : 1,
-        financeDuration: (invoiceData?.paymentMethod === 'finance' || invoiceData?.paymentMethod === 'payl8r')
+        financeDuration: initPaymentMethod === 'payl8r'
           ? (invoiceData?.financeDuration || 12)
-          : 12
+          : 12,
+
+        // Finance contract fields (new finance agreement)
+        dateOfBirth: '',
+        yearsAtAddress: '',
+        monthlyIncome: 0,
+        priorityOutgoings: 0,
+        otherOutgoings: 0,
+        agreedInstalment: 0,
+        cashPrice: initPaymentMethod === 'finance' ? total : 0,
+        deposit: 0,
+        adminFee: 0,
+        interestRate: 0,
+        apr: 0,
+        numberOfInstalments: 12,
+        duration: 12,
+        repaymentFrequency: 'monthly',
+        commencingFrom: initPaymentMethod === 'finance'
+          ? toLocalDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
+          : '',
+        creditorName: authUser?.name || '',
+        creditorDate: toLocalDateStr(new Date())
       });
 
       // Fetch invoice number after setting initial state
@@ -667,6 +711,37 @@ const SendContractModal = ({
     return `£${parseFloat(amount || 0).toFixed(2)}`;
   };
 
+  // Check if this is a finance contract (uses completely separate form)
+  const isFinanceContract = contractDetails.paymentMethod === 'finance';
+
+  // Calculate finance contract derived fields
+  const financeCalc = (() => {
+    if (!isFinanceContract) return {};
+    const cashPrice = parseFloat(contractDetails.cashPrice) || 0;
+    const deposit = parseFloat(contractDetails.deposit) || 0;
+    const interestRate = parseFloat(contractDetails.interestRate) || 0;
+    const adminFee = parseFloat(contractDetails.adminFee) || 0;
+    const numberOfInstalments = parseInt(contractDetails.numberOfInstalments) || 12;
+    const duration = parseInt(contractDetails.duration) || 12;
+    const monthlyIncome = parseFloat(contractDetails.monthlyIncome) || 0;
+    const priorityOutgoings = parseFloat(contractDetails.priorityOutgoings) || 0;
+    const otherOutgoings = parseFloat(contractDetails.otherOutgoings) || 0;
+
+    const amountOfCredit = cashPrice - deposit;
+    const interest = amountOfCredit * (interestRate / 100) * (duration / 12);
+    const totalChargeForCredit = interest + adminFee;
+    const totalAmountPayable = amountOfCredit + totalChargeForCredit;
+    const monthlyRepayment = numberOfInstalments > 0 ? totalAmountPayable / numberOfInstalments : 0;
+    const dailyRateOfInterest = interestRate / 365;
+    const disposableBalance = monthlyIncome - priorityOutgoings - otherOutgoings;
+    const totalExpenditure = priorityOutgoings + otherOutgoings;
+    const apr = amountOfCredit > 0 && duration > 0
+      ? (totalChargeForCredit / amountOfCredit) * (12 / duration) * 100
+      : 0;
+
+    return { amountOfCredit, interest, totalChargeForCredit, totalAmountPayable, monthlyRepayment, dailyRateOfInterest, disposableBalance, totalExpenditure, apr };
+  })();
+
   if (!isOpen) return null;
 
   // Resume prompt modal
@@ -741,9 +816,9 @@ const SendContractModal = ({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-white">
-                {step === 'edit' && 'Edit Invoice Details'}
-                {step === 'review' && 'Review Invoice'}
-                {step === 'send' && 'Send Invoice'}
+                {step === 'edit' && (isFinanceContract ? 'Finance Agreement Details' : 'Edit Invoice Details')}
+                {step === 'review' && (isFinanceContract ? 'Review Finance Agreement' : 'Review Invoice')}
+                {step === 'send' && (isFinanceContract ? 'Send Finance Agreement' : 'Send Invoice')}
               </h2>
               <p className="text-blue-100 text-sm">
                 {lead?.name || 'Customer'} • {packageData?.name || 'Package'}
@@ -925,7 +1000,40 @@ const SendContractModal = ({
                 </div>
               </div>
 
-              {/* Studio Info Section */}
+              {/* Finance-only: Date of Birth & Years at Address */}
+              {isFinanceContract && (
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+                    <Calendar className="w-4 h-4 mr-2 text-orange-500" />
+                    ADDITIONAL CUSTOMER INFO
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Date of Birth</label>
+                      <input
+                        type="date"
+                        value={contractDetails.dateOfBirth}
+                        onChange={(e) => updateField('dateOfBirth', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Years at Address</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={contractDetails.yearsAtAddress}
+                        onChange={(e) => updateField('yearsAtAddress', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="e.g. 3"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Studio Info Section - Invoice only */}
+              {!isFinanceContract && (
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                   <MapPin className="w-4 h-4 mr-2 text-purple-500" />
@@ -961,8 +1069,10 @@ const SendContractModal = ({
                   </div>
                 </div>
               </div>
+              )}
 
-              {/* Order Details Section */}
+              {/* Order Details Section - Invoice only */}
+              {!isFinanceContract && (
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                   <Package className="w-4 h-4 mr-2 text-green-500" />
@@ -1073,8 +1183,10 @@ const SendContractModal = ({
                   </div>
                 </div>
               </div>
+              )}
 
-              {/* Notes */}
+              {/* Notes - Invoice only */}
+              {!isFinanceContract && (
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
                 <textarea
@@ -1085,14 +1197,17 @@ const SendContractModal = ({
                   placeholder="Additional notes for the contract..."
                 />
               </div>
+              )}
 
               {/* Payment Section */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                   <PoundSterling className="w-4 h-4 mr-2 text-yellow-500" />
-                  PAYMENT DETAILS
+                  {isFinanceContract ? 'PAYMENT METHOD' : 'PAYMENT DETAILS'}
                 </h3>
                 <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+                  {/* Subtotal/VAT/Total - Invoice only */}
+                  {!isFinanceContract && (
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Subtotal (excl VAT)</label>
@@ -1132,6 +1247,7 @@ const SendContractModal = ({
                       </div>
                     </div>
                   </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
@@ -1140,11 +1256,27 @@ const SendContractModal = ({
                         onChange={(e) => {
                           const newMethod = e.target.value;
                           updateField('paymentMethod', newMethod);
-                          
-                          // When switching TO finance/payl8r, set default start date (+30 days)
-                          if ((newMethod === 'finance' || newMethod === 'payl8r') && 
-                              contractDetails.paymentMethod !== 'finance' && 
-                              contractDetails.paymentMethod !== 'payl8r') {
+
+                          // When switching TO finance, set finance contract defaults
+                          if (newMethod === 'finance') {
+                            const defaultStartDate = new Date();
+                            defaultStartDate.setDate(defaultStartDate.getDate() + 30);
+                            setContractDetails(prev => ({
+                              ...prev,
+                              paymentMethod: newMethod,
+                              cashPrice: prev.total || 0,
+                              deposit: 0,
+                              commencingFrom: toLocalDateStr(defaultStartDate),
+                              repaymentFrequency: 'monthly',
+                              numberOfInstalments: 12,
+                              duration: 12,
+                              creditorName: authUser?.name || '',
+                              creditorDate: toLocalDateStr(new Date())
+                            }));
+                          }
+
+                          // When switching TO payl8r, set old payl8r flow defaults
+                          if (newMethod === 'payl8r' && contractDetails.paymentMethod !== 'payl8r') {
                             const defaultStartDate = new Date();
                             defaultStartDate.setDate(defaultStartDate.getDate() + 30);
                             updateField('financeStartDate', toLocalDateStr(defaultStartDate));
@@ -1152,7 +1284,7 @@ const SendContractModal = ({
                             updateField('financeDueDay', 1);
                             updateField('financeDuration', 12);
                           }
-                          
+
                           // Reset finance fields when switching away from finance/payl8r
                           if (newMethod !== 'finance' && newMethod !== 'payl8r') {
                             updateField('depositAmount', 0);
@@ -1186,12 +1318,223 @@ const SendContractModal = ({
                     )}
                   </div>
 
-                  {/* DYNAMIC: Finance/Payl8r Fields - Only shown when Finance or Payl8r is selected */}
-                  {(contractDetails.paymentMethod === 'finance' || contractDetails.paymentMethod === 'payl8r') && (
+                  {/* FINANCE CONTRACT: Full finance agreement form */}
+                  {isFinanceContract && (
+                    <div className="mt-3 space-y-4">
+                      {/* Affordability Assessment */}
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <h4 className="text-xs font-semibold text-blue-800 mb-3 flex items-center">
+                          <DollarSign className="w-3 h-3 mr-1" />
+                          AFFORDABILITY ASSESSMENT
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-blue-700 mb-1">Monthly Household Income</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600">£</span>
+                              <input type="number" step="0.01" min="0" value={contractDetails.monthlyIncome || ''}
+                                onChange={(e) => updateField('monthlyIncome', parseFloat(e.target.value) || 0)}
+                                className="w-full pl-7 pr-3 py-2 border border-blue-300 rounded-lg text-sm bg-white" placeholder="0.00" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-blue-700 mb-1">Priority Outgoings (Rent/Bills)</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600">£</span>
+                              <input type="number" step="0.01" min="0" value={contractDetails.priorityOutgoings || ''}
+                                onChange={(e) => updateField('priorityOutgoings', parseFloat(e.target.value) || 0)}
+                                className="w-full pl-7 pr-3 py-2 border border-blue-300 rounded-lg text-sm bg-white" placeholder="0.00" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-blue-700 mb-1">Other Outgoings (Lifestyle)</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600">£</span>
+                              <input type="number" step="0.01" min="0" value={contractDetails.otherOutgoings || ''}
+                                onChange={(e) => updateField('otherOutgoings', parseFloat(e.target.value) || 0)}
+                                className="w-full pl-7 pr-3 py-2 border border-blue-300 rounded-lg text-sm bg-white" placeholder="0.00" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-blue-700 mb-1">Disposable Balance</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600">£</span>
+                              <input type="text" value={formatCurrency(financeCalc.disposableBalance).replace('£','')} readOnly
+                                className="w-full pl-7 pr-3 py-2 border border-blue-200 rounded-lg text-sm bg-blue-100 text-blue-800 font-semibold" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-blue-700 mb-1">Total Expenditure</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600">£</span>
+                              <input type="text" value={formatCurrency(financeCalc.totalExpenditure).replace('£','')} readOnly
+                                className="w-full pl-7 pr-3 py-2 border border-blue-200 rounded-lg text-sm bg-blue-100 text-blue-800 font-semibold" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-blue-700 mb-1">Agreed Instalment Value</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600">£</span>
+                              <input type="number" step="0.01" min="0" value={contractDetails.agreedInstalment || ''}
+                                onChange={(e) => updateField('agreedInstalment', parseFloat(e.target.value) || 0)}
+                                className="w-full pl-7 pr-3 py-2 border border-blue-300 rounded-lg text-sm bg-white" placeholder="0.00" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Loan & Repayment Terms */}
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <h4 className="text-xs font-semibold text-amber-800 mb-3 flex items-center">
+                          <PoundSterling className="w-3 h-3 mr-1" />
+                          LOAN & REPAYMENT TERMS
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Cash Price of Goods</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-600">£</span>
+                              <input type="number" step="0.01" min="0" value={contractDetails.cashPrice || ''}
+                                onChange={(e) => updateField('cashPrice', parseFloat(e.target.value) || 0)}
+                                className="w-full pl-7 pr-3 py-2 border border-amber-300 rounded-lg text-sm bg-white" placeholder="0.00" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Deposit</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-600">£</span>
+                              <input type="number" step="0.01" min="0" value={contractDetails.deposit || ''}
+                                onChange={(e) => updateField('deposit', parseFloat(e.target.value) || 0)}
+                                className="w-full pl-7 pr-3 py-2 border border-amber-300 rounded-lg text-sm bg-white" placeholder="0.00" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Amount of Credit</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-600">£</span>
+                              <input type="text" value={formatCurrency(financeCalc.amountOfCredit).replace('£','')} readOnly
+                                className="w-full pl-7 pr-3 py-2 border border-amber-200 rounded-lg text-sm bg-amber-100 text-amber-800 font-semibold" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Admin Fee</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-600">£</span>
+                              <input type="number" step="0.01" min="0" value={contractDetails.adminFee || ''}
+                                onChange={(e) => updateField('adminFee', parseFloat(e.target.value) || 0)}
+                                className="w-full pl-7 pr-3 py-2 border border-amber-300 rounded-lg text-sm bg-white" placeholder="0.00" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Interest Rate (Annual %)</label>
+                            <input type="number" step="0.1" min="0" value={contractDetails.interestRate || ''}
+                              onChange={(e) => updateField('interestRate', parseFloat(e.target.value) || 0)}
+                              className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white" placeholder="0.0" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">APR (%)</label>
+                            <div className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-amber-100 text-amber-800 font-semibold">
+                              {(financeCalc.apr || 0).toFixed(1)}%
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Number of Instalments</label>
+                            <input type="number" min="1" max="60" value={contractDetails.numberOfInstalments || 12}
+                              onChange={(e) => updateField('numberOfInstalments', parseInt(e.target.value) || 12)}
+                              className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Duration (months)</label>
+                            <input type="number" min="1" max="60" value={contractDetails.duration || 12}
+                              onChange={(e) => updateField('duration', parseInt(e.target.value) || 12)}
+                              className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white" />
+                          </div>
+                        </div>
+
+                        {/* Calculated summary */}
+                        <div className="mt-3 pt-3 border-t border-amber-200 grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Interest Amount</label>
+                            <div className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-amber-100 text-amber-800 font-semibold">
+                              {formatCurrency(financeCalc.interest)}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Total Charge for Credit</label>
+                            <div className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-amber-100 text-amber-800 font-semibold">
+                              {formatCurrency(financeCalc.totalChargeForCredit)}
+                            </div>
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-xs font-medium text-amber-700 mb-1">Total Amount Payable</label>
+                            <div className="px-3 py-2 border border-amber-200 rounded-lg text-sm bg-amber-200 text-amber-900 font-bold text-base">
+                              {formatCurrency(financeCalc.totalAmountPayable)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Repayment Schedule */}
+                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <h4 className="text-xs font-semibold text-green-800 mb-3 flex items-center">
+                          <Calendar className="w-3 h-3 mr-1" />
+                          REPAYMENT SCHEDULE
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-green-700 mb-1">Repayment Frequency</label>
+                            <select value={contractDetails.repaymentFrequency || 'monthly'}
+                              onChange={(e) => updateField('repaymentFrequency', e.target.value)}
+                              className="w-full px-3 py-2 border border-green-300 rounded-lg text-sm bg-white">
+                              <option value="weekly">Weekly</option>
+                              <option value="bi-weekly">Bi-weekly</option>
+                              <option value="monthly">Monthly</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-green-700 mb-1">Commencing From</label>
+                            <input type="date" value={contractDetails.commencingFrom || ''}
+                              onChange={(e) => updateField('commencingFrom', e.target.value)}
+                              className="w-full px-3 py-2 border border-green-300 rounded-lg text-sm bg-white" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-green-700 mb-1">Monthly Repayment</label>
+                            <div className="px-3 py-2 border border-green-200 rounded-lg text-sm bg-green-100 text-green-800 font-semibold">
+                              {formatCurrency(financeCalc.monthlyRepayment)}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-green-700 mb-1">Daily Rate of Interest</label>
+                            <div className="px-3 py-2 border border-green-200 rounded-lg text-sm bg-green-100 text-green-800 font-semibold">
+                              {(financeCalc.dailyRateOfInterest || 0).toFixed(4)}%
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Creditor Info (auto-populated) */}
+                      <div className="p-3 bg-gray-100 border border-gray-300 rounded-lg">
+                        <h4 className="text-xs font-semibold text-gray-700 mb-2">CREDITOR (Auto-populated)</h4>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="text-gray-500 text-xs">Creditor Name:</span>
+                            <p className="font-medium">{contractDetails.creditorName || authUser?.name || 'N/A'}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 text-xs">Date:</span>
+                            <p className="font-medium">{contractDetails.creditorDate ? new Date(contractDetails.creditorDate).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PAYL8R Fields - Only shown when Payl8r is selected (old invoice flow) */}
+                  {contractDetails.paymentMethod === 'payl8r' && (
                     <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <h4 className="text-xs font-semibold text-amber-800 mb-3 flex items-center">
                         <PoundSterling className="w-3 h-3 mr-1" />
-                        {contractDetails.paymentMethod === 'payl8r' ? 'PAYL8R BREAKDOWN' : 'FINANCE BREAKDOWN'}
+                        PAYL8R BREAKDOWN
                       </h4>
                       <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
@@ -1206,7 +1549,6 @@ const SendContractModal = ({
                               onChange={(e) => {
                                 const deposit = parseFloat(e.target.value) || 0;
                                 updateField('depositAmount', deposit);
-                                // Auto-calculate finance amount (total - deposit)
                                 const financeAmt = Math.max(0, contractDetails.total - deposit);
                                 updateField('financeAmount', financeAmt);
                               }}
@@ -1216,7 +1558,7 @@ const SendContractModal = ({
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-amber-700 mb-1">Finance Amount (Remaining)</label>
+                          <label className="block text-xs font-medium text-amber-700 mb-1">Payl8r Amount (Remaining)</label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-600">£</span>
                             <input
@@ -1229,66 +1571,6 @@ const SendContractModal = ({
                           <p className="text-xs text-amber-600 mt-1">Auto-calculated: Total - Deposit</p>
                         </div>
                       </div>
-                      
-                      {/* Finance Agreement Configuration - ONLY for Finance (not Payl8r) */}
-                      {contractDetails.paymentMethod === 'finance' && (
-                      <div className="border-t border-amber-200 pt-3 mt-3">
-                        <h5 className="text-xs font-semibold text-amber-800 mb-2">
-                          Finance Agreement Settings
-                        </h5>
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-xs font-medium text-amber-700 mb-1">Payment Frequency</label>
-                            <select
-                              value={contractDetails.financeFrequency || 'monthly'}
-                              onChange={(e) => updateField('financeFrequency', e.target.value)}
-                              className="w-full px-2 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 bg-white"
-                            >
-                              <option value="weekly">Weekly</option>
-                              <option value="bi-weekly">Bi-weekly</option>
-                              <option value="monthly">Monthly</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-amber-700 mb-1">First Payment Date</label>
-                            <input
-                              type="date"
-                              value={contractDetails.financeStartDate || ''}
-                              onChange={(e) => updateField('financeStartDate', e.target.value)}
-                              className="w-full px-2 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-amber-700 mb-1">Start Day</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="31"
-                              value={contractDetails.financeDueDay || 1}
-                              onChange={(e) => updateField('financeDueDay', parseInt(e.target.value) || 1)}
-                              className="w-full px-2 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-amber-700 mb-1">Duration (# of payments)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="60"
-                              value={contractDetails.financeDuration || 12}
-                              onChange={(e) => {
-                                const duration = parseInt(e.target.value) || 12;
-                                updateField('financeDuration', duration);
-                              }}
-                              className="w-full px-2 py-2 border border-amber-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 bg-white"
-                            />
-                            <p className="text-xs text-amber-600 mt-1">
-                              {contractDetails.financeDuration || 12} {contractDetails.financeFrequency === 'weekly' ? 'weekly' : contractDetails.financeFrequency === 'bi-weekly' ? 'bi-weekly' : 'monthly'} payments of {formatCurrency((contractDetails.financeAmount || 0) / (contractDetails.financeDuration || 12))}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -1302,10 +1584,10 @@ const SendContractModal = ({
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <div className="flex items-center space-x-2 text-blue-700 mb-2">
                   <Eye className="w-5 h-5" />
-                  <span className="font-medium">Review Contract Details</span>
+                  <span className="font-medium">Review {isFinanceContract ? 'Finance Agreement' : 'Contract'} Details</span>
                 </div>
                 <p className="text-sm text-blue-600">
-                  Please review the contract details below before creating. Once created, these details will be overlaid on the PDF contract.
+                  Please review the details below before creating. Once created, these will be embedded in the {isFinanceContract ? 'finance agreement' : 'contract'} PDF.
                 </p>
               </div>
 
@@ -1317,18 +1599,77 @@ const SendContractModal = ({
                 </h4>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div><span className="text-gray-500">Name:</span> <span className="font-medium">{contractDetails.customerName}</span></div>
-                  {contractDetails.clientNameIfDifferent && (
+                  {!isFinanceContract && contractDetails.clientNameIfDifferent && (
                     <div><span className="text-gray-500">Client:</span> <span className="font-medium">{contractDetails.clientNameIfDifferent}</span></div>
                   )}
                   <div className="col-span-2"><span className="text-gray-500">Address:</span> <span className="font-medium">{contractDetails.address}</span></div>
                   <div><span className="text-gray-500">Postcode:</span> <span className="font-medium">{contractDetails.postcode}</span></div>
                   <div><span className="text-gray-500">Phone:</span> <span className="font-medium">{contractDetails.phone}</span></div>
                   <div className="col-span-2"><span className="text-gray-500">Email:</span> <span className="font-medium">{contractDetails.email}</span></div>
-                  {contractDetails.isVip && <div className="col-span-2"><span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs">VIP</span></div>}
+                  {isFinanceContract && contractDetails.dateOfBirth && (
+                    <div><span className="text-gray-500">DOB:</span> <span className="font-medium">{new Date(contractDetails.dateOfBirth).toLocaleDateString('en-GB')}</span></div>
+                  )}
+                  {isFinanceContract && contractDetails.yearsAtAddress && (
+                    <div><span className="text-gray-500">Years at Address:</span> <span className="font-medium">{contractDetails.yearsAtAddress}</span></div>
+                  )}
+                  {!isFinanceContract && contractDetails.isVip && <div className="col-span-2"><span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs">VIP</span></div>}
                 </div>
               </div>
 
-              {/* Order Summary */}
+              {/* Finance: Affordability Assessment */}
+              {isFinanceContract && (
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h4 className="font-medium text-blue-700 mb-2">Affordability Assessment</h4>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-blue-600">Monthly Income:</span><span className="font-medium">{formatCurrency(contractDetails.monthlyIncome)}</span></div>
+                    <div className="flex justify-between"><span className="text-blue-600">Priority Outgoings:</span><span className="font-medium">{formatCurrency(contractDetails.priorityOutgoings)}</span></div>
+                    <div className="flex justify-between"><span className="text-blue-600">Other Outgoings:</span><span className="font-medium">{formatCurrency(contractDetails.otherOutgoings)}</span></div>
+                    <div className="flex justify-between font-semibold border-t pt-1 mt-1"><span>Disposable Balance:</span><span>{formatCurrency(financeCalc.disposableBalance)}</span></div>
+                    <div className="flex justify-between"><span className="text-blue-600">Agreed Instalment:</span><span className="font-semibold">{formatCurrency(contractDetails.agreedInstalment)}</span></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Finance: Loan Terms */}
+              {isFinanceContract && (
+                <div className="bg-amber-50 rounded-lg p-4">
+                  <h4 className="font-medium text-amber-700 mb-2">Loan & Repayment Terms</h4>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-amber-600">Cash Price:</span><span className="font-medium">{formatCurrency(contractDetails.cashPrice)}</span></div>
+                    <div className="flex justify-between"><span className="text-amber-600">Deposit:</span><span className="font-medium">{formatCurrency(contractDetails.deposit)}</span></div>
+                    <div className="flex justify-between font-semibold"><span>Amount of Credit:</span><span>{formatCurrency(financeCalc.amountOfCredit)}</span></div>
+                    <div className="flex justify-between"><span className="text-amber-600">Interest ({contractDetails.interestRate || 0}%):</span><span className="font-medium">{formatCurrency(financeCalc.interest)}</span></div>
+                    <div className="flex justify-between"><span className="text-amber-600">Admin Fee:</span><span className="font-medium">{formatCurrency(contractDetails.adminFee)}</span></div>
+                    <div className="flex justify-between font-semibold"><span>Total Charge for Credit:</span><span>{formatCurrency(financeCalc.totalChargeForCredit)}</span></div>
+                    <div className="flex justify-between font-bold text-base border-t pt-1 mt-1"><span>Total Amount Payable:</span><span>{formatCurrency(financeCalc.totalAmountPayable)}</span></div>
+                    <div className="flex justify-between mt-2"><span className="text-amber-600">{contractDetails.numberOfInstalments} instalments over {contractDetails.duration} months</span><span className="font-medium">{formatCurrency(financeCalc.monthlyRepayment)}/month</span></div>
+                    <div className="flex justify-between"><span className="text-amber-600">APR:</span><span className="font-medium">{(financeCalc.apr || 0).toFixed(1)}%</span></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Finance: Repayment & Creditor */}
+              {isFinanceContract && (
+                <div className="bg-green-50 rounded-lg p-4">
+                  <h4 className="font-medium text-green-700 mb-2">Repayment Schedule</h4>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-green-600">Frequency:</span><span className="font-medium capitalize">{contractDetails.repaymentFrequency}</span></div>
+                    <div className="flex justify-between"><span className="text-green-600">Commencing From:</span><span className="font-medium">{contractDetails.commencingFrom ? new Date(contractDetails.commencingFrom).toLocaleDateString('en-GB') : 'Not set'}</span></div>
+                    <div className="flex justify-between"><span className="text-green-600">Monthly Repayment:</span><span className="font-semibold">{formatCurrency(financeCalc.monthlyRepayment)}</span></div>
+                    <div className="flex justify-between"><span className="text-green-600">Daily Rate of Interest:</span><span className="font-medium">{(financeCalc.dailyRateOfInterest || 0).toFixed(4)}%</span></div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-green-200">
+                    <h4 className="font-medium text-gray-700 mb-1">Creditor</h4>
+                    <div className="text-sm">
+                      <span className="text-gray-500">Signed by:</span> <span className="font-medium">{contractDetails.creditorName || authUser?.name}</span>
+                      <span className="text-gray-400 ml-3">({contractDetails.creditorDate ? new Date(contractDetails.creditorDate).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')})</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Invoice: Order Summary */}
+              {!isFinanceContract && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-700 mb-2 flex items-center">
                   <Package className="w-4 h-4 mr-2" />
@@ -1362,8 +1703,10 @@ const SendContractModal = ({
                   </div>
                 )}
               </div>
+              )}
 
-              {/* Payment Summary */}
+              {/* Invoice: Payment Summary */}
+              {!isFinanceContract && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-700 mb-2 flex items-center">
                   <CreditCard className="w-4 h-4 mr-2" />
@@ -1387,46 +1730,22 @@ const SendContractModal = ({
                     <span className="capitalize">{contractDetails.paymentMethod}</span>
                     {contractDetails.authCode && <span className="text-gray-400 ml-2">(Auth: {contractDetails.authCode})</span>}
                   </div>
-                  {/* DYNAMIC: Finance/Payl8r breakdown in review */}
-                  {(contractDetails.paymentMethod === 'finance' || contractDetails.paymentMethod === 'payl8r') && (
+                  {/* DYNAMIC: Payl8r breakdown in review */}
+                  {contractDetails.paymentMethod === 'payl8r' && (
                     <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
                       <div className="flex justify-between text-sm">
                         <span className="text-amber-700">Deposit Paid:</span>
                         <span className="font-medium text-amber-800">{formatCurrency(contractDetails.depositAmount)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-amber-700">{contractDetails.paymentMethod === 'payl8r' ? 'Payl8r Amount' : 'Finance Amount'}:</span>
+                        <span className="text-amber-700">Payl8r Amount:</span>
                         <span className="font-semibold text-amber-800">{formatCurrency(contractDetails.financeAmount)}</span>
                       </div>
-                      {/* Agreement Settings - ONLY for Finance (not Payl8r) */}
-                      {contractDetails.paymentMethod === 'finance' && (
-                      <div className="mt-2 pt-2 border-t border-amber-200 text-xs text-amber-700">
-                        <div className="flex justify-between">
-                          <span>Payment Frequency:</span>
-                          <span className="capitalize font-medium">{contractDetails.financeFrequency || 'monthly'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Duration:</span>
-                          <span className="font-medium">{contractDetails.financeDuration || 12} {contractDetails.financeFrequency === 'weekly' ? 'weekly' : contractDetails.financeFrequency === 'bi-weekly' ? 'bi-weekly' : 'monthly'} payments</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Payment Amount:</span>
-                          <span className="font-medium">{formatCurrency((contractDetails.financeAmount || 0) / (contractDetails.financeDuration || 12))}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>First Payment:</span>
-                          <span className="font-medium">{contractDetails.financeStartDate ? new Date(contractDetails.financeStartDate).toLocaleDateString('en-GB') : 'Not set'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Start Day:</span>
-                          <span className="font-medium">{contractDetails.financeDueDay || 1}</span>
-                        </div>
-                      </div>
-                      )}
                     </div>
                   )}
                 </div>
               </div>
+              )}
             </div>
           )}
 

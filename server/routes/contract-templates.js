@@ -2,7 +2,8 @@ const express = require('express');
 const { auth } = require('../middleware/auth');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
-const { generateContractHTML, DEFAULT_PAYMENT_DETAILS_HTML } = require('../utils/contractGenerator');
+const { generateContractHTML } = require('../utils/contractGenerator');
+const { generateFinanceContractHTML, DEFAULT_FINANCE_TEMPLATE } = require('../utils/financeContractGenerator');
 
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
 
@@ -130,6 +131,38 @@ const SAMPLE_CONTRACT_DATA_PAYL8R = {
     passDetails: null,
     happyPurchase: null
   }
+};
+
+// Sample finance agreement data for preview
+const SAMPLE_FINANCE_CONTRACT_DATA = {
+  date: new Date(),
+  signedAt: null,
+  customerName: 'Jane Smith',
+  address: '456 Finance Road, Manchester',
+  postcode: 'M1 2AB',
+  phone: '07987 654321',
+  email: 'jane.smith@email.com',
+  dateOfBirth: '1990-05-15',
+  yearsAtAddress: '3',
+  monthlyIncome: 2500,
+  priorityOutgoings: 900,
+  otherOutgoings: 350,
+  agreedInstalment: 85,
+  cashPrice: 999,
+  deposit: 199,
+  adminFee: 25,
+  interestRate: 9.9,
+  apr: 12.5,
+  numberOfInstalments: 12,
+  duration: 12,
+  repaymentFrequency: 'monthly',
+  commencingFrom: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  creditorName: 'Admin User',
+  creditorDate: new Date().toISOString(),
+  agreementNumber: 'FIN-00001',
+  invoiceNumber: 'FIN-00001',
+  paymentMethod: 'finance',
+  signatures: { customer: null }
 };
 
 // Legacy alias for backward compatibility
@@ -262,18 +295,33 @@ router.get('/preview', auth, async (req, res) => {
 
     const template = dbTemplate || DEFAULT_TEMPLATE;
 
-    // Select sample data based on preview mode
+    // Select sample data and generator based on preview mode
     let sampleData;
+    let html;
     if (previewMode === 'finance') {
-      sampleData = SAMPLE_CONTRACT_DATA_FINANCE;
+      // Use the new finance contract generator for finance preview
+      sampleData = SAMPLE_FINANCE_CONTRACT_DATA;
+      const financeTemplate = {
+        ...DEFAULT_FINANCE_TEMPLATE,
+        company_name: template.company_name || DEFAULT_FINANCE_TEMPLATE.company_name,
+        company_address: template.company_address || DEFAULT_FINANCE_TEMPLATE.company_address,
+        company_website: template.company_website || DEFAULT_FINANCE_TEMPLATE.company_website,
+        footer_line1: template.footer_line1 || DEFAULT_FINANCE_TEMPLATE.footer_line1,
+        footer_line2: template.footer_line2 || DEFAULT_FINANCE_TEMPLATE.footer_line2,
+        creditor_trading_as: template.creditor_trading_as || DEFAULT_FINANCE_TEMPLATE.creditor_trading_as,
+        key_information_text: template.key_information_text || DEFAULT_FINANCE_TEMPLATE.key_information_text,
+        customer_agreement_text: template.customer_agreement_text || DEFAULT_FINANCE_TEMPLATE.customer_agreement_text,
+        creditor_acknowledgement_text: template.creditor_acknowledgement_text || DEFAULT_FINANCE_TEMPLATE.creditor_acknowledgement_text,
+        cca_notice: template.cca_notice || DEFAULT_FINANCE_TEMPLATE.cca_notice
+      };
+      html = generateFinanceContractHTML(sampleData, financeTemplate);
     } else if (previewMode === 'payl8r') {
       sampleData = SAMPLE_CONTRACT_DATA_PAYL8R;
+      html = generateContractHTML(sampleData, template);
     } else {
       sampleData = SAMPLE_CONTRACT_DATA_NORMAL;
+      html = generateContractHTML(sampleData, template);
     }
-
-    // Generate the actual HTML using the same function that creates PDFs
-    const html = generateContractHTML(sampleData, template);
 
     res.json({
       html,
@@ -328,6 +376,12 @@ router.post('/', auth, async (req, res) => {
       finance_info_text: req.body.finance_info_text,
       // Payment section
       cash_initial_text: req.body.cash_initial_text,
+      // Finance contract template fields
+      creditor_trading_as: req.body.creditor_trading_as,
+      key_information_text: req.body.key_information_text,
+      customer_agreement_text: req.body.customer_agreement_text,
+      creditor_acknowledgement_text: req.body.creditor_acknowledgement_text,
+      cca_notice: req.body.cca_notice,
       updated_at: new Date().toISOString()
       // Note: created_by removed due to foreign key constraint with users table
     };
