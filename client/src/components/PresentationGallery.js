@@ -713,16 +713,16 @@ const PresentationGallery = ({
                     </div>
                   )}
                   {onDeletePhoto && (
-                    <button
+                    <span
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDeletePhoto(photo.id, e);
                       }}
-                      className="absolute top-0.5 left-0.5 p-0.5 bg-red-500 text-white rounded-full opacity-0 group-hover/thumb:opacity-100 transition-opacity z-20 hover:bg-red-600"
+                      className="absolute top-0 left-0 z-20 inline-flex items-center justify-center w-4 h-4 !min-w-0 !min-h-0 rounded-full bg-red-600 text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity cursor-pointer hover:bg-red-700"
                       title="Delete photo"
                     >
                       <FiTrash2 className="w-2.5 h-2.5" />
-                    </button>
+                    </span>
                   )}
                 </button>
               );
