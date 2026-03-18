@@ -816,9 +816,9 @@ const SendContractModal = ({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-white">
-                {step === 'edit' && (isFinanceContract ? 'Finance Agreement Details' : 'Edit Invoice Details')}
-                {step === 'review' && (isFinanceContract ? 'Review Finance Agreement' : 'Review Invoice')}
-                {step === 'send' && (isFinanceContract ? 'Send Finance Agreement' : 'Send Invoice')}
+                {step === 'edit' && (isFinanceContract ? 'Edit Invoice & Finance Details' : 'Edit Invoice Details')}
+                {step === 'review' && (isFinanceContract ? 'Review Invoice & Finance Agreement' : 'Review Invoice')}
+                {step === 'send' && (isFinanceContract ? 'Send Contracts' : 'Send Invoice')}
               </h2>
               <p className="text-blue-100 text-sm">
                 {lead?.name || 'Customer'} • {packageData?.name || 'Package'}
@@ -1032,8 +1032,7 @@ const SendContractModal = ({
                 </div>
               )}
 
-              {/* Studio Info Section - Invoice only */}
-              {!isFinanceContract && (
+              {/* Studio Info Section */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                   <MapPin className="w-4 h-4 mr-2 text-purple-500" />
@@ -1069,10 +1068,8 @@ const SendContractModal = ({
                   </div>
                 </div>
               </div>
-              )}
 
-              {/* Order Details Section - Invoice only */}
-              {!isFinanceContract && (
+              {/* Order Details Section */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                   <Package className="w-4 h-4 mr-2 text-green-500" />
@@ -1183,10 +1180,8 @@ const SendContractModal = ({
                   </div>
                 </div>
               </div>
-              )}
 
-              {/* Notes - Invoice only */}
-              {!isFinanceContract && (
+              {/* Notes */}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
                 <textarea
@@ -1197,17 +1192,15 @@ const SendContractModal = ({
                   placeholder="Additional notes for the contract..."
                 />
               </div>
-              )}
 
               {/* Payment Section */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
                   <PoundSterling className="w-4 h-4 mr-2 text-yellow-500" />
-                  {isFinanceContract ? 'PAYMENT METHOD' : 'PAYMENT DETAILS'}
+                  PAYMENT DETAILS
                 </h3>
                 <div className="bg-gray-50 p-4 rounded-lg space-y-3">
-                  {/* Subtotal/VAT/Total - Invoice only */}
-                  {!isFinanceContract && (
+                  {/* Subtotal/VAT/Total */}
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Subtotal (excl VAT)</label>
@@ -1247,7 +1240,6 @@ const SendContractModal = ({
                       </div>
                     </div>
                   </div>
-                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Payment Method</label>
@@ -1584,10 +1576,10 @@ const SendContractModal = ({
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <div className="flex items-center space-x-2 text-blue-700 mb-2">
                   <Eye className="w-5 h-5" />
-                  <span className="font-medium">Review {isFinanceContract ? 'Finance Agreement' : 'Contract'} Details</span>
+                  <span className="font-medium">Review {isFinanceContract ? 'Invoice & Finance Agreement' : 'Contract'} Details</span>
                 </div>
                 <p className="text-sm text-blue-600">
-                  Please review the details below before creating. Once created, these will be embedded in the {isFinanceContract ? 'finance agreement' : 'contract'} PDF.
+                  Please review the details below before creating. Once created, these will be embedded in the {isFinanceContract ? 'contract documents' : 'contract'} PDF.
                 </p>
               </div>
 
@@ -1599,7 +1591,7 @@ const SendContractModal = ({
                 </h4>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div><span className="text-gray-500">Name:</span> <span className="font-medium">{contractDetails.customerName}</span></div>
-                  {!isFinanceContract && contractDetails.clientNameIfDifferent && (
+                  {contractDetails.clientNameIfDifferent && (
                     <div><span className="text-gray-500">Client:</span> <span className="font-medium">{contractDetails.clientNameIfDifferent}</span></div>
                   )}
                   <div className="col-span-2"><span className="text-gray-500">Address:</span> <span className="font-medium">{contractDetails.address}</span></div>
@@ -1612,7 +1604,7 @@ const SendContractModal = ({
                   {isFinanceContract && contractDetails.yearsAtAddress && (
                     <div><span className="text-gray-500">Years at Address:</span> <span className="font-medium">{contractDetails.yearsAtAddress}</span></div>
                   )}
-                  {!isFinanceContract && contractDetails.isVip && <div className="col-span-2"><span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs">VIP</span></div>}
+                  {contractDetails.isVip && <div className="col-span-2"><span className="bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded text-xs">VIP</span></div>}
                 </div>
               </div>
 
@@ -1668,8 +1660,7 @@ const SendContractModal = ({
                 </div>
               )}
 
-              {/* Invoice: Order Summary */}
-              {!isFinanceContract && (
+              {/* Order Summary */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-700 mb-2 flex items-center">
                   <Package className="w-4 h-4 mr-2" />
@@ -1703,10 +1694,8 @@ const SendContractModal = ({
                   </div>
                 )}
               </div>
-              )}
 
-              {/* Invoice: Payment Summary */}
-              {!isFinanceContract && (
+              {/* Payment Summary */}
               <div className="bg-gray-50 rounded-lg p-4">
                 <h4 className="font-medium text-gray-700 mb-2 flex items-center">
                   <CreditCard className="w-4 h-4 mr-2" />
@@ -1745,7 +1734,6 @@ const SendContractModal = ({
                   )}
                 </div>
               </div>
-              )}
             </div>
           )}
 

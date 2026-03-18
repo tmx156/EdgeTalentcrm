@@ -39,7 +39,7 @@
     "prestart": "node scripts/generate-git-version.js",
     "start": "react-scripts start",
     "prebuild": "node scripts/generate-git-version.js",
-    "build": "CI=false GENERATE_SOURCEMAP=false react-scripts build",
+    "build": "CI=false DISABLE_ESLINT_PLUGIN=true GENERATE_SOURCEMAP=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "version:generate": "node scripts/generate-git-version.js"

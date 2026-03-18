@@ -146,7 +146,7 @@ router.post('/create', auth, async (req, res) => {
     let contractData;
 
     if (contractDetails && isFinanceContract) {
-      // FINANCE CONTRACT - completely different data shape
+      // FINANCE CONTRACT - includes BOTH invoice fields AND finance fields (dual document)
       contractData = {
         date: new Date().toISOString(),
         signedAt: null,
@@ -154,20 +154,55 @@ router.post('/create', auth, async (req, res) => {
         // Customer info
         customerNumber: lead.id?.toString().slice(-6) || '',
         customerName: contractDetails.customerName || lead.name || '',
+        clientNameIfDifferent: contractDetails.clientNameIfDifferent || '',
         address: contractDetails.address || '',
         postcode: contractDetails.postcode || '',
         phone: contractDetails.phone || '',
         email: contractDetails.email || '',
+        isVip: contractDetails.isVip || false,
         dateOfBirth: contractDetails.dateOfBirth || '',
         yearsAtAddress: contractDetails.yearsAtAddress || '',
 
-        // Affordability Assessment
+        // Studio info (for invoice document)
+        studioNumber: contractDetails.studioNumber || '',
+        photographer: contractDetails.photographer || '',
+        invoiceNumber: contractDetails.invoiceNumber || `INV-${Date.now().toString().slice(-8)}`,
+
+        // Order details (for invoice document)
+        digitalImages: contractDetails.digitalImages ?? true,
+        digitalImagesQty: contractDetails.digitalImagesQty || 'All',
+        digitalZCard: contractDetails.digitalZCard || false,
+        efolio: contractDetails.efolio || false,
+        efolioUrl: contractDetails.efolioUrl || '',
+        projectInfluencer: contractDetails.projectInfluencer || false,
+        influencerLogin: contractDetails.influencerLogin || '',
+        influencerPassword: contractDetails.influencerPassword || '',
+
+        // Permissions (for invoice document)
+        allowImageUse: contractDetails.allowImageUse ?? true,
+        imagesReceived: 'N.A',
+
+        // Notes (for invoice document)
+        notes: contractDetails.notes || '',
+
+        // Financials (for invoice document)
+        subtotal: contractDetails.subtotal || 0,
+        vatRate: contractDetails.vatRate || 20,
+        vatAmount: contractDetails.vatAmount || 0,
+        total: contractDetails.total || 0,
+
+        // Payment
+        paymentMethod: 'finance',
+        authCode: contractDetails.authCode || '',
+        viewerInitials: '',
+
+        // Affordability Assessment (for finance document)
         monthlyIncome: parseFloat(contractDetails.monthlyIncome) || 0,
         priorityOutgoings: parseFloat(contractDetails.priorityOutgoings) || 0,
         otherOutgoings: parseFloat(contractDetails.otherOutgoings) || 0,
         agreedInstalment: parseFloat(contractDetails.agreedInstalment) || 0,
 
-        // Loan & Repayment Terms
+        // Loan & Repayment Terms (for finance document)
         cashPrice: parseFloat(contractDetails.cashPrice) || 0,
         deposit: parseFloat(contractDetails.deposit) || 0,
         adminFee: parseFloat(contractDetails.adminFee) || 0,
@@ -175,7 +210,7 @@ router.post('/create', auth, async (req, res) => {
         numberOfInstalments: parseInt(contractDetails.numberOfInstalments) || 12,
         duration: parseInt(contractDetails.duration) || 12,
 
-        // Repayment Schedule
+        // Repayment Schedule (for finance document)
         repaymentFrequency: contractDetails.repaymentFrequency || 'monthly',
         commencingFrom: contractDetails.commencingFrom || '',
 
@@ -185,21 +220,21 @@ router.post('/create', auth, async (req, res) => {
 
         // Reference
         agreementNumber: contractDetails.invoiceNumber || `FIN-${Date.now().toString().slice(-8)}`,
-        invoiceNumber: contractDetails.invoiceNumber || `FIN-${Date.now().toString().slice(-8)}`,
-
-        // Payment method
-        paymentMethod: 'finance',
 
         // For finance agreement auto-creation
-        total: parseFloat(contractDetails.cashPrice) || 0,
         depositAmount: parseFloat(contractDetails.deposit) || 0,
         financeAmount: (parseFloat(contractDetails.cashPrice) || 0) - (parseFloat(contractDetails.deposit) || 0),
         financeFrequency: contractDetails.repaymentFrequency || 'monthly',
         financeStartDate: contractDetails.commencingFrom || '',
         financeDuration: parseInt(contractDetails.numberOfInstalments) || 12,
 
-        // Signatures (only 'customer' for finance)
+        // All 6 signatures (5 invoice + 1 finance)
         signatures: {
+          main: null,
+          notAgency: null,
+          noCancel: null,
+          passDetails: null,
+          happyPurchase: null,
           customer: null
         },
 
@@ -498,13 +533,13 @@ router.post('/send/:contractId', auth, async (req, res) => {
         if (template && template.email_body) {
           // Use database template
           emailSubject = replaceVariables(template.subject) || (isFinanceContract
-            ? 'Edge Talent - Your Finance Agreement is Ready for Signing'
+            ? 'Edge Talent - Your Contract & Finance Agreement are Ready for Signing'
             : 'Edge Talent - Your Contract is Ready for Signing');
           emailHtml = replaceVariables(template.email_body);
         } else {
           // Fallback to hardcoded template
           emailSubject = isFinanceContract
-            ? 'Edge Talent - Your Finance Agreement is Ready for Signing'
+            ? 'Edge Talent - Your Contract & Finance Agreement are Ready for Signing'
             : 'Edge Talent - Your Contract is Ready for Signing';
           emailHtml = `
 <!DOCTYPE html>
@@ -561,7 +596,7 @@ router.post('/send/:contractId', auth, async (req, res) => {
           <li><strong>Click the button above</strong> to open your contract</li>
           <li><strong>Review the contract</strong> - Check all your details are correct</li>
           <li><strong>Sign in the signature boxes</strong> - Use your mouse or finger to sign</li>
-          <li><strong>Complete ${isFinanceContract ? 'your signature' : 'all 5 signatures'}</strong> on ${isFinanceContract ? 'page 2' : 'both pages'}</li>
+          <li><strong>Complete ${isFinanceContract ? 'all 6 signatures' : 'all 5 signatures'}</strong> across ${isFinanceContract ? 'all 4 pages' : 'both pages'}</li>
           <li><strong>Click "Submit Signed Contract"</strong> to finish</li>
         </ol>
       </div>
@@ -733,11 +768,14 @@ router.get('/verify/:token', async (req, res) => {
     const contractType = contract.contract_type || 'invoice';
 
     // Generate HTML based on contract type
-    let contractHTML, template;
+    let contractHTML, template, financeHTML, financeTemplate;
     if (contractType === 'finance') {
-      template = await getActiveFinanceTemplate();
-      contractHTML = generateFinanceContractHTML(contract.contract_data, template);
-      console.log('📋 Verify endpoint - returning FINANCE contract');
+      // Finance: generate BOTH invoice and finance HTMLs (dual document)
+      template = await getActiveTemplate();
+      contractHTML = generateContractHTML(contract.contract_data, template);
+      financeTemplate = await getActiveFinanceTemplate();
+      financeHTML = generateFinanceContractHTML(contract.contract_data, financeTemplate);
+      console.log('📋 Verify endpoint - returning DUAL documents (invoice + finance)');
     } else {
       template = await getActiveTemplate();
       contractHTML = generateContractHTML(contract.contract_data, template);
@@ -745,7 +783,7 @@ router.get('/verify/:token', async (req, res) => {
     }
 
     // Return contract data, template, AND pre-rendered HTML for signing page
-    res.json({
+    const response = {
       success: true,
       contract: {
         id: contract.id,
@@ -757,7 +795,15 @@ router.get('/verify/:token', async (req, res) => {
       template: template,
       html: contractHTML,
       contractType: contractType
-    });
+    };
+
+    // Include finance HTML for dual-document signing
+    if (contractType === 'finance' && financeHTML) {
+      response.financeHtml = financeHTML;
+      response.financeTemplate = financeTemplate;
+    }
+
+    res.json(response);
   } catch (error) {
     console.error('Error verifying contract:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -867,8 +913,11 @@ router.post('/sign/:token', async (req, res) => {
     // Validate required signatures based on contract type
     const contractType = contract.contract_type || 'invoice';
     if (contractType === 'finance') {
-      if (!signatures || !signatures.customer) {
-        return res.status(400).json({ message: 'Customer signature is required' });
+      // Finance requires ALL 6 signatures (5 invoice + 1 finance)
+      const required = ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase', 'customer'];
+      const missing = required.filter(k => !signatures || !signatures[k]);
+      if (missing.length > 0) {
+        return res.status(400).json({ message: `Missing signatures: ${missing.join(', ')}` });
       }
     } else {
       if (!signatures || !signatures.main) {
@@ -884,29 +933,63 @@ router.post('/sign/:token', async (req, res) => {
       signedAt: new Date().toISOString()
     };
 
-    // Generate signed PDF (use correct generator based on contract type)
+    // Generate signed PDF(s) based on contract type
     let pdfUrl = null;
+    let financePdfUrl = null;
     try {
-      console.log(`📄 Generating signed PDF for ${contractType} contract ${contract.id}...`);
-      const pdfBuffer = contractType === 'finance'
-        ? await generateFinanceContractPDF(signedContractData)
-        : await generateContractPDF(signedContractData);
-      console.log(`✅ PDF generated successfully, size: ${pdfBuffer.length} bytes`);
+      if (contractType === 'finance') {
+        // FINANCE: Generate TWO PDFs (Invoice + Finance Agreement)
+        console.log(`📄 Generating dual PDFs for finance contract ${contract.id}...`);
 
-      // Upload to S3
-      console.log(`☁️ Uploading PDF to S3...`);
-      const uploadResult = await uploadToS3(
-        pdfBuffer,
-        `contract_${contract.id}_${Date.now()}.pdf`,
-        `contracts/${new Date().getFullYear()}`,
-        'application/pdf'
-      );
+        // 1. Invoice PDF
+        const invoicePdfBuffer = await generateContractPDF(signedContractData);
+        console.log(`✅ Invoice PDF generated, size: ${invoicePdfBuffer.length} bytes`);
+        const invoiceUpload = await uploadToS3(
+          invoicePdfBuffer,
+          `invoice_${contract.id}_${Date.now()}.pdf`,
+          `contracts/${new Date().getFullYear()}`,
+          'application/pdf'
+        );
+        if (invoiceUpload.url) {
+          pdfUrl = invoiceUpload.url;
+          console.log(`✅ Invoice PDF uploaded to S3: ${pdfUrl}`);
+        }
 
-      if (uploadResult.url) {
-        pdfUrl = uploadResult.url;
-        console.log(`✅ PDF uploaded to S3: ${pdfUrl}`);
+        // 2. Finance Agreement PDF
+        const financePdfBuffer = await generateFinanceContractPDF(signedContractData);
+        console.log(`✅ Finance PDF generated, size: ${financePdfBuffer.length} bytes`);
+        const financeUpload = await uploadToS3(
+          financePdfBuffer,
+          `finance_${contract.id}_${Date.now()}.pdf`,
+          `contracts/${new Date().getFullYear()}`,
+          'application/pdf'
+        );
+        if (financeUpload.url) {
+          financePdfUrl = financeUpload.url;
+          console.log(`✅ Finance PDF uploaded to S3: ${financePdfUrl}`);
+        }
+
+        // Store finance PDF URL in contract data
+        signedContractData.financePdfUrl = financePdfUrl;
       } else {
-        console.error('❌ S3 upload returned no URL:', uploadResult);
+        // INVOICE ONLY: Generate single PDF
+        console.log(`📄 Generating signed PDF for invoice contract ${contract.id}...`);
+        const pdfBuffer = await generateContractPDF(signedContractData);
+        console.log(`✅ PDF generated successfully, size: ${pdfBuffer.length} bytes`);
+
+        console.log(`☁️ Uploading PDF to S3...`);
+        const uploadResult = await uploadToS3(
+          pdfBuffer,
+          `contract_${contract.id}_${Date.now()}.pdf`,
+          `contracts/${new Date().getFullYear()}`,
+          'application/pdf'
+        );
+        if (uploadResult.url) {
+          pdfUrl = uploadResult.url;
+          console.log(`✅ PDF uploaded to S3: ${pdfUrl}`);
+        } else {
+          console.error('❌ S3 upload returned no URL:', uploadResult);
+        }
       }
     } catch (pdfError) {
       console.error('❌ Error generating/uploading PDF:', pdfError);
@@ -1141,22 +1224,41 @@ router.post('/sign/:token', async (req, res) => {
       if (customerEmail) {
         const attachments = [];
 
-        // Add signed PDF if available (kept as separate attachment for easy access)
+        // Add signed PDF(s) as attachments
+        const dateStr = new Date().toISOString().split('T')[0];
         if (pdfUrl) {
           try {
-            console.log(`📄 Downloading signed PDF from S3: ${pdfUrl}`);
+            console.log(`📄 Downloading signed invoice PDF from S3: ${pdfUrl}`);
             const pdfResponse = await axios.get(pdfUrl, { responseType: 'arraybuffer', timeout: 30000 });
             attachments.push({
               buffer: Buffer.from(pdfResponse.data),
-              filename: `EdgeTalent_SignedContract_${new Date().toISOString().split('T')[0]}.pdf`,
+              filename: contractType === 'finance'
+                ? `EdgeTalent_Invoice_${dateStr}.pdf`
+                : `EdgeTalent_SignedContract_${dateStr}.pdf`,
               contentType: 'application/pdf'
             });
-            console.log(`✅ Downloaded signed PDF for attachment (${pdfResponse.data.length} bytes)`);
+            console.log(`✅ Downloaded invoice PDF for attachment (${pdfResponse.data.length} bytes)`);
           } catch (pdfDownloadError) {
-            console.error('❌ Failed to download signed PDF:', pdfDownloadError.message);
+            console.error('❌ Failed to download invoice PDF:', pdfDownloadError.message);
           }
-        } else {
-          console.log('⚠️ No PDF URL available - PDF will not be attached to email');
+        }
+        // Attach finance agreement PDF if available (dual-document finance contracts)
+        if (financePdfUrl) {
+          try {
+            console.log(`📄 Downloading finance agreement PDF from S3: ${financePdfUrl}`);
+            const financePdfResponse = await axios.get(financePdfUrl, { responseType: 'arraybuffer', timeout: 30000 });
+            attachments.push({
+              buffer: Buffer.from(financePdfResponse.data),
+              filename: `EdgeTalent_FinanceAgreement_${dateStr}.pdf`,
+              contentType: 'application/pdf'
+            });
+            console.log(`✅ Downloaded finance PDF for attachment (${financePdfResponse.data.length} bytes)`);
+          } catch (finPdfDownloadError) {
+            console.error('❌ Failed to download finance PDF:', finPdfDownloadError.message);
+          }
+        }
+        if (!pdfUrl && !financePdfUrl) {
+          console.log('⚠️ No PDF URLs available - PDFs will not be attached to email');
         }
 
         // Zip images if there are any (handles large packages with 100+ images)
@@ -1259,7 +1361,11 @@ router.post('/sign/:token', async (req, res) => {
             }
 
             // Build individual bullet items
-            const bulletContract = pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : '';
+            const bulletContract = pdfUrl
+              ? (financePdfUrl
+                ? '<li>A copy of your signed Invoice & Order Form (PDF)</li><li>A copy of your signed Finance Agreement (PDF)</li>'
+                : '<li>A copy of your signed contract (PDF)</li>')
+              : '';
             const bulletImages = bulletImagesText;
             const bulletAgencyList = (signedContractData.recommendedAgencyList || signedContractData.agencyList) ? '<li>Your \'recommended agency list\' is attached to this email</li>' : '';
             const bulletProjectInfluencer = signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : '';
@@ -1299,7 +1405,7 @@ router.post('/sign/:token', async (req, res) => {
               '{allConditionalBullets}': allConditionalBullets,
               '{attachmentList}': `
                 <ul style="margin: 10px 0 0 0; padding-left: 20px;">
-                  ${pdfUrl ? '<li>Your signed contract (PDF)</li>' : ''}
+                  ${pdfUrl ? (financePdfUrl ? '<li>Your signed Invoice & Order Form (PDF)</li><li>Your signed Finance Agreement (PDF)</li>' : '<li>Your signed contract (PDF)</li>') : ''}
                   ${photoAttachments.length > 0 ? (imagesDownloadUrl ? `<li><a href="${imagesDownloadUrl}">Download your ${photoAttachments.length} images (ZIP)</a></li>` : `<li>Your ${photoAttachments.length} selected images (ZIP file)</li>`) : ''}
                 </ul>
               `
@@ -1600,7 +1706,8 @@ router.post('/sign/:token', async (req, res) => {
       message: 'Contract signed successfully',
       contractId: contract.id,
       signedAt: updated.signed_at,
-      pdfUrl: pdfUrl
+      pdfUrl: pdfUrl,
+      financePdfUrl: financePdfUrl || null
     });
   } catch (error) {
     console.error('Error signing contract:', error);
@@ -1747,6 +1854,7 @@ router.get('/:contractId', auth, async (req, res) => {
         signingUrl: contract.signing_url,
         pdfUrl: contract.signed_pdf_url,
         signed_pdf_url: contract.signed_pdf_url,
+        financePdfUrl: contract.contract_data?.financePdfUrl || null,
         data: contract.contract_data,
         // Delivery email info
         deliveryEmailSent: deliveryEmailSent,
@@ -1866,19 +1974,38 @@ router.post('/:contractId/resend-delivery', auth, async (req, res) => {
 
     const attachments = [];
 
-    // Add signed PDF if available
+    const isFinanceContract = contract.contract_type === 'finance';
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    // Add signed PDF(s) if available
     if (contract.signed_pdf_url) {
       try {
         console.log(`📄 Downloading signed PDF from: ${contract.signed_pdf_url}`);
         const pdfResponse = await axios.get(contract.signed_pdf_url, { responseType: 'arraybuffer', timeout: 30000 });
         attachments.push({
           buffer: Buffer.from(pdfResponse.data),
-          filename: `signed_contract_${contractId}.pdf`,
+          filename: isFinanceContract ? `EdgeTalent_Invoice_${dateStr}.pdf` : `signed_contract_${contractId}.pdf`,
           contentType: 'application/pdf'
         });
-        console.log(`✅ PDF downloaded (${pdfResponse.data.length} bytes)`);
+        console.log(`✅ Invoice PDF downloaded (${pdfResponse.data.length} bytes)`);
       } catch (pdfError) {
         console.error('❌ Failed to download signed PDF:', pdfError.message);
+      }
+    }
+
+    // Attach finance agreement PDF if available (dual-document finance contracts)
+    if (contractData.financePdfUrl) {
+      try {
+        console.log(`📄 Downloading finance PDF from: ${contractData.financePdfUrl}`);
+        const finPdfResponse = await axios.get(contractData.financePdfUrl, { responseType: 'arraybuffer', timeout: 30000 });
+        attachments.push({
+          buffer: Buffer.from(finPdfResponse.data),
+          filename: `EdgeTalent_FinanceAgreement_${dateStr}.pdf`,
+          contentType: 'application/pdf'
+        });
+        console.log(`✅ Finance PDF downloaded (${finPdfResponse.data.length} bytes)`);
+      } catch (finPdfError) {
+        console.error('❌ Failed to download finance PDF:', finPdfError.message);
       }
     }
 
@@ -1951,7 +2078,7 @@ router.post('/:contractId/resend-delivery', auth, async (req, res) => {
           '{companyName}': 'Edge Talent',
           '{attachmentList}': `
             <ul style="margin: 10px 0 0 0; padding-left: 20px;">
-              ${contract.signed_pdf_url ? '<li>Your signed contract (PDF)</li>' : ''}
+              ${contract.signed_pdf_url ? (contractData.financePdfUrl ? '<li>Your signed Invoice & Order Form (PDF)</li><li>Your signed Finance Agreement (PDF)</li>' : '<li>Your signed contract (PDF)</li>') : ''}
               ${photoCount > 0 ? `<li>Your ${photoCount} selected image${photoCount > 1 ? 's' : ''}</li>` : ''}
             </ul>
           `

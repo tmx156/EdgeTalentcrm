@@ -16,7 +16,9 @@ const ContractSigning = () => {
   const [contract, setContract] = useState(null);
   const [template, setTemplate] = useState(null);
   const [contractHTML, setContractHTML] = useState('');
+  const [financeHTML, setFinanceHTML] = useState(''); // Finance agreement HTML (dual-document)
   const [contractType, setContractType] = useState('invoice'); // 'invoice' or 'finance'
+  const [financePdfUrl, setFinancePdfUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -59,9 +61,13 @@ const ContractSigning = () => {
         setContractHTML(data.html || '');
         const type = data.contractType || data.contract?.contractType || 'invoice';
         setContractType(type);
-        // Set appropriate signature state based on contract type
+        // Finance: dual-document (invoice + finance agreement, 6 signatures)
         if (type === 'finance') {
-          setSignatures({ customer: null });
+          setFinanceHTML(data.financeHtml || '');
+          setSignatures({
+            main: null, notAgency: null, noCancel: null,
+            passDetails: null, happyPurchase: null, customer: null
+          });
         }
       } catch (err) {
         setError(err.message);
@@ -75,23 +81,27 @@ const ContractSigning = () => {
     }
   }, [token]);
 
-  // Parse HTML into individual pages (same pattern as ContractEditor.js)
+  // Parse HTML into individual pages
+  // For finance: pages 1-2 from invoice HTML, pages 3-4 from finance HTML
   const getPageHTML = useCallback((pageNum) => {
-    if (!contractHTML) return '';
+    const isFinancePage = contractType === 'finance' && pageNum > 2;
+    const sourceHTML = isFinancePage ? financeHTML : contractHTML;
+    const sourcePageNum = isFinancePage ? pageNum - 2 : pageNum;
+
+    if (!sourceHTML) return '';
 
     const parser = new DOMParser();
-    const doc = parser.parseFromString(contractHTML, 'text/html');
+    const doc = parser.parseFromString(sourceHTML, 'text/html');
     const pages = doc.querySelectorAll('.page');
 
-    // Get styles from head
     const styles = doc.querySelector('style');
     const styleHTML = styles ? styles.outerHTML : '';
 
-    if (pages.length >= pageNum) {
-      return styleHTML + pages[pageNum - 1].outerHTML;
+    if (pages.length >= sourcePageNum) {
+      return styleHTML + pages[sourcePageNum - 1].outerHTML;
     }
     return '';
-  }, [contractHTML]);
+  }, [contractHTML, financeHTML, contractType]);
 
   // After HTML renders, find [data-signature] elements and store DOM refs for portals
   useEffect(() => {
@@ -115,7 +125,7 @@ const ContractSigning = () => {
     }, 50);
 
     return () => clearTimeout(timer);
-  }, [contractHTML, currentPage]);
+  }, [contractHTML, financeHTML, currentPage]);
 
   // Calculate mobile scale based on container width
   useEffect(() => {
@@ -148,12 +158,12 @@ const ContractSigning = () => {
       clearTimeout(timer);
       window.removeEventListener('resize', measure);
     };
-  }, [scale, contractHTML, currentPage, signaturePortals]);
+  }, [scale, contractHTML, financeHTML, currentPage, signaturePortals]);
 
   // Handle signature submission
   const handleSubmit = async () => {
     const requiredSignatures = contractType === 'finance'
-      ? ['customer']
+      ? ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase', 'customer']
       : ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase'];
     const missingSignatures = requiredSignatures.filter(key => !signatures[key]);
 
@@ -179,6 +189,7 @@ const ContractSigning = () => {
 
       setSubmitted(true);
       setPdfUrl(data.pdfUrl);
+      if (data.financePdfUrl) setFinancePdfUrl(data.financePdfUrl);
     } catch (err) {
       alert(err.message);
     } finally {
@@ -221,16 +232,25 @@ const ContractSigning = () => {
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md text-center">
           <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            {contractType === 'finance' ? 'Agreement Signed!' : 'Contract Signed!'}
+            {contractType === 'finance' ? 'Contracts Signed!' : 'Contract Signed!'}
           </h1>
           <p className="text-gray-600 mb-6">Thank you. A confirmation email has been sent.</p>
-          {pdfUrl && (
-            <a href={pdfUrl} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-              <FileText className="w-5 h-5" />
-              <span>Download Signed {contractType === 'finance' ? 'Agreement' : 'Contract'}</span>
-            </a>
-          )}
+          <div className="space-y-3">
+            {pdfUrl && (
+              <a href={pdfUrl} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 w-full justify-center">
+                <FileText className="w-5 h-5" />
+                <span>Download {financePdfUrl ? 'Invoice & Order Form' : 'Signed Contract'}</span>
+              </a>
+            )}
+            {financePdfUrl && (
+              <a href={financePdfUrl} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center space-x-2 px-6 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 w-full justify-center">
+                <FileText className="w-5 h-5" />
+                <span>Download Finance Agreement</span>
+              </a>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -238,13 +258,17 @@ const ContractSigning = () => {
 
   const contractData = contract?.data || {};
   const isFinance = contractType === 'finance';
-  const totalRequiredSignatures = isFinance ? 1 : 5;
+  const totalRequiredSignatures = isFinance ? 6 : 5;
   const signatureCount = Object.values(signatures).filter(Boolean).length;
 
   // Which signatures are on which page
-  const page1Signatures = isFinance ? [] : ['main'];
-  const page2Signatures = isFinance ? ['customer'] : ['notAgency', 'noCancel', 'passDetails', 'happyPurchase'];
-  const currentPageSignatures = currentPage === 1 ? page1Signatures : page2Signatures;
+  // Finance: 4 pages (invoice p1, invoice p2, finance p1, finance p2)
+  // Invoice: 2 pages (invoice p1, invoice p2)
+  const pageSignatureMap = isFinance
+    ? { 1: ['main'], 2: ['notAgency', 'noCancel', 'passDetails', 'happyPurchase'], 3: [], 4: ['customer'] }
+    : { 1: ['main'], 2: ['notAgency', 'noCancel', 'passDetails', 'happyPurchase'] };
+  const currentPageSignatures = pageSignatureMap[currentPage] || [];
+  const totalPages = isFinance ? 4 : 2;
 
   return (
     <div className="min-h-screen bg-gray-800 py-2 px-1 sm:py-4 sm:px-4">
@@ -254,7 +278,7 @@ const ContractSigning = () => {
         <div className="bg-white rounded-t-lg p-3 sm:p-4 flex items-center justify-between border-b">
           <div className="min-w-0 flex-1">
             <h1 className="text-sm sm:text-lg font-bold text-gray-900 truncate">
-              {isFinance ? 'Edge Talent Finance Agreement' : 'Edge Talent Contract'}
+              {isFinance ? 'Edge Talent Contract & Finance Agreement' : 'Edge Talent Contract'}
             </h1>
             <p className="text-xs sm:text-sm text-gray-500 truncate">{contractData.customerName}</p>
           </div>
@@ -268,14 +292,23 @@ const ContractSigning = () => {
 
         {/* Page Tabs */}
         <div className="bg-gray-100 flex border-b">
-          <button onClick={() => setCurrentPage(1)}
-            className={`flex-1 py-2 sm:py-3 text-xs sm:text-sm text-center font-medium transition-colors ${currentPage === 1 ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>
-            {isFinance ? 'Page 1: Agreement' : 'Page 1: Invoice'}
-          </button>
-          <button onClick={() => setCurrentPage(2)}
-            className={`flex-1 py-2 sm:py-3 text-xs sm:text-sm text-center font-medium transition-colors ${currentPage === 2 ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>
-            {isFinance ? 'Page 2: Terms & Signing' : 'Page 2: Confirm'}
-          </button>
+          {(isFinance
+            ? [
+                { num: 1, label: '1: Invoice' },
+                { num: 2, label: '2: Confirm' },
+                { num: 3, label: '3: Finance' },
+                { num: 4, label: '4: Sign' }
+              ]
+            : [
+                { num: 1, label: 'Page 1: Invoice' },
+                { num: 2, label: 'Page 2: Confirm' }
+              ]
+          ).map(tab => (
+            <button key={tab.num} onClick={() => setCurrentPage(tab.num)}
+              className={`flex-1 py-2 sm:py-3 text-xs sm:text-sm text-center font-medium transition-colors ${currentPage === tab.num ? 'bg-white text-blue-600 border-b-2 border-blue-600' : 'text-gray-600 hover:bg-gray-50'}`}>
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Contract Content - Server-rendered HTML with mobile scaling */}
@@ -418,7 +451,7 @@ const ContractSigning = () => {
           </p>
           <button onClick={handleSubmit} disabled={submitting || signatureCount < totalRequiredSignatures}
             className="w-full sm:w-auto px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2">
-            {submitting ? <><Loader className="w-5 h-5 animate-spin" /><span>Submitting...</span></> : <><Check className="w-5 h-5" /><span>Submit {isFinance ? 'Agreement' : 'Contract'}</span></>}
+            {submitting ? <><Loader className="w-5 h-5 animate-spin" /><span>Submitting...</span></> : <><Check className="w-5 h-5" /><span>Submit Signed {isFinance ? 'Contracts' : 'Contract'}</span></>}
           </button>
         </div>
 

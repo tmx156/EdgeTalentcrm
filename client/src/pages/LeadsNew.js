@@ -94,6 +94,8 @@ const LeadsNew = () => {
   const [importingMapped, setImportingMapped] = useState(false);
   const [analysisData, setAnalysisData] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [showDuplicateReview, setShowDuplicateReview] = useState(false);
+  const [excludedRowIndices, setExcludedRowIndices] = useState(new Set());
 
   const [newLead, setNewLead] = useState({
     name: '',
@@ -743,7 +745,8 @@ const LeadsNew = () => {
     try {
       const response = await axios.post('/api/leads/upload-simple', {
         fileId: previewData.fileId,
-        columnMapping
+        columnMapping,
+        excludeRowIndices: excludedRowIndices.size > 0 ? Array.from(excludedRowIndices) : undefined
       }, {
         headers: {
           'Content-Type': 'application/json',
@@ -758,6 +761,8 @@ const LeadsNew = () => {
       }
 
       setShowMappingModal(false);
+      setShowDuplicateReview(false);
+      setExcludedRowIndices(new Set());
       setPreviewData(null);
       setColumnMapping({});
       setAnalysisData(null);
@@ -1997,7 +2002,15 @@ const LeadsNew = () => {
                   )}
                 </button>
                 <button
-                  onClick={handleConfirmImport}
+                  onClick={() => {
+                    if (analysisData?.duplicateRows?.length > 0) {
+                      // Initialize all duplicates as excluded
+                      setExcludedRowIndices(new Set(analysisData.duplicateRows.map(d => d.rowIndex)));
+                      setShowDuplicateReview(true);
+                    } else {
+                      handleConfirmImport();
+                    }
+                  }}
                   disabled={importingMapped || !analysisData || (!columnMapping.name && !columnMapping.phone)}
                   className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                   title={!analysisData ? 'Run analysis first before importing' : ''}
@@ -2011,6 +2024,160 @@ const LeadsNew = () => {
                     <>
                       <FiCheck className="h-4 w-4" />
                       <span>Import {analysisData ? analysisData.summary.willImport : previewData.totalRows} Leads</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate Review Modal */}
+      {showDuplicateReview && analysisData?.duplicateRows && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 overflow-y-auto h-full w-full z-[60] flex items-center justify-center p-4">
+          <div className="relative w-full max-w-4xl shadow-2xl rounded-2xl bg-white max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Review Duplicates</h3>
+                  <p className="text-sm text-gray-500 mt-1">{analysisData.duplicateRows.length} duplicate rows found — check rows to exclude from import</p>
+                </div>
+                <button onClick={() => setShowDuplicateReview(false)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+                  <FiX className="h-5 w-5 text-gray-500" />
+                </button>
+              </div>
+              {/* Summary badges */}
+              <div className="flex space-x-3 mt-3">
+                {(() => {
+                  const inFileCount = analysisData.duplicateRows.filter(d => d.type === 'in_file').length;
+                  const dbCount = analysisData.duplicateRows.filter(d => d.type === 'db_match').length;
+                  return (
+                    <>
+                      {inFileCount > 0 && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                          {inFileCount} In-file duplicate{inFileCount !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                      {dbCount > 0 && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                          {dbCount} Already in CRM
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Select All / Deselect All */}
+            <div className="px-6 py-2 border-b border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0">
+              <label className="flex items-center space-x-2 cursor-pointer text-sm">
+                <input
+                  type="checkbox"
+                  checked={excludedRowIndices.size === analysisData.duplicateRows.length}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setExcludedRowIndices(new Set(analysisData.duplicateRows.map(d => d.rowIndex)));
+                    } else {
+                      setExcludedRowIndices(new Set());
+                    }
+                  }}
+                  className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                />
+                <span className="text-gray-700 font-medium">
+                  {excludedRowIndices.size === analysisData.duplicateRows.length ? 'Deselect All' : 'Select All'} (Exclude from import)
+                </span>
+              </label>
+              <span className="text-xs text-gray-500">
+                {excludedRowIndices.size} of {analysisData.duplicateRows.length} excluded
+              </span>
+            </div>
+
+            {/* Scrollable table */}
+            <div className="overflow-auto flex-1 px-6">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white">
+                  <tr className="border-b border-gray-200">
+                    <th className="py-2 px-2 text-left w-10">Excl.</th>
+                    <th className="py-2 px-2 text-left w-14">Row</th>
+                    <th className="py-2 px-2 text-left">Name</th>
+                    <th className="py-2 px-2 text-left">Phone</th>
+                    <th className="py-2 px-2 text-left">Email</th>
+                    <th className="py-2 px-2 text-left w-24">Type</th>
+                    <th className="py-2 px-2 text-left">Match Info</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analysisData.duplicateRows.map((dup, idx) => (
+                    <tr key={idx} className={`border-b border-gray-100 ${excludedRowIndices.has(dup.rowIndex) ? 'bg-red-50/50' : 'bg-green-50/30'}`}>
+                      <td className="py-2 px-2">
+                        <input
+                          type="checkbox"
+                          checked={excludedRowIndices.has(dup.rowIndex)}
+                          onChange={(e) => {
+                            setExcludedRowIndices(prev => {
+                              const next = new Set(prev);
+                              if (e.target.checked) {
+                                next.add(dup.rowIndex);
+                              } else {
+                                next.delete(dup.rowIndex);
+                              }
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-gray-500 font-mono text-xs">{dup.rowNum}</td>
+                      <td className="py-2 px-2 font-medium text-gray-900">{dup.name || '—'}</td>
+                      <td className="py-2 px-2 text-gray-700">{dup.phone || '—'}</td>
+                      <td className="py-2 px-2 text-gray-700 truncate max-w-[150px]">{dup.email || '—'}</td>
+                      <td className="py-2 px-2">
+                        {dup.type === 'in_file' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">In-file</span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">In CRM</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-xs text-gray-500">{dup.matchInfo}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 flex-shrink-0 flex items-center justify-between">
+              <p className="text-sm text-gray-600">
+                Excluding <strong className="text-red-600">{excludedRowIndices.size}</strong> duplicate{excludedRowIndices.size !== 1 ? 's' : ''}.{' '}
+                Will import <strong className="text-green-600">{(analysisData.summary.willImport || analysisData.totalRows) - excludedRowIndices.size}</strong> leads.
+              </p>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setShowDuplicateReview(false)}
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+                >
+                  Back to Mapping
+                </button>
+                <button
+                  onClick={() => {
+                    setShowDuplicateReview(false);
+                    handleConfirmImport();
+                  }}
+                  disabled={importingMapped}
+                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                >
+                  {importingMapped ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <span>Importing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FiCheck className="h-4 w-4" />
+                      <span>Import {(analysisData.summary.willImport || analysisData.totalRows) - excludedRowIndices.size} Leads</span>
                     </>
                   )}
                 </button>

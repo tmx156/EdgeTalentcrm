@@ -7,10 +7,11 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import axios from 'axios';
-import { 
+import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
+import LeadAnalysis from './LeadAnalysis';
 
 // Colors for charts
 const COLORS = {
@@ -31,6 +32,9 @@ const COLORS = {
 const Reports = () => {
   const { user } = useAuth();
   const { socket } = useSocket();
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState('performance');
 
   // State
   const [stats, setStats] = useState({
@@ -305,6 +309,37 @@ RATES:
         </button>
       </div>
 
+      {/* Tab Bar */}
+      <div className="flex space-x-1 bg-gray-100 rounded-xl p-1">
+        <button
+          onClick={() => setActiveTab('performance')}
+          className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === 'performance'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <FiBarChart2 className="inline h-4 w-4 mr-1.5" />
+          Performance
+        </button>
+        {user?.role === 'admin' && (
+          <button
+            onClick={() => setActiveTab('lead-analysis')}
+            className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'lead-analysis'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FiTarget className="inline h-4 w-4 mr-1.5" />
+            Lead Analysis
+          </button>
+        )}
+      </div>
+
+      {activeTab === 'lead-analysis' && <LeadAnalysis />}
+
+      {activeTab === 'performance' && (<>
       {/* Filters */}
       <div className="card bg-gradient-to-r from-blue-50 to-indigo-50">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -684,6 +719,7 @@ RATES:
           </div>
         </div>
       </div>
+      </>)}
     </div>
   );
 };

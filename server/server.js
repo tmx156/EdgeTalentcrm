@@ -66,6 +66,7 @@ const stripeRoutes = require('./routes/stripe');
 const imageProxyRoutes = require('./routes/image-proxy');
 const postcodeRoutes = require('./routes/postcode');
 const emailAccountsRoutes = require('./routes/email-accounts');
+const leadAnalyticsRoutes = require('./routes/lead-analytics');
 // TEMPORARILY DISABLED: const scheduler = require('./utils/scheduler');
 // OLD IMAP-based email poller (replaced with Gmail API)
 // const { startEmailPoller } = require('./utils/emailPoller');
@@ -540,6 +541,7 @@ app.use('/api/webhook/lead', leadWebhookRoutes);
 app.use('/api/postcode', postcodeRoutes);
 // Email Accounts API (for managing email account pool)
 app.use('/api/email-accounts', emailAccountsRoutes);
+app.use('/api/lead-analytics', leadAnalyticsRoutes);
 // TEMPORARILY DISABLED: app.use('/api/performance', require('./routes/performance'));
 
 // --- Lightweight short link storage for long booking confirmations ---
