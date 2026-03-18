@@ -89,6 +89,54 @@ router.get('/debug', auth, async (req, res) => {
   }
 });
 
+// @route   PATCH /api/callback-reminders/:id/complete
+// @desc    Mark a callback reminder as completed
+// @access  Private
+router.patch('/:id/complete', auth, async (req, res) => {
+  try {
+    const reminderId = req.params.id;
+    console.log(`✅ Complete request for callback ${reminderId} by user ${req.user.id}`);
+
+    // Check if the reminder exists and belongs to this user
+    const { data: reminders, error: fetchError } = await supabase
+      .from('callback_reminders')
+      .select('*')
+      .eq('id', reminderId);
+
+    if (fetchError) {
+      console.error('Error fetching callback reminder:', fetchError);
+      return res.status(500).json({ message: 'Database error', error: fetchError.message });
+    }
+
+    if (!reminders || reminders.length === 0) {
+      return res.status(404).json({ message: 'Callback reminder not found' });
+    }
+
+    const reminder = reminders[0];
+
+    if (reminder.user_id !== req.user.id) {
+      return res.status(403).json({ message: 'You can only complete your own callback reminders' });
+    }
+
+    // Mark as completed
+    const { error: updateError } = await supabase
+      .from('callback_reminders')
+      .update({ status: 'completed', completed_at: new Date().toISOString() })
+      .eq('id', reminderId);
+
+    if (updateError) {
+      console.error('Error completing callback reminder:', updateError);
+      return res.status(500).json({ message: 'Failed to complete callback reminder' });
+    }
+
+    console.log(`✅ Callback reminder ${reminderId} marked complete by user ${req.user.id}`);
+    res.json({ success: true, message: 'Callback reminder marked as complete' });
+  } catch (error) {
+    console.error('Error completing callback reminder:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // @route   DELETE /api/callback-reminders/:id
 // @desc    Delete a callback reminder (user can only delete their own)
 // @access  Private

@@ -7628,9 +7628,12 @@ router.get('/callback-reminders/upcoming', auth, async (req, res) => {
     const now = new Date();
     const futureDate = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000); // Next 90 days (3 months)
 
-    console.log(`📞 Fetching callbacks for user ${req.user.id} (${req.user.name}) from ${now.toISOString()} to ${futureDate.toISOString()}`);
+    const pastCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago max for overdue
 
-    // Get upcoming callback reminders for the current user ONLY
+    console.log(`📞 Fetching callbacks for user ${req.user.id} (${req.user.name}) - including overdue (back to ${pastCutoff.toISOString()})`);
+
+    // Get all incomplete callback reminders (pending OR notified) for the current user
+    // Including overdue ones up to 30 days old so bookers don't lose track
     const { data: reminders, error } = await supabase
       .from('callback_reminders')
       .select(`
@@ -7643,8 +7646,8 @@ router.get('/callback-reminders/upcoming', auth, async (req, res) => {
         )
       `)
       .eq('user_id', req.user.id)  // USER-SPECIFIC: Only show this user's callbacks
-      .eq('status', 'pending')
-      .gte('callback_time', now.toISOString())
+      .in('status', ['pending', 'notified'])  // Show both pending and notified (not yet completed)
+      .gte('callback_time', pastCutoff.toISOString())  // Don't show callbacks older than 30 days
       .lte('callback_time', futureDate.toISOString())
       .order('callback_time', { ascending: true })
       .limit(100);
@@ -7663,10 +7666,12 @@ router.get('/callback-reminders/upcoming', auth, async (req, res) => {
       });
     }
 
-    // Get today and tomorrow in UK timezone for comparison
+    // Get today, yesterday and tomorrow in UK timezone for comparison
     const todayUK = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
     const tomorrowDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const tomorrowUK = tomorrowDate.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
+    const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayUK = yesterdayDate.toLocaleDateString('en-CA', { timeZone: 'Europe/London' });
 
     // Format reminders for frontend
     const formattedReminders = (reminders || []).map(reminder => {
@@ -7686,8 +7691,18 @@ router.get('/callback-reminders/upcoming', auth, async (req, res) => {
         dateLabel = 'Today';
       } else if (callbackDateUK === tomorrowUK) {
         dateLabel = 'Tomorrow';
+      } else if (callbackDateUK === yesterdayUK) {
+        dateLabel = 'Yesterday';
+      } else if (callbackTime < now) {
+        // Overdue - show the date it was due
+        dateLabel = callbackTime.toLocaleDateString('en-GB', {
+          timeZone: 'Europe/London',
+          weekday: 'short',
+          day: '2-digit',
+          month: 'short'
+        }) + ' (overdue)';
       } else {
-        // Show full date for future dates
+        // Future dates
         dateLabel = callbackTime.toLocaleDateString('en-GB', {
           timeZone: 'Europe/London',
           weekday: 'short',
@@ -7697,6 +7712,9 @@ router.get('/callback-reminders/upcoming', auth, async (req, res) => {
       }
 
       const callbackTimeDisplay = `${dateLabel} at ${callbackTimeOnly}`;
+
+      // Check if this callback is overdue (callback time has passed)
+      const isOverdue = callbackTime < now;
 
       return {
         id: reminder.id,
@@ -7713,7 +7731,8 @@ router.get('/callback-reminders/upcoming', auth, async (req, res) => {
         timestamp: reminder.callback_time,
         created_at: reminder.created_at,
         isToday: callbackDateUK === todayUK,
-        isTomorrow: callbackDateUK === tomorrowUK
+        isTomorrow: callbackDateUK === tomorrowUK,
+        isOverdue: isOverdue
       };
     });
 

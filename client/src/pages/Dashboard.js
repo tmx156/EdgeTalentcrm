@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiWifi, FiClock, FiMessageSquare, FiMail, FiSend, FiX, FiArrowRight, FiPhone, FiTrash2 } from 'react-icons/fi';
+import { FiWifi, FiClock, FiMessageSquare, FiMail, FiSend, FiX, FiArrowRight, FiPhone, FiTrash2, FiCheckCircle } from 'react-icons/fi';
 import axios from 'axios';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +21,7 @@ const Dashboard = () => {
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
   const [deletingCallbackId, setDeletingCallbackId] = useState(null);
+  const [completingCallbackId, setCompletingCallbackId] = useState(null);
 
   // Format time ago helper
   const timeAgo = (date) => {
@@ -103,6 +104,26 @@ const Dashboard = () => {
       alert(errorMsg);
     } finally {
       setDeletingCallbackId(null);
+    }
+  };
+
+  // Mark a callback reminder as complete
+  const handleCompleteCallback = async (callbackId, leadName) => {
+    setCompletingCallbackId(callbackId);
+    try {
+      const response = await axios.patch(`/api/callback-reminders/${callbackId}/complete`);
+      if (response.data.success) {
+        setUpcomingCallbacks(prev => prev.filter(cb => cb.id !== callbackId));
+        console.log(`✅ Callback reminder ${callbackId} completed`);
+      } else {
+        alert(response.data.message || 'Failed to complete callback reminder');
+      }
+    } catch (e) {
+      console.error('Error completing callback:', e);
+      const errorMsg = e.response?.data?.message || e.message || 'Failed to complete callback reminder';
+      alert(errorMsg);
+    } finally {
+      setCompletingCallbackId(null);
     }
   };
 
@@ -266,28 +287,34 @@ const Dashboard = () => {
                     <div
                       key={callback.id}
                       className={`bg-white border-l-4 rounded-lg p-5 hover:shadow-md transition-shadow ${
-                        callback.isToday
-                          ? 'border-red-500 bg-red-50'
-                          : callback.isTomorrow
-                            ? 'border-orange-400 bg-orange-50'
-                            : 'border-purple-400'
+                        callback.isOverdue
+                          ? 'border-red-700 bg-red-100'
+                          : callback.isToday
+                            ? 'border-red-500 bg-red-50'
+                            : callback.isTomorrow
+                              ? 'border-orange-400 bg-orange-50'
+                              : 'border-purple-400'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center space-x-3">
                           <div className={`rounded-full p-2 ${
-                            callback.isToday
-                              ? 'bg-red-100'
-                              : callback.isTomorrow
-                                ? 'bg-orange-100'
-                                : 'bg-purple-100'
+                            callback.isOverdue
+                              ? 'bg-red-200'
+                              : callback.isToday
+                                ? 'bg-red-100'
+                                : callback.isTomorrow
+                                  ? 'bg-orange-100'
+                                  : 'bg-purple-100'
                           }`}>
                             <FiPhone className={`h-5 w-5 ${
-                              callback.isToday
-                                ? 'text-red-600'
-                                : callback.isTomorrow
-                                  ? 'text-orange-600'
-                                  : 'text-purple-600'
+                              callback.isOverdue
+                                ? 'text-red-800'
+                                : callback.isToday
+                                  ? 'text-red-600'
+                                  : callback.isTomorrow
+                                    ? 'text-orange-600'
+                                    : 'text-purple-600'
                             }`} />
                           </div>
                           <div>
@@ -295,20 +322,22 @@ const Dashboard = () => {
                               {callback.leadName || 'Unknown Lead'}
                             </p>
                             <span className={`inline-block px-2 py-1 text-xs font-medium rounded ${
-                              callback.isToday
-                                ? 'text-red-700 bg-red-100'
-                                : callback.isTomorrow
-                                  ? 'text-orange-700 bg-orange-100'
-                                  : 'text-purple-700 bg-purple-100'
+                              callback.isOverdue
+                                ? 'text-red-800 bg-red-200 animate-pulse'
+                                : callback.isToday
+                                  ? 'text-red-700 bg-red-100'
+                                  : callback.isTomorrow
+                                    ? 'text-orange-700 bg-orange-100'
+                                    : 'text-purple-700 bg-purple-100'
                             }`}>
-                              {callback.isToday ? '📞 CALL TODAY' : callback.isTomorrow ? '📅 TOMORROW' : '📆 SCHEDULED'}
+                              {callback.isOverdue ? '⚠️ OVERDUE' : callback.isToday ? '📞 CALL TODAY' : callback.isTomorrow ? '📅 TOMORROW' : '📆 SCHEDULED'}
                             </span>
                           </div>
                         </div>
                       </div>
 
                       <p className={`font-semibold mb-2 ${
-                        callback.isToday ? 'text-red-700' : callback.isTomorrow ? 'text-orange-700' : 'text-gray-900'
+                        callback.isOverdue ? 'text-red-800' : callback.isToday ? 'text-red-700' : callback.isTomorrow ? 'text-orange-700' : 'text-gray-900'
                       }`}>
                         ⏰ {callback.callbackTimeDisplay}
                       </p>
@@ -325,6 +354,18 @@ const Dashboard = () => {
                         </p>
                         <div className="flex items-center space-x-3">
                           <button
+                            onClick={() => handleCompleteCallback(callback.id, callback.leadName)}
+                            disabled={completingCallbackId === callback.id}
+                            className="text-green-500 hover:text-green-700 transition-colors disabled:opacity-50"
+                            title="Mark as complete"
+                          >
+                            {completingCallbackId === callback.id ? (
+                              <span className="text-xs">...</span>
+                            ) : (
+                              <FiCheckCircle className="h-5 w-5" />
+                            )}
+                          </button>
+                          <button
                             onClick={() => handleDeleteCallback(callback.id, callback.leadName)}
                             disabled={deletingCallbackId === callback.id}
                             className="text-gray-400 hover:text-red-600 transition-colors disabled:opacity-50"
@@ -339,11 +380,13 @@ const Dashboard = () => {
                           <button
                             onClick={() => window.location.href = `/leads/${callback.leadId}`}
                             className={`font-medium text-sm flex items-center space-x-1 ${
-                              callback.isToday
-                                ? 'text-red-600 hover:text-red-700'
-                                : callback.isTomorrow
-                                  ? 'text-orange-600 hover:text-orange-700'
-                                  : 'text-purple-600 hover:text-purple-700'
+                              callback.isOverdue
+                                ? 'text-red-700 hover:text-red-800'
+                                : callback.isToday
+                                  ? 'text-red-600 hover:text-red-700'
+                                  : callback.isTomorrow
+                                    ? 'text-orange-600 hover:text-orange-700'
+                                    : 'text-purple-600 hover:text-purple-700'
                             }`}
                           >
                             <span>View Lead</span>
