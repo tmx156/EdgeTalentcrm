@@ -19,6 +19,17 @@ const ContractSigning = () => {
   const [financeHTML, setFinanceHTML] = useState(''); // Finance agreement HTML (dual-document)
   const [contractType, setContractType] = useState('invoice'); // 'invoice' or 'finance'
   const [financePdfUrl, setFinancePdfUrl] = useState(null);
+  const [cardPayPdfUrl, setCardPayPdfUrl] = useState(null);
+  const [cardPayDetails, setCardPayDetails] = useState({
+    fullNameOnCard: '',
+    cardNumber: '',
+    expiryDate: '',
+    securityPin: '',
+    numberOfPayments: '',
+    paymentAmount: '',
+    totalAmount: '',
+    date: new Date().toISOString().split('T')[0]
+  });
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
@@ -61,12 +72,30 @@ const ContractSigning = () => {
         setContractHTML(data.html || '');
         const type = data.contractType || data.contract?.contractType || 'invoice';
         setContractType(type);
-        // Finance: dual-document (invoice + finance agreement, 6 signatures)
+        // Finance: dual-document (invoice + finance agreement + card pay, 7 signatures)
         if (type === 'finance') {
           setFinanceHTML(data.financeHtml || '');
           setSignatures({
             main: null, notAgency: null, noCancel: null,
-            passDetails: null, happyPurchase: null, customer: null
+            passDetails: null, happyPurchase: null, customer: null,
+            cardPayment: null
+          });
+          // Populate card pay fields from admin-provided data
+          const cd = data.contract?.data || {};
+          const amtOfCredit = (parseFloat(cd.cashPrice || 0) - parseFloat(cd.deposit || 0));
+          const interest = amtOfCredit * (parseFloat(cd.interestRate || 0) / 100) * (parseInt(cd.duration || 12) / 12);
+          const totalPayable = amtOfCredit + interest + parseFloat(cd.adminFee || 0);
+          const numPayments = parseInt(cd.numberOfInstalments || 12);
+          const monthlyPayment = numPayments > 0 ? (totalPayable / numPayments).toFixed(2) : '0.00';
+          setCardPayDetails({
+            fullNameOnCard: cd.cardFullName || cd.customerName || '',
+            cardNumber: cd.cardNumber || '',
+            expiryDate: cd.cardExpiry || '',
+            securityPin: cd.cardCvv || '',
+            numberOfPayments: numPayments.toString(),
+            paymentAmount: monthlyPayment,
+            totalAmount: totalPayable.toFixed(2),
+            date: new Date().toISOString().split('T')[0]
           });
         }
       } catch (err) {
@@ -163,7 +192,7 @@ const ContractSigning = () => {
   // Handle signature submission
   const handleSubmit = async () => {
     const requiredSignatures = contractType === 'finance'
-      ? ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase', 'customer']
+      ? ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase', 'customer', 'cardPayment']
       : ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase'];
     const missingSignatures = requiredSignatures.filter(key => !signatures[key]);
 
@@ -178,7 +207,15 @@ const ContractSigning = () => {
       const response = await fetch(`/api/contracts/sign/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ signatures })
+        body: JSON.stringify({
+          signatures,
+          ...(contractType === 'finance' ? {
+            cardPayDetails: {
+              ...cardPayDetails,
+              signature: signatures.cardPayment
+            }
+          } : {})
+        })
       });
 
       const data = await response.json();
@@ -190,6 +227,7 @@ const ContractSigning = () => {
       setSubmitted(true);
       setPdfUrl(data.pdfUrl);
       if (data.financePdfUrl) setFinancePdfUrl(data.financePdfUrl);
+      if (data.cardPayPdfUrl) setCardPayPdfUrl(data.cardPayPdfUrl);
     } catch (err) {
       alert(err.message);
     } finally {
@@ -258,17 +296,17 @@ const ContractSigning = () => {
 
   const contractData = contract?.data || {};
   const isFinance = contractType === 'finance';
-  const totalRequiredSignatures = isFinance ? 6 : 5;
+  const totalRequiredSignatures = isFinance ? 7 : 5;
   const signatureCount = Object.values(signatures).filter(Boolean).length;
 
   // Which signatures are on which page
-  // Finance: 4 pages (invoice p1, invoice p2, finance p1, finance p2)
+  // Finance: 5 pages (invoice p1, invoice p2, finance p1, finance p2, card pay)
   // Invoice: 2 pages (invoice p1, invoice p2)
   const pageSignatureMap = isFinance
-    ? { 1: ['main'], 2: ['notAgency', 'noCancel', 'passDetails', 'happyPurchase'], 3: [], 4: ['customer'] }
+    ? { 1: ['main'], 2: ['notAgency', 'noCancel', 'passDetails', 'happyPurchase'], 3: [], 4: ['customer'], 5: ['cardPayment'] }
     : { 1: ['main'], 2: ['notAgency', 'noCancel', 'passDetails', 'happyPurchase'] };
   const currentPageSignatures = pageSignatureMap[currentPage] || [];
-  const totalPages = isFinance ? 4 : 2;
+  const totalPages = isFinance ? 5 : 2;
 
   return (
     <div className="min-h-screen bg-gray-800 py-2 px-1 sm:py-4 sm:px-4">
@@ -297,7 +335,8 @@ const ContractSigning = () => {
                 { num: 1, label: '1: Invoice' },
                 { num: 2, label: '2: Confirm' },
                 { num: 3, label: '3: Finance' },
-                { num: 4, label: '4: Sign' }
+                { num: 4, label: '4: Sign' },
+                { num: 5, label: '5: Card Pay' }
               ]
             : [
                 { num: 1, label: 'Page 1: Invoice' },
@@ -403,20 +442,80 @@ const ContractSigning = () => {
                 }
               }
             `}</style>
-            <div
-              ref={previewRef}
-              dangerouslySetInnerHTML={{ __html: getPageHTML(currentPage) }}
-            />
+            {/* Pages 1-4: Server-rendered HTML. Page 5: Card Pay React form */}
+            {isFinance && currentPage === 5 ? (
+              <div ref={previewRef} style={{ padding: '50px 60px', fontFamily: 'Arial, sans-serif', background: 'white', width: '794px', minHeight: '1123px', boxSizing: 'border-box', position: 'relative' }}>
+                <h1 style={{ textAlign: 'center', fontSize: '28px', fontWeight: 'bold', marginBottom: '40px' }}>EDGE TALENT</h1>
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '30px' }}>
+                  <tbody>
+                    {[
+                      { label: 'FULL NAME ON CARD', key: 'fullNameOnCard' },
+                      { label: 'CARD NUMBER', key: 'cardNumber' },
+                      { label: 'EXPIRY DATE', key: 'expiryDate' },
+                      { label: 'SECURITY PIN (CSV)', key: 'securityPin' },
+                      { label: 'NUMBER OF PAYMENTS', key: 'numberOfPayments' },
+                      { label: 'PAYMENT AMOUNT', key: 'paymentAmount', prefix: '£' },
+                      { label: 'TOTAL AMOUNT OF PAYMENTS', key: 'totalAmount', prefix: '£' }
+                    ].map(field => (
+                      <tr key={field.key}>
+                        <td style={{ padding: '12px 15px', border: '1px solid #333', fontWeight: 'bold', width: '45%', background: '#f9f9f9', fontSize: '14px' }}>
+                          {field.label}:
+                        </td>
+                        <td style={{ padding: '4px 8px', border: '1px solid #333', width: '55%' }}>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            {field.prefix && <span style={{ marginRight: '4px', fontWeight: 'bold' }}>{field.prefix}</span>}
+                            <span style={{ padding: '8px 4px', fontSize: '14px', fontWeight: '600' }}>
+                              {cardPayDetails[field.key] || ''}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div style={{ display: 'flex', gap: '20px', alignItems: 'flex-start', marginTop: '30px' }}>
+                  <div style={{ border: '1px solid #333', width: '250px', minHeight: '100px', padding: '5px' }}>
+                    <p style={{ margin: '0 0 5px', fontWeight: 'bold', fontSize: '12px' }}>SIGNATURE</p>
+                    <SignaturePad
+                      onSignatureChange={(data) => setSignatures(prev => ({ ...prev, cardPayment: data }))}
+                      signature={signatures.cardPayment}
+                      height={80}
+                      small={true}
+                      parentScale={scale}
+                    />
+                  </div>
+                  <p style={{ fontSize: '13px', lineHeight: 1.5, paddingTop: '10px', maxWidth: '350px' }}>
+                    I hereby authorise Edge Talent to charge the specified payment(s) to my card for the purpose of settling my finance agreement.
+                  </p>
+                </div>
+
+                <div style={{ marginTop: '15px' }}>
+                  <div style={{ border: '1px solid #333', padding: '10px 15px', display: 'inline-flex', alignItems: 'center', gap: '8px', minWidth: '200px' }}>
+                    <span style={{ fontWeight: 'bold', fontSize: '14px' }}>DATE: {cardPayDetails.date ? new Date(cardPayDetails.date).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')}</span>
+                  </div>
+                </div>
+
+                <div style={{ position: 'absolute', bottom: '40px', left: 0, right: 0, textAlign: 'center', fontSize: '11px', color: '#666' }}>
+                  <p>EDGE TALENT IS A TRADING NAME OF S&A ADVERTISING LTD</p>
+                  <p>COMPANY NO 8708429 VAT REG NO 171339904</p>
+                </div>
+              </div>
+            ) : (
+              <div
+                ref={previewRef}
+                dangerouslySetInnerHTML={{ __html: getPageHTML(currentPage) }}
+              />
+            )}
           </div>
         </div>
 
-        {/* Render signature pads via portals into [data-signature] elements */}
-        {currentPageSignatures.map((sigName) => {
+        {/* Render signature pads via portals into [data-signature] elements (pages 1-4 only) */}
+        {currentPage !== 5 && currentPageSignatures.map((sigName) => {
           const portalTarget = signaturePortals[sigName];
           if (!portalTarget) return null;
 
           const isSmall = sigName !== 'main';
-          // Larger signature areas on mobile for better usability
           const sigHeight = isSmall ? (window.innerWidth <= 640 ? 120 : 90) : 80;
 
           return ReactDOM.createPortal(

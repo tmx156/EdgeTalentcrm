@@ -12,7 +12,7 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const axios = require('axios');
 const { generateContractPDF, generateContractHTML, buildContractData, getActiveTemplate } = require('../utils/contractGenerator');
-const { generateFinanceContractHTML, generateFinanceContractPDF, getActiveFinanceTemplate, calculateFinanceFields } = require('../utils/financeContractGenerator');
+const { generateFinanceContractHTML, generateFinanceContractPDF, getActiveFinanceTemplate, calculateFinanceFields, generateCardPayPDF } = require('../utils/financeContractGenerator');
 const { uploadToS3 } = require('../utils/s3Service');
 const { sendEmail } = require('../utils/emailService');
 const { sendSMS } = require('../utils/smsService');
@@ -228,14 +228,21 @@ router.post('/create', auth, async (req, res) => {
         financeStartDate: contractDetails.commencingFrom || '',
         financeDuration: parseInt(contractDetails.numberOfInstalments) || 12,
 
-        // All 6 signatures (5 invoice + 1 finance)
+        // Card payment details (admin fills in, customer signs)
+        cardFullName: contractDetails.cardFullName || '',
+        cardNumber: contractDetails.cardNumber || '',
+        cardExpiry: contractDetails.cardExpiry || '',
+        cardCvv: contractDetails.cardCvv || '',
+
+        // All 7 signatures (5 invoice + 1 finance + 1 card payment)
         signatures: {
           main: null,
           notAgency: null,
           noCancel: null,
           passDetails: null,
           happyPurchase: null,
-          customer: null
+          customer: null,
+          cardPayment: null
         },
 
         // Selected photo IDs for delivery after signing
@@ -596,7 +603,7 @@ router.post('/send/:contractId', auth, async (req, res) => {
           <li><strong>Click the button above</strong> to open your contract</li>
           <li><strong>Review the contract</strong> - Check all your details are correct</li>
           <li><strong>Sign in the signature boxes</strong> - Use your mouse or finger to sign</li>
-          <li><strong>Complete ${isFinanceContract ? 'all 6 signatures' : 'all 5 signatures'}</strong> across ${isFinanceContract ? 'all 4 pages' : 'both pages'}</li>
+          <li><strong>Complete ${isFinanceContract ? 'all 7 signatures' : 'all 5 signatures'}</strong> across ${isFinanceContract ? 'all 5 pages' : 'both pages'}</li>
           <li><strong>Click "Submit Signed Contract"</strong> to finish</li>
         </ol>
       </div>
@@ -885,7 +892,7 @@ router.get('/preview/:token', async (req, res) => {
 router.post('/sign/:token', async (req, res) => {
   try {
     const { token } = req.params;
-    const { signatures, updatedData } = req.body;
+    const { signatures, updatedData, cardPayDetails } = req.body;
 
     if (!token) {
       return res.status(400).json({ message: 'Contract token is required' });
@@ -913,8 +920,8 @@ router.post('/sign/:token', async (req, res) => {
     // Validate required signatures based on contract type
     const contractType = contract.contract_type || 'invoice';
     if (contractType === 'finance') {
-      // Finance requires ALL 6 signatures (5 invoice + 1 finance)
-      const required = ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase', 'customer'];
+      // Finance requires ALL 7 signatures (5 invoice + 1 finance + 1 card payment)
+      const required = ['main', 'notAgency', 'noCancel', 'passDetails', 'happyPurchase', 'customer', 'cardPayment'];
       const missing = required.filter(k => !signatures || !signatures[k]);
       if (missing.length > 0) {
         return res.status(400).json({ message: `Missing signatures: ${missing.join(', ')}` });
@@ -930,7 +937,8 @@ router.post('/sign/:token', async (req, res) => {
       ...contract.contract_data,
       ...updatedData,
       signatures: signatures,
-      signedAt: new Date().toISOString()
+      signedAt: new Date().toISOString(),
+      ...(cardPayDetails ? { cardPayDetails } : {})
     };
 
     // Generate signed PDF(s) based on contract type
@@ -971,6 +979,26 @@ router.post('/sign/:token', async (req, res) => {
 
         // Store finance PDF URL in contract data
         signedContractData.financePdfUrl = financePdfUrl;
+
+        // 3. Card Pay Details PDF (saved but NOT emailed to customer)
+        if (cardPayDetails) {
+          try {
+            const cardPayPdfBuffer = await generateCardPayPDF(cardPayDetails, signedContractData);
+            console.log(`✅ Card Pay PDF generated, size: ${cardPayPdfBuffer.length} bytes`);
+            const cardPayUpload = await uploadToS3(
+              cardPayPdfBuffer,
+              `cardpay_${contract.id}_${Date.now()}.pdf`,
+              `contracts/${new Date().getFullYear()}`,
+              'application/pdf'
+            );
+            if (cardPayUpload.url) {
+              signedContractData.cardPayPdfUrl = cardPayUpload.url;
+              console.log(`✅ Card Pay PDF uploaded to S3: ${cardPayUpload.url}`);
+            }
+          } catch (cardPayError) {
+            console.error('❌ Error generating Card Pay PDF:', cardPayError.message);
+          }
+        }
       } else {
         // INVOICE ONLY: Generate single PDF
         console.log(`📄 Generating signed PDF for invoice contract ${contract.id}...`);
@@ -1445,7 +1473,7 @@ router.post('/sign/:token', async (req, res) => {
 
           // Build dynamic bullets for fallback template
           const fallbackBullets = [
-            pdfUrl ? '<li>A copy of your signed contract (PDF)</li>' : '',
+            pdfUrl ? (financePdfUrl ? '<li>A copy of your signed Invoice & Order Form (PDF)</li><li>A copy of your signed Finance Agreement (PDF)</li>' : '<li>A copy of your signed contract (PDF)</li>') : '',
             imagesText,
             (signedContractData.recommendedAgencyList || signedContractData.agencyList) ? '<li>Your \'recommended agency list\' is attached to this email</li>' : '',
             signedContractData.projectInfluencer ? '<li>Your Project Influencer Login details will be issued within 5 days by Project Influencer</li>' : '',
@@ -1566,6 +1594,12 @@ router.post('/sign/:token', async (req, res) => {
           console.error('📧 Error resolving email account:', resolveErr.message);
           emailAccount = deliveryTemplate?.email_account || 'primary';
         }
+
+        console.log(`📧 ATTACHMENT SUMMARY: ${attachments.length} total attachments`);
+        attachments.forEach((att, i) => {
+          console.log(`   📎 [${i + 1}] ${att.filename} (${att.contentType}, ${att.buffer?.length || 0} bytes)`);
+        });
+        console.log(`📧 pdfUrl=${pdfUrl ? 'SET' : 'NULL'}, financePdfUrl=${financePdfUrl ? 'SET' : 'NULL'}, contractType=${contractType}`);
 
         if (attachments.length > 0) {
           const emailResult = await sendEmail(
@@ -1707,7 +1741,8 @@ router.post('/sign/:token', async (req, res) => {
       contractId: contract.id,
       signedAt: updated.signed_at,
       pdfUrl: pdfUrl,
-      financePdfUrl: financePdfUrl || null
+      financePdfUrl: financePdfUrl || null,
+      cardPayPdfUrl: signedContractData.cardPayPdfUrl || null
     });
   } catch (error) {
     console.error('Error signing contract:', error);
@@ -1855,6 +1890,7 @@ router.get('/:contractId', auth, async (req, res) => {
         pdfUrl: contract.signed_pdf_url,
         signed_pdf_url: contract.signed_pdf_url,
         financePdfUrl: contract.contract_data?.financePdfUrl || null,
+        cardPayPdfUrl: contract.contract_data?.cardPayPdfUrl || null,
         data: contract.contract_data,
         // Delivery email info
         deliveryEmailSent: deliveryEmailSent,

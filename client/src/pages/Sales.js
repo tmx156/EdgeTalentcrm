@@ -875,6 +875,47 @@ const Sales = () => {
                       )}
                     </div>
 
+                    {/* Card Payment Details - Finance only */}
+                    {fullSaleDetails?.contract?.contract_data?.cardPayDetails && (
+                      <div className="mt-6 bg-gradient-to-br from-red-50 to-orange-50 p-6 rounded-2xl border border-red-200">
+                        <h4 className="font-bold text-gray-800 mb-4 flex items-center">
+                          <FiCreditCard className="h-5 w-5 text-red-600 mr-2" />
+                          Card Payment Details
+                        </h4>
+                        <div className="space-y-2">
+                          {[
+                            { label: 'Full Name on Card', value: fullSaleDetails.contract.contract_data.cardPayDetails.fullNameOnCard },
+                            { label: 'Card Number', value: fullSaleDetails.contract.contract_data.cardPayDetails.cardNumber },
+                            { label: 'Expiry Date', value: fullSaleDetails.contract.contract_data.cardPayDetails.expiryDate },
+                            { label: 'Number of Payments', value: fullSaleDetails.contract.contract_data.cardPayDetails.numberOfPayments },
+                            { label: 'Payment Amount', value: fullSaleDetails.contract.contract_data.cardPayDetails.paymentAmount ? `£${fullSaleDetails.contract.contract_data.cardPayDetails.paymentAmount}` : '' },
+                            { label: 'Total Amount', value: fullSaleDetails.contract.contract_data.cardPayDetails.totalAmount ? `£${fullSaleDetails.contract.contract_data.cardPayDetails.totalAmount}` : '' }
+                          ].filter(f => f.value).map(field => (
+                            <div key={field.label} className="flex justify-between">
+                              <span className="font-semibold text-gray-600">{field.label}:</span>
+                              <span className="text-gray-900 font-mono bg-gray-100 px-2 py-0.5 rounded">{field.value}</span>
+                            </div>
+                          ))}
+                          {fullSaleDetails.contract.contract_data.cardPayDetails.signature && (
+                            <div className="flex justify-between items-center pt-2 border-t">
+                              <span className="font-semibold text-gray-600">Signed:</span>
+                              <span className="text-green-600 flex items-center"><FiCheckCircle className="h-4 w-4 mr-1" /> Yes</span>
+                            </div>
+                          )}
+                          {fullSaleDetails.contract.contract_data.cardPayPdfUrl && (
+                            <div className="flex justify-between items-center pt-2 border-t">
+                              <span className="font-semibold text-gray-600">Card Pay PDF:</span>
+                              <a href={fullSaleDetails.contract.contract_data.cardPayPdfUrl}
+                                target="_blank" rel="noopener noreferrer"
+                                className="text-red-600 hover:text-red-700 flex items-center font-medium">
+                                <FiDownload className="h-4 w-4 mr-1" /> Download
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Selected Photos Section */}
                     <div className="mt-6 bg-gradient-to-br from-orange-50 to-yellow-50 p-6 rounded-2xl border border-orange-200">
                       <h4 className="font-bold text-gray-800 mb-4 flex items-center">

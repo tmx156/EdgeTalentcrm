@@ -204,7 +204,12 @@ const SendContractModal = ({
     repaymentFrequency: 'monthly',
     commencingFrom: '',
     creditorName: '',
-    creditorDate: ''
+    creditorDate: '',
+    // Card Pay Details (admin fills in for finance)
+    cardFullName: '',
+    cardNumber: '',
+    cardExpiry: '',
+    cardCvv: ''
   });
 
   // Initialize contract details from lead and package data
@@ -1518,6 +1523,58 @@ const SendContractModal = ({
                           </div>
                         </div>
                       </div>
+
+                      {/* Card Payment Details */}
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <h4 className="text-xs font-semibold text-red-800 mb-3 flex items-center">
+                          <CreditCard className="w-3 h-3 mr-1" />
+                          CARD PAYMENT DETAILS
+                        </h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="col-span-2">
+                            <label className="block text-xs font-medium text-red-700 mb-1">Full Name on Card</label>
+                            <input type="text" value={contractDetails.cardFullName || ''}
+                              onChange={(e) => updateField('cardFullName', e.target.value)}
+                              className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm bg-white" placeholder="Name as it appears on card" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-red-700 mb-1">Card Number</label>
+                            <input type="text" value={contractDetails.cardNumber || ''}
+                              onChange={(e) => updateField('cardNumber', e.target.value)}
+                              className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm bg-white font-mono" placeholder="____ ____ ____ ____" maxLength={19} />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-red-700 mb-1">Expiry Date</label>
+                            <input type="text" value={contractDetails.cardExpiry || ''}
+                              onChange={(e) => updateField('cardExpiry', e.target.value)}
+                              className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm bg-white font-mono" placeholder="MM/YY" maxLength={5} />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-red-700 mb-1">Security PIN (CVV)</label>
+                            <input type="text" value={contractDetails.cardCvv || ''}
+                              onChange={(e) => updateField('cardCvv', e.target.value)}
+                              className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm bg-white font-mono" placeholder="___" maxLength={4} />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-red-700 mb-1">Number of Payments</label>
+                            <div className="px-3 py-2 border border-red-200 rounded-lg text-sm bg-red-100 text-red-800 font-semibold">
+                              {contractDetails.numberOfInstalments || 12}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-red-700 mb-1">Payment Amount</label>
+                            <div className="px-3 py-2 border border-red-200 rounded-lg text-sm bg-red-100 text-red-800 font-semibold">
+                              {formatCurrency(financeCalc.monthlyRepayment || 0)}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-red-700 mb-1">Total Amount of Payments</label>
+                            <div className="px-3 py-2 border border-red-200 rounded-lg text-sm bg-red-100 text-red-800 font-semibold">
+                              {formatCurrency(financeCalc.totalAmountPayable || 0)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -1656,6 +1713,23 @@ const SendContractModal = ({
                       <span className="text-gray-500">Signed by:</span> <span className="font-medium">{contractDetails.creditorName || authUser?.name}</span>
                       <span className="text-gray-400 ml-3">({contractDetails.creditorDate ? new Date(contractDetails.creditorDate).toLocaleDateString('en-GB') : new Date().toLocaleDateString('en-GB')})</span>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Card Payment Details Review */}
+              {isFinanceContract && contractDetails.cardNumber && (
+                <div className="bg-red-50 rounded-lg p-4">
+                  <h4 className="font-medium text-red-700 mb-2 flex items-center">
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    Card Payment Details
+                  </h4>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-red-600">Name on Card:</span><span className="font-medium">{contractDetails.cardFullName}</span></div>
+                    <div className="flex justify-between"><span className="text-red-600">Card Number:</span><span className="font-medium font-mono">{contractDetails.cardNumber}</span></div>
+                    <div className="flex justify-between"><span className="text-red-600">Expiry:</span><span className="font-medium font-mono">{contractDetails.cardExpiry}</span></div>
+                    <div className="flex justify-between"><span className="text-red-600">Payments:</span><span className="font-medium">{contractDetails.numberOfInstalments} × {formatCurrency(financeCalc.monthlyRepayment)}</span></div>
+                    <div className="flex justify-between font-semibold border-t pt-1 mt-1"><span>Total:</span><span>{formatCurrency(financeCalc.totalAmountPayable)}</span></div>
                   </div>
                 </div>
               )}

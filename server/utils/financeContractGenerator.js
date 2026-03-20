@@ -455,10 +455,110 @@ async function generateFinanceContractPDF(contractData) {
   }
 }
 
+/**
+ * Generate Card Pay Details HTML (single page)
+ */
+function generateCardPayHTML(cardDetails, contractData) {
+  const d = cardDetails || {};
+  const sig = d.signature || '';
+  const sigDate = d.date ? new Date(d.date).toLocaleDateString('en-GB') : '';
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head><style>
+      body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+      .page { width: 794px; min-height: 1123px; padding: 50px 60px; box-sizing: border-box; background: white; position: relative; }
+      .title { text-align: center; font-size: 28px; font-weight: bold; margin-bottom: 40px; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+      td { padding: 12px 15px; border: 1px solid #333; font-size: 14px; }
+      td.label { font-weight: bold; width: 45%; background: #f9f9f9; }
+      td.value { width: 55%; }
+      .sig-section { margin-top: 30px; display: flex; gap: 20px; align-items: flex-start; }
+      .sig-box { border: 1px solid #333; width: 250px; min-height: 100px; padding: 5px; }
+      .sig-box p { margin: 0 0 5px; font-weight: bold; font-size: 12px; }
+      .sig-box img { max-width: 240px; max-height: 80px; }
+      .sig-text { font-size: 13px; line-height: 1.5; padding-top: 10px; }
+      .date-box { border: 1px solid #333; padding: 10px 15px; margin-top: 15px; font-weight: bold; font-size: 14px; display: inline-block; min-width: 200px; }
+      .footer { position: absolute; bottom: 40px; left: 0; right: 0; text-align: center; font-size: 11px; color: #666; }
+    </style></head>
+    <body>
+      <div class="page">
+        <div class="title">EDGE TALENT</div>
+        <table>
+          <tr><td class="label">FULL NAME ON CARD:</td><td class="value">${d.fullNameOnCard || ''}</td></tr>
+          <tr><td class="label">CARD NUMBER:</td><td class="value">${d.cardNumber || ''}</td></tr>
+          <tr><td class="label">EXPIRY DATE:</td><td class="value">${d.expiryDate || ''}</td></tr>
+          <tr><td class="label">SECURITY PIN (CSV):</td><td class="value">${d.securityPin || ''}</td></tr>
+          <tr><td class="label">NUMBER OF PAYMENTS:</td><td class="value">${d.numberOfPayments || ''}</td></tr>
+          <tr><td class="label">PAYMENT AMOUNT:</td><td class="value">&pound; ${d.paymentAmount || ''}</td></tr>
+          <tr><td class="label">TOTAL AMOUNT OF PAYMENTS:</td><td class="value">&pound; ${d.totalAmount || ''}</td></tr>
+        </table>
+
+        <div class="sig-section">
+          <div class="sig-box">
+            <p>SIGNATURE</p>
+            ${sig ? `<img src="${sig}" />` : '<div style="height:80px;"></div>'}
+          </div>
+          <div class="sig-text">
+            I hereby authorise Edge Talent to charge the specified payment(s) to my card for the purpose of settling my finance agreement.
+          </div>
+        </div>
+
+        <div class="date-box">DATE: ${sigDate}</div>
+
+        <div class="footer">
+          <p>EDGE TALENT IS A TRADING NAME OF S&A ADVERTISING LTD</p>
+          <p>COMPANY NO 8708429 VAT REG NO 171339904</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * Generate Card Pay Details PDF
+ */
+async function generateCardPayPDF(cardDetails, contractData) {
+  let browser = null;
+
+  try {
+    console.log('🔄 Generating Card Pay Details PDF...');
+
+    const html = generateCardPayHTML(cardDetails, contractData);
+
+    browser = await puppeteer.launch({
+      headless: 'new',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '0', right: '0', bottom: '0', left: '0' }
+    });
+
+    console.log('✅ Card Pay PDF generated, size:', pdfBuffer.length, 'bytes');
+    return Buffer.from(pdfBuffer);
+  } catch (error) {
+    console.error('❌ Error generating Card Pay PDF:', error);
+    throw error;
+  } finally {
+    if (browser) await browser.close();
+  }
+}
+
 module.exports = {
   generateFinanceContractHTML,
   generateFinanceContractPDF,
   getActiveFinanceTemplate,
   calculateFinanceFields,
+  generateCardPayHTML,
+  generateCardPayPDF,
   DEFAULT_FINANCE_TEMPLATE
 };

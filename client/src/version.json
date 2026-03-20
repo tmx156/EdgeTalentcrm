@@ -1,14 +1,14 @@
 {
-  "version": "1.0.261",
-  "commitHash": "aa489c1",
-  "fullCommitHash": "aa489c16b5acbe647aacb31c26c92eb4f2bb547a",
-  "commitMessage": "Fix gallery delete button oversized due to global min-size CSS rule",
-  "commitDate": "2026-03-14 04:56:37 +0000",
+  "version": "1.0.263",
+  "commitHash": "28b3906",
+  "fullCommitHash": "28b39065d64824ce04c75c4b20c0df4808856978",
+  "commitMessage": "Add dual-document finance contracts, lead duplicate review, and lead analysis tab",
+  "commitDate": "2026-03-18 06:37:53 +0000",
   "author": "Tin",
   "branch": "main",
-  "commitCount": 261,
-  "buildTimestamp": "2026-03-18T06:07:35.744Z",
-  "buildId": "aa489c1-1773814055745",
+  "commitCount": 263,
+  "buildTimestamp": "2026-03-20T04:38:05.265Z",
+  "buildId": "28b3906-1773981485266",
   "releaseName": "Spring Update",
-  "seenKey": "main-aa489c1"
+  "seenKey": "main-28b3906"
 }
