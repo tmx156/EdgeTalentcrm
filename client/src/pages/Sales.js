@@ -824,17 +824,49 @@ const Sales = () => {
                             </div>
                           )}
                           {fullSaleDetails.contract.signed_pdf_url ? (
-                            <div className="flex justify-between items-center">
-                              <span className="font-semibold text-gray-600">Signed Contract:</span>
-                              <a
-                                href={fullSaleDetails.contract.signed_pdf_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 shadow-md hover:shadow-lg"
-                              >
-                                <FiDownload className="h-4 w-4 mr-2" />
-                                Download PDF
-                              </a>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="font-semibold text-gray-600">
+                                  {fullSaleDetails.contract.contract_data?.financePdfUrl ? 'Invoice & Order Form:' : 'Signed Contract:'}
+                                </span>
+                                <a
+                                  href={fullSaleDetails.contract.signed_pdf_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 shadow-md hover:shadow-lg"
+                                >
+                                  <FiDownload className="h-4 w-4 mr-2" />
+                                  Download PDF
+                                </a>
+                              </div>
+                              {fullSaleDetails.contract.contract_data?.financePdfUrl && (
+                                <div className="flex justify-between items-center">
+                                  <span className="font-semibold text-gray-600">Finance Agreement:</span>
+                                  <a
+                                    href={fullSaleDetails.contract.contract_data.financePdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:from-amber-600 hover:to-orange-600 transition-all duration-200 shadow-md hover:shadow-lg"
+                                  >
+                                    <FiDownload className="h-4 w-4 mr-2" />
+                                    Download PDF
+                                  </a>
+                                </div>
+                              )}
+                              {fullSaleDetails.contract.contract_data?.cardPayPdfUrl && (
+                                <div className="flex justify-between items-center">
+                                  <span className="font-semibold text-gray-600">Card Pay Details:</span>
+                                  <a
+                                    href={fullSaleDetails.contract.contract_data.cardPayPdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center px-4 py-2 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg hover:from-red-600 hover:to-pink-600 transition-all duration-200 shadow-md hover:shadow-lg"
+                                  >
+                                    <FiDownload className="h-4 w-4 mr-2" />
+                                    Download PDF
+                                  </a>
+                                </div>
+                              )}
                             </div>
                           ) : fullSaleDetails.contract.status === 'signed' && fullSaleDetails.contract.contract_token ? (
                             <div className="flex justify-between items-center">
