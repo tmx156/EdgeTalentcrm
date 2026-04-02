@@ -96,6 +96,16 @@ router.get('/dropdown', auth, async (req, res) => {
       });
     }
 
+    if (ACCOUNTS.senary && ACCOUNTS.senary.email) {
+      dropdown.push({
+        id: 'senary',
+        name: '6th Email (Env)',
+        email: ACCOUNTS.senary.email,
+        is_default: false,
+        isEnvVar: true
+      });
+    }
+
     // Also add database accounts if any
     const accounts = await emailAccountService.getAllAccounts();
     const dbAccounts = accounts

@@ -53,6 +53,14 @@ const ACCOUNTS = {
     refreshToken: process.env.GMAIL_REFRESH_TOKEN_5,
     redirectUri: process.env.GMAIL_REDIRECT_URI_5 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback5',
     displayName: '5th Account'
+  },
+  senary: {
+    email: process.env.GMAIL_EMAIL_6 || 'photo@edgetalent.co.uk',
+    clientId: process.env.GMAIL_CLIENT_ID_6,
+    clientSecret: process.env.GMAIL_CLIENT_SECRET_6,
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN_6,
+    redirectUri: process.env.GMAIL_REDIRECT_URI_6 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback6',
+    displayName: '6th Account'
   }
 };
 
