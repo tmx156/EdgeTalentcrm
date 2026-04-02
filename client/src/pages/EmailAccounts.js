@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FiSearch, FiEdit, FiTrash2, FiPlus, FiX, FiMail, FiKey, FiCheck, FiStar, FiRefreshCw, FiDownload } from 'react-icons/fi';
+import { FiSearch, FiEdit, FiTrash2, FiPlus, FiX, FiMail, FiKey, FiCheck, FiStar, FiRefreshCw, FiDownload, FiActivity, FiAlertTriangle, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 
@@ -43,11 +43,30 @@ const EmailAccounts = () => {
   // State for importing from env
   const [importing, setImporting] = useState(false);
 
+  // State for Gmail health check
+  const [healthData, setHealthData] = useState(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState(null);
+
   useEffect(() => {
     if (user?.role === 'admin') {
       fetchAccounts();
+      fetchHealthCheck();
     }
   }, [user]);
+
+  const fetchHealthCheck = async () => {
+    setHealthLoading(true);
+    setHealthError(null);
+    try {
+      const response = await axios.get('/api/gmail/health');
+      setHealthData(response.data);
+    } catch (error) {
+      console.error('Error fetching Gmail health:', error);
+      setHealthError(error.response?.data?.message || 'Failed to check Gmail health');
+    }
+    setHealthLoading(false);
+  };
 
   const fetchAccounts = async () => {
     try {
@@ -384,6 +403,95 @@ const EmailAccounts = () => {
             <span>Add Account</span>
           </button>
         </div>
+      </div>
+
+      {/* Gmail Health Check */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <FiActivity className="h-5 w-5 text-gray-600" />
+            <h2 className="text-lg font-semibold text-gray-900">Gmail Health Check</h2>
+          </div>
+          <button
+            onClick={fetchHealthCheck}
+            disabled={healthLoading}
+            className="px-3 py-1.5 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors flex items-center space-x-1"
+          >
+            <FiRefreshCw className={`h-3.5 w-3.5 ${healthLoading ? 'animate-spin' : ''}`} />
+            <span>{healthLoading ? 'Checking...' : 'Refresh'}</span>
+          </button>
+        </div>
+
+        {healthError && (
+          <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md mb-3">{healthError}</div>
+        )}
+
+        {healthData && (
+          <>
+            {/* Summary bar */}
+            <div className="flex items-center space-x-4 mb-4 text-sm">
+              <span className="flex items-center space-x-1 text-green-600">
+                <FiCheckCircle className="h-4 w-4" />
+                <span>{healthData.summary.healthy} healthy</span>
+              </span>
+              {healthData.summary.expired > 0 && (
+                <span className="flex items-center space-x-1 text-red-600 font-semibold">
+                  <FiXCircle className="h-4 w-4" />
+                  <span>{healthData.summary.expired} expired</span>
+                </span>
+              )}
+              <span className="text-gray-500">
+                {healthData.summary.configured}/{healthData.summary.total} configured
+              </span>
+            </div>
+
+            {/* Account status grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {healthData.accounts.filter(a => a.status !== 'not_configured').map((account) => (
+                <div
+                  key={account.key}
+                  className={`flex items-center justify-between p-3 rounded-lg border ${
+                    account.status === 'healthy'
+                      ? 'border-green-200 bg-green-50'
+                      : account.status === 'token_expired'
+                      ? 'border-red-200 bg-red-50'
+                      : 'border-yellow-200 bg-yellow-50'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-gray-900 truncate">{account.email}</div>
+                    <div className="text-xs text-gray-500 capitalize">{account.key}</div>
+                  </div>
+                  <div className="ml-3 flex-shrink-0">
+                    {account.status === 'healthy' ? (
+                      <FiCheckCircle className="h-5 w-5 text-green-500" />
+                    ) : account.status === 'token_expired' ? (
+                      <div className="flex items-center space-x-1">
+                        <FiXCircle className="h-5 w-5 text-red-500" />
+                        {account.authUrl && (
+                          <a
+                            href={account.authUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-red-600 underline hover:text-red-800"
+                          >
+                            Re-auth
+                          </a>
+                        )}
+                      </div>
+                    ) : (
+                      <FiAlertTriangle className="h-5 w-5 text-yellow-500" />
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {!healthData && !healthLoading && !healthError && (
+          <div className="text-sm text-gray-500 text-center py-4">Click Refresh to check Gmail account health</div>
+        )}
       </div>
 
       {/* Search */}

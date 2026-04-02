@@ -269,6 +269,146 @@ router.get('/status', async (req, res) => {
 });
 
 /**
+ * @route   GET /api/gmail/health
+ * @desc    Health check - test OAuth token validity for ALL Gmail accounts
+ * @access  Admin only (requires auth)
+ */
+const { auth, adminAuth } = require('../middleware/auth');
+
+router.get('/health', auth, adminAuth, async (req, res) => {
+  try {
+    const ACCOUNTS = {
+      primary: {
+        email: process.env.GMAIL_EMAIL || 'hello@edgetalent.co.uk',
+        clientId: process.env.GMAIL_CLIENT_ID,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET,
+        refreshToken: process.env.GMAIL_REFRESH_TOKEN
+      },
+      secondary: {
+        email: process.env.GMAIL_EMAIL_2 || 'diary@edgetalent.co.uk',
+        clientId: process.env.GMAIL_CLIENT_ID_2,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET_2,
+        refreshToken: process.env.GMAIL_REFRESH_TOKEN_2
+      },
+      tertiary: {
+        email: process.env.GMAIL_EMAIL_3 || 'bookings@edgetalent.co.uk',
+        clientId: process.env.GMAIL_CLIENT_ID_3,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET_3,
+        refreshToken: process.env.GMAIL_REFRESH_TOKEN_3
+      },
+      quaternary: {
+        email: process.env.GMAIL_EMAIL_4 || 'appt@edgetalent.co.uk',
+        clientId: process.env.GMAIL_CLIENT_ID_4,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET_4,
+        refreshToken: process.env.GMAIL_REFRESH_TOKEN_4
+      },
+      quinary: {
+        email: process.env.GMAIL_EMAIL_5 || 'book@edgetalent.co.uk',
+        clientId: process.env.GMAIL_CLIENT_ID_5,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET_5,
+        refreshToken: process.env.GMAIL_REFRESH_TOKEN_5
+      },
+      senary: {
+        email: process.env.GMAIL_EMAIL_6 || 'photo@edgetalent.co.uk',
+        clientId: process.env.GMAIL_CLIENT_ID_6,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET_6,
+        refreshToken: process.env.GMAIL_REFRESH_TOKEN_6
+      }
+    };
+
+    const results = [];
+
+    for (const [key, account] of Object.entries(ACCOUNTS)) {
+      const result = { key, email: account.email, status: 'unknown', error: null };
+
+      if (!account.clientId || !account.clientSecret || !account.refreshToken) {
+        result.status = 'not_configured';
+        results.push(result);
+        continue;
+      }
+
+      try {
+        const oauth2Client = new google.auth.OAuth2(account.clientId, account.clientSecret);
+        oauth2Client.setCredentials({ refresh_token: account.refreshToken });
+        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+        const profile = await gmail.users.getProfile({ userId: 'me' });
+        result.status = 'healthy';
+        result.messagesTotal = profile.data.messagesTotal;
+      } catch (err) {
+        if (err.message?.includes('invalid_grant') || err.message?.includes('Token has been expired or revoked')) {
+          result.status = 'token_expired';
+          result.error = 'Refresh token expired or revoked';
+          result.authUrl = `/api/gmail/${key === 'primary' ? 'auth' : 'auth' + key.replace('secondary','2').replace('tertiary','3').replace('quaternary','4').replace('quinary','5').replace('senary','6')}`;
+        } else {
+          result.status = 'error';
+          result.error = err.message;
+        }
+      }
+
+      results.push(result);
+    }
+
+    // Also check database email accounts
+    const { getSupabaseClient } = require('../config/supabase-client');
+    const supabase = getSupabaseClient();
+    const emailAccountService = require('../utils/emailAccountService');
+
+    const { data: dbAccounts } = await supabase
+      .from('email_accounts')
+      .select('id, name, email, is_active')
+      .eq('is_active', true);
+
+    if (dbAccounts) {
+      for (const dbAcc of dbAccounts) {
+        // Skip if already checked as env var account
+        if (results.some(r => r.email === dbAcc.email)) continue;
+
+        const result = { key: dbAcc.id, email: dbAcc.email, name: dbAcc.name, status: 'unknown', isDatabase: true };
+
+        try {
+          const fullAccount = await emailAccountService.getAccountById(dbAcc.id);
+          if (!fullAccount || !fullAccount.client_id || !fullAccount.client_secret || !fullAccount.refresh_token) {
+            result.status = 'not_configured';
+            results.push(result);
+            continue;
+          }
+
+          const oauth2Client = new google.auth.OAuth2(fullAccount.client_id, fullAccount.client_secret);
+          oauth2Client.setCredentials({ refresh_token: fullAccount.refresh_token });
+          const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+          await gmail.users.getProfile({ userId: 'me' });
+          result.status = 'healthy';
+        } catch (err) {
+          if (err.message?.includes('invalid_grant') || err.message?.includes('Token has been expired or revoked')) {
+            result.status = 'token_expired';
+            result.error = 'Refresh token expired or revoked';
+          } else {
+            result.status = 'error';
+            result.error = err.message;
+          }
+        }
+
+        results.push(result);
+      }
+    }
+
+    const healthy = results.filter(r => r.status === 'healthy').length;
+    const expired = results.filter(r => r.status === 'token_expired').length;
+    const configured = results.filter(r => r.status !== 'not_configured').length;
+
+    res.json({
+      success: true,
+      summary: { total: results.length, configured, healthy, expired },
+      accounts: results
+    });
+
+  } catch (error) {
+    console.error('Gmail health check error:', error);
+    res.status(500).json({ success: false, message: 'Health check failed', error: error.message });
+  }
+});
+
+/**
  * @route   GET /api/gmail/auth2
  * @desc    Start OAuth2 authentication flow for SECONDARY account
  * @access  Public
