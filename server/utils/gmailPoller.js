@@ -1292,7 +1292,7 @@ function startGmailPoller(socketIoInstance) {
   const pollers = [];
 
   // Start poller for each configured account
-  for (const accountKey of ['primary', 'secondary', 'quaternary', 'quinary']) {
+  for (const accountKey of ['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary']) {
     const account = ACCOUNTS[accountKey];
     
     if (!account || !account.clientId || !account.clientSecret || !account.refreshToken) {
