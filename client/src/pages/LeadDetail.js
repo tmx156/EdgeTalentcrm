@@ -2840,33 +2840,103 @@ const LeadDetail = () => {
                 />
               )}
               
-              {/* Add Send Booking Confirmation button */}
-              {!editing && lead.phone && lead.status === 'Booked' && (
-                <button
-                  className="mt-4 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-                  onClick={async () => {
-                    if (lead.dateBooked) {
-                      try {
-                        const response = await axios.post(`/api/leads/${lead.id}/send-booking-confirmation`, {
-                          appointmentDate: lead.dateBooked
-                        });
-                        
-                        if (response.data.success) {
-                          alert(`Booking confirmation SMS sent successfully to ${lead.phone}!`);
-                        } else {
-                          alert(`Failed to send booking confirmation: ${response.data.message}`);
-                        }
-                      } catch (error) {
-                        console.error('Booking confirmation error:', error);
-                        alert(`Error sending booking confirmation: ${error.response?.data?.message || error.message}`);
-                      }
-                    } else {
-                      alert('This lead does not have a booked date.');
-                    }
-                  }}
-                >
-                  Send Booking Confirmation SMS
-                </button>
+              {/* Send Booking Link Buttons */}
+              {!editing && (lead.phone || lead.email) && (
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Send Booking Link</p>
+                  <div className="flex gap-2">
+                    {lead.phone && (
+                      <button
+                        id="send-booking-sms-btn"
+                        className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+                        onClick={async (e) => {
+                          const btn = e.currentTarget;
+                          btn.disabled = true;
+                          btn.textContent = 'Sending...';
+                          try {
+                            const res = await axios.post(`/api/leads/${lead.id}/send-booking-link`, { channels: 'sms' });
+                            if (res.data.success) {
+                              alert(`Booking link SMS sent to ${lead.phone}!`);
+                              setTimeout(() => fetchConversationHistory(), 1000);
+                            } else {
+                              alert(res.data.message || 'Failed to send SMS');
+                            }
+                          } catch (err) {
+                            alert(`Error: ${err.response?.data?.message || err.message}`);
+                          } finally {
+                            btn.disabled = false;
+                            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg> SMS';
+                          }
+                        }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        SMS
+                      </button>
+                    )}
+                    {lead.email && (
+                      <button
+                        id="send-booking-email-btn"
+                        className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+                        onClick={async (e) => {
+                          const btn = e.currentTarget;
+                          btn.disabled = true;
+                          btn.textContent = 'Sending...';
+                          try {
+                            const res = await axios.post(`/api/leads/${lead.id}/send-booking-link`, { channels: 'email' });
+                            if (res.data.success) {
+                              alert(`Booking link email sent to ${lead.email}!`);
+                              setTimeout(() => fetchConversationHistory(), 1000);
+                            } else {
+                              alert(res.data.message || 'Failed to send email');
+                            }
+                          } catch (err) {
+                            alert(`Error: ${err.response?.data?.message || err.message}`);
+                          } finally {
+                            btn.disabled = false;
+                            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg> Email';
+                          }
+                        }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        Email
+                      </button>
+                    )}
+                    {lead.phone && lead.email && (
+                      <button
+                        id="send-booking-both-btn"
+                        className="flex-1 px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors disabled:opacity-50"
+                        onClick={async (e) => {
+                          const btn = e.currentTarget;
+                          btn.disabled = true;
+                          btn.textContent = 'Sending...';
+                          try {
+                            const res = await axios.post(`/api/leads/${lead.id}/send-booking-link`, { channels: 'both' });
+                            if (res.data.success) {
+                              alert(`Booking link sent via ${res.data.channels.join(' & ')} to ${lead.name}!`);
+                              setTimeout(() => fetchConversationHistory(), 1000);
+                            } else {
+                              alert(res.data.message || 'Failed to send');
+                            }
+                          } catch (err) {
+                            alert(`Error: ${err.response?.data?.message || err.message}`);
+                          } finally {
+                            btn.disabled = false;
+                            btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg> Both';
+                          }
+                        }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        Both
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
 
               {/* SalesApe Status Display - DISABLED */}

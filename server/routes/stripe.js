@@ -8,6 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const Stripe = require('stripe');
+const { auth } = require('../middleware/auth');
 
 /**
  * @route   POST /api/stripe/create-setup-intent
@@ -151,7 +152,7 @@ router.post('/confirm-setup', async (req, res) => {
  * @desc    Charge the £50 no-show fee using saved payment method
  * @access  Private (admin only - for internal use)
  */
-router.post('/charge-no-show', async (req, res) => {
+router.post('/charge-no-show', auth, async (req, res) => {
   try {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const { customerId, paymentMethodId, leadId, leadName } = req.body;

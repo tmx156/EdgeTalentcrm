@@ -47,7 +47,7 @@ const Templates = () => {
     const isBooker = userRole !== 'admin';
 
     const categories = {
-      'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation', 'secondary_confirmation'],
+      'Diary Templates': ['booking_confirmation', 'booking_link', 'reschedule', 'cancellation', 'secondary_confirmation'],
       'Bookers Templates': ['no_answer', 'no_photo', 'invitation_email'], // Templates created by booker role users
       'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance', 'contract_signing', 'contract_delivery'],
       'Receipts': ['receipt', 'sale_receipt', 'payment_receipt'],
@@ -480,7 +480,7 @@ const Templates = () => {
             
             const filteredTemplates = categoryFilter === 'All' ? availableTemplates : availableTemplates.filter(t => {
               const cat = Object.entries({
-                'Diary Templates': ['booking_confirmation', 'reschedule', 'cancellation', 'secondary_confirmation'],
+                'Diary Templates': ['booking_confirmation', 'booking_link', 'reschedule', 'cancellation', 'secondary_confirmation'],
                 'Bookers Templates': ['no_answer', 'no_photo', 'invitation_email'],
                 'Sale Templates': ['sale_confirmation', 'sale_followup', 'sale', 'sale_notification', 'sale_paid_in_full', 'sale_followup_paid', 'sale_finance_agreement', 'sale_followup_finance', 'contract_signing', 'contract_delivery'],
                 'Lead Details Templates': ['custom', 'booker']
@@ -679,6 +679,7 @@ const Templates = () => {
                             {!isBooker && (
                               <>
                                 <option key="booking_confirmation" value="booking_confirmation">📅 Booking Confirmation</option>
+                                <option key="booking_link" value="booking_link">🔗 Booking Link</option>
                                 <option key="secondary_confirmation" value="secondary_confirmation">📋 Secondary Confirmation</option>
                                 <option key="reschedule" value="reschedule">🔄 Reschedule</option>
                                 <option key="cancellation" value="cancellation">🚫 Cancellation</option>

@@ -2,8 +2,107 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiCheck, FiChevronLeft, FiChevronRight, FiUser, FiMail, FiCalendar, FiClock, FiEdit2 } from 'react-icons/fi';
+import { FiCheck, FiChevronLeft, FiChevronRight, FiUser, FiMail, FiCalendar, FiClock, FiEdit2, FiCreditCard, FiLock, FiShield } from 'react-icons/fi';
 import { toLocalDateStr } from '../utils/timeUtils';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// Stripe Card Hold Form (saves card without charging)
+const CardHoldForm = ({ clientSecret, leadId, onSuccess, processing, setProcessing }) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [cardError, setCardError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setProcessing(true);
+    setCardError(null);
+
+    try {
+      const { error, setupIntent } = await stripe.confirmCardSetup(clientSecret, {
+        payment_method: { card: elements.getElement(CardElement) }
+      });
+
+      if (error) {
+        setCardError(error.message);
+        setProcessing(false);
+        return;
+      }
+
+      if (setupIntent.status === 'succeeded') {
+        // Confirm with backend and get card details
+        const { data } = await axios.post('/api/stripe/confirm-setup', {
+          setupIntentId: setupIntent.id,
+          leadId
+        });
+
+        if (data.success) {
+          onSuccess(data.paymentMethodId, data.card);
+        }
+      }
+    } catch (err) {
+      setCardError('Something went wrong. Please try again.');
+    }
+    setProcessing(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="bg-[#fafafa] rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border-2 border-[#1a1a1a]/10">
+        <CardElement
+          options={{
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#1a1a1a',
+                '::placeholder': { color: '#1a1a1a50' },
+                fontFamily: 'system-ui, -apple-system, sans-serif'
+              },
+              invalid: { color: '#dc2626' }
+            },
+            hidePostalCode: true
+          }}
+        />
+      </div>
+
+      {cardError && (
+        <motion.div
+          initial={{ opacity: 0, y: 5 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-xs sm:text-sm text-center"
+        >
+          {cardError}
+        </motion.div>
+      )}
+
+      <motion.button
+        type="submit"
+        disabled={!stripe || processing}
+        whileHover={!processing ? { scale: 1.02, y: -2 } : {}}
+        whileTap={!processing ? { scale: 0.98 } : {}}
+        className="w-full py-4 sm:py-5 bg-[#1a1a1a] text-white rounded-xl font-medium text-base sm:text-lg shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-black/30 transition-all disabled:opacity-50"
+      >
+        {processing ? (
+          <span className="flex items-center justify-center gap-2">
+            <motion.span
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+            />
+            Saving Card...
+          </span>
+        ) : (
+          <span className="flex items-center justify-center gap-2">
+            <FiLock className="w-4 h-4" />
+            Save Card & Continue
+          </span>
+        )}
+      </motion.button>
+    </form>
+  );
+};
 
 const PublicBooking = () => {
   const { leadId } = useParams();
@@ -25,6 +124,14 @@ const PublicBooking = () => {
   const [editingEmail, setEditingEmail] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [stripePromise, setStripePromise] = useState(null);
+  const [clientSecret, setClientSecret] = useState(null);
+  const [stripeCustomerId, setStripeCustomerId] = useState(null);
+  const [paymentMethodId, setPaymentMethodId] = useState(null);
+  const [cardSaved, setCardSaved] = useState(false);
+  const [cardDetails, setCardDetails] = useState(null);
+  const [cardProcessing, setCardProcessing] = useState(false);
+  const [stripeError, setStripeError] = useState(null);
 
   // Calendar restriction: only allow 3 weeks ahead
   const today = new Date();
@@ -132,9 +239,42 @@ const PublicBooking = () => {
     setCurrentStep(3);
   };
 
-  const handleTimeSelect = (time) => {
+  const handleTimeSelect = async (time) => {
     setSelectedTime(time);
-    setCurrentStep(4); // Go directly to confirmation (skip payment step)
+    setStripeError(null);
+    setCurrentStep(4); // Go to card hold step immediately (shows loading)
+
+    try {
+      // Initialize Stripe for card hold step
+      let stripe = stripePromise;
+      if (!stripe) {
+        const { data } = await axios.get('/api/stripe/config');
+        if (data.publishableKey) {
+          stripe = loadStripe(data.publishableKey);
+          setStripePromise(stripe);
+        } else {
+          throw new Error('Stripe not configured');
+        }
+      }
+
+      // Create SetupIntent for this lead
+      if (!clientSecret) {
+        const { data } = await axios.post('/api/stripe/create-setup-intent', {
+          leadId: lead?.id || leadId,
+          email,
+          name
+        });
+        if (data.success) {
+          setClientSecret(data.clientSecret);
+          setStripeCustomerId(data.customerId);
+        } else {
+          throw new Error('Failed to create payment setup');
+        }
+      }
+    } catch (err) {
+      console.error('Stripe initialization failed:', err);
+      setStripeError('Unable to load payment. Please try again.');
+    }
   };
 
   const handleSubmitBooking = async () => {
@@ -163,7 +303,9 @@ const PublicBooking = () => {
         date: toLocalDateStr(selectedDate),
         time: selectedTime,
         name: name,
-        email: email
+        email: email,
+        paymentMethodId: paymentMethodId || undefined,
+        stripeCustomerId: stripeCustomerId || undefined
       });
       if (response.data.success) setSuccess(true);
       else setError(response.data.message || 'Failed to book appointment');
@@ -335,7 +477,8 @@ const PublicBooking = () => {
               { num: 1, label: 'Details', color: 'from-[#1e3a5f] to-[#152a45]', shadow: 'shadow-blue-900/40' },
               { num: 2, label: 'Date', color: 'from-[#D4145A] to-[#B8124E]', shadow: 'shadow-pink-500/40' },
               { num: 3, label: 'Time', color: 'from-[#9B2335] to-[#7A1C2A]', shadow: 'shadow-rose-600/40' },
-              { num: 4, label: 'Confirm', color: 'from-[#C9A227] to-[#A88B1F]', shadow: 'shadow-amber-500/40' }
+              { num: 4, label: 'Card', color: 'from-[#6B46C1] to-[#553C9A]', shadow: 'shadow-purple-500/40' },
+              { num: 5, label: 'Confirm', color: 'from-[#C9A227] to-[#A88B1F]', shadow: 'shadow-amber-500/40' }
             ].map((step, idx) => (
               <React.Fragment key={step.num}>
                 <motion.button
@@ -369,7 +512,7 @@ const PublicBooking = () => {
                     {step.label}
                   </span>
                 </motion.button>
-                {idx < 3 && (
+                {idx < 4 && (
                   <motion.div
                     initial={{ scaleX: 0 }}
                     animate={{ scaleX: currentStep > step.num ? 1 : 0 }}
@@ -659,10 +802,137 @@ const PublicBooking = () => {
             </motion.div>
           )}
 
-          {/* Step 4: Confirmation */}
+          {/* Step 4: Card Hold (£0 deposit) */}
           {currentStep === 4 && selectedDate && selectedTime && (
             <motion.div
               key="step4"
+              variants={stepVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              className="max-w-xl mx-auto px-2 sm:px-0"
+            >
+              <motion.div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-10 shadow-2xl shadow-black/5 border border-black/5">
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 200 }}
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-[#6B46C1] to-[#553C9A] flex items-center justify-center mx-auto mb-6 sm:mb-8 shadow-2xl shadow-purple-500/30"
+                >
+                  <FiCreditCard className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+                </motion.div>
+
+                <h2 className="text-2xl sm:text-3xl font-light text-[#1a1a1a] text-center mb-2 sm:mb-3">
+                  Secure Your Booking
+                </h2>
+                <p className="text-center text-[#1a1a1a]/50 text-sm sm:text-base mb-6 sm:mb-8">
+                  We require a card on file to secure your appointment. <strong>You will not be charged.</strong>
+                </p>
+
+                {/* Trust badges */}
+                <div className="flex items-center justify-center gap-4 sm:gap-6 mb-6 sm:mb-8">
+                  <div className="flex items-center gap-1.5 text-[#1a1a1a]/40 text-xs sm:text-sm">
+                    <FiLock className="w-3.5 h-3.5" />
+                    <span>SSL Encrypted</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[#1a1a1a]/40 text-xs sm:text-sm">
+                    <FiShield className="w-3.5 h-3.5" />
+                    <span>£0 Deposit</span>
+                  </div>
+                </div>
+
+                {/* No-show policy notice */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 sm:p-4 mb-6 sm:mb-8">
+                  <p className="text-amber-800 text-xs sm:text-sm text-center">
+                    A <strong>£50 no-show fee</strong> applies if you miss your appointment without giving 24 hours notice.
+                  </p>
+                </div>
+
+                {cardSaved ? (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-center"
+                  >
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <FiCheck className="w-7 h-7 sm:w-8 sm:h-8 text-emerald-600" strokeWidth={3} />
+                    </div>
+                    <p className="text-lg font-medium text-[#1a1a1a] mb-1">Card Saved</p>
+                    {cardDetails && (
+                      <p className="text-[#1a1a1a]/50 text-sm mb-6">
+                        {cardDetails.brand.toUpperCase()} ending in {cardDetails.last4}
+                      </p>
+                    )}
+                    <motion.button
+                      onClick={() => setCurrentStep(5)}
+                      whileHover={{ scale: 1.02, y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="w-full py-4 sm:py-5 bg-[#1a1a1a] text-white rounded-xl font-medium text-base sm:text-lg shadow-xl shadow-black/20 hover:shadow-2xl hover:shadow-black/30 transition-all"
+                    >
+                      Continue to Confirmation
+                    </motion.button>
+                  </motion.div>
+                ) : stripeError ? (
+                  <div className="text-center py-6">
+                    <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <span className="text-red-500 text-2xl">!</span>
+                    </div>
+                    <p className="text-red-600 text-sm mb-4">{stripeError}</p>
+                    <motion.button
+                      onClick={() => {
+                        setStripeError(null);
+                        setStripePromise(null);
+                        setClientSecret(null);
+                        handleTimeSelect(selectedTime);
+                      }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="px-6 py-2.5 bg-[#1a1a1a] text-white rounded-xl text-sm font-medium"
+                    >
+                      Retry
+                    </motion.button>
+                  </div>
+                ) : stripePromise && clientSecret ? (
+                  <Elements stripe={stripePromise} options={{ appearance: { theme: 'stripe', variables: { colorPrimary: '#1a1a1a', borderRadius: '12px' } } }}>
+                    <CardHoldForm
+                      clientSecret={clientSecret}
+                      leadId={lead?.id || leadId}
+                      onSuccess={(pmId, card) => {
+                        setPaymentMethodId(pmId);
+                        setCardDetails(card);
+                        setCardSaved(true);
+                      }}
+                      processing={cardProcessing}
+                      setProcessing={setCardProcessing}
+                    />
+                  </Elements>
+                ) : (
+                  <div className="text-center py-8">
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                      className="w-8 h-8 border-2 border-[#1a1a1a]/10 border-t-[#6B46C1] rounded-full mx-auto mb-3"
+                    />
+                    <p className="text-[#1a1a1a]/50 text-sm">Loading secure payment...</p>
+                  </div>
+                )}
+
+                <motion.button
+                  onClick={() => setCurrentStep(3)}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="mt-4 w-full py-3 sm:py-4 border-2 border-[#1a1a1a]/20 text-[#1a1a1a]/60 rounded-xl font-medium hover:border-[#1a1a1a]/40 hover:text-[#1a1a1a] transition-colors"
+                >
+                  Back to Time Selection
+                </motion.button>
+              </motion.div>
+            </motion.div>
+          )}
+
+          {/* Step 5: Confirmation */}
+          {currentStep === 5 && selectedDate && selectedTime && (
+            <motion.div
+              key="step5"
               variants={stepVariants}
               initial="hidden"
               animate="visible"
@@ -717,11 +987,27 @@ const PublicBooking = () => {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.5 }}
-                    className="flex items-center justify-between py-3 sm:py-4"
+                    className="flex items-center justify-between py-3 sm:py-4 border-b border-[#1a1a1a]/10"
                   >
                     <span className="text-[#1a1a1a]/50 text-sm sm:text-base">Time</span>
                     <span className="text-xl sm:text-2xl font-light text-[#1a1a1a]">{selectedTime}</span>
                   </motion.div>
+                  {/* Show saved card info on confirmation */}
+                  {cardDetails && (
+                    <motion.div
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.6 }}
+                      className="flex items-center justify-between py-3 sm:py-4"
+                    >
+                      <span className="text-[#1a1a1a]/50 text-sm sm:text-base flex items-center gap-2">
+                        <FiCreditCard className="w-4 h-4" /> Card
+                      </span>
+                      <span className="font-medium text-[#1a1a1a] text-sm sm:text-base">
+                        {cardDetails.brand.toUpperCase()} ****{cardDetails.last4}
+                      </span>
+                    </motion.div>
+                  )}
                 </div>
 
                 {error && (
@@ -736,7 +1022,7 @@ const PublicBooking = () => {
 
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                   <motion.button
-                    onClick={() => setCurrentStep(3)}
+                    onClick={() => setCurrentStep(4)}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className="w-full sm:flex-1 py-4 sm:py-5 border-2 border-[#1a1a1a]/20 text-[#1a1a1a] rounded-xl font-medium hover:border-[#1a1a1a]/40 transition-colors order-2 sm:order-1"

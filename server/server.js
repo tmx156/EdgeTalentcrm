@@ -370,8 +370,8 @@ const limiter = rateLimit({
 
 // CORS - More permissive for development
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-domain.com'] 
+  origin: process.env.NODE_ENV === 'production'
+    ? ['https://crm.edgetalent.co.uk', 'https://www.edgetalentdiary.co.uk', 'https://edgetalentdiary.co.uk', 'https://edgetalentcrm-production.up.railway.app']
     : true, // Allow all origins in development
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

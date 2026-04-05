@@ -1252,17 +1252,26 @@ router.get('/calendar', auth, async (req, res) => {
 
     // Lightweight query: get lead IDs with received SMS/email for calendar badges
     // Two states: unread (flashing) and read (static opened icon)
+    // Batch in chunks of 50 to avoid URL length limits with Supabase REST API
     if (leads && leads.length > 0) {
       try {
         const leadIds = leads.map(l => l.id);
-        const { data: receivedRows, error: recvErr } = await supabase
-          .from('messages')
-          .select('lead_id, type, read_status')
-          .in('lead_id', leadIds)
-          .in('type', ['sms', 'email'])
-          .in('status', ['received', 'delivered']);
+        const BATCH_SIZE = 50;
+        let receivedRows = [];
+        for (let i = 0; i < leadIds.length; i += BATCH_SIZE) {
+          const batch = leadIds.slice(i, i + BATCH_SIZE);
+          const { data: batchRows, error: batchErr } = await supabase
+            .from('messages')
+            .select('lead_id, type, read_status')
+            .in('lead_id', batch)
+            .in('type', ['sms', 'email'])
+            .in('status', ['received', 'delivered']);
+          if (!batchErr && batchRows) {
+            receivedRows = receivedRows.concat(batchRows);
+          }
+        }
 
-        if (!recvErr && receivedRows) {
+        if (receivedRows.length > 0) {
           const unreadSmsLeadIds = new Set();
           const unreadEmailLeadIds = new Set();
           const readSmsLeadIds = new Set();
@@ -6634,6 +6643,206 @@ router.post('/bulk-communication', auth, async (req, res) => {
   } catch (error) {
     console.error('Bulk communication error:', error);
     res.status(500).json({ message: 'Error sending bulk communications', error: error.message });
+  }
+});
+
+// @route   POST /api/leads/:id/send-booking-link
+// @desc    Send booking link via SMS and/or Email (uses template-booking-link template)
+// @access  Private
+router.post('/:id/send-booking-link', auth, async (req, res) => {
+  try {
+    const { channels } = req.body; // 'sms', 'email', or 'both'
+
+    const leads = await dbManager.query('leads', {
+      select: '*',
+      eq: { id: req.params.id }
+    });
+
+    if (!leads || leads.length === 0) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
+    const lead = leads[0];
+
+    // Generate booking code if missing
+    let bookingCode = lead.booking_code;
+    if (!bookingCode) {
+      bookingCode = await generateBookingCode(lead.name);
+      await supabase.from('leads').update({ booking_code: bookingCode }).eq('id', lead.id);
+      console.log(`📋 Generated missing booking code: ${bookingCode} for ${lead.name}`);
+    }
+
+    const bookingDomain = process.env.BOOKING_DOMAIN || 'www.edgetalentdiary.co.uk';
+    const bookingLink = `https://${bookingDomain}/book/${bookingCode}`;
+    const firstName = lead.name?.split(' ')[0] || '';
+
+    // Fetch booking_link template (editable by user in Templates page)
+    let template = null;
+    try {
+      const templates = await dbManager.query('templates', {
+        select: '*',
+        eq: { type: 'booking_link', is_active: true }
+      });
+      template = templates?.[0] || null;
+    } catch (tplErr) {
+      console.error('Failed to fetch booking link template:', tplErr.message);
+    }
+
+    // Default fallback if template not found
+    const defaultSms = `Hi ${firstName}, here is your booking link to schedule your session with Edge Talent:\n\n${bookingLink}\n\nSimply choose a date and time that suits you. See you soon!`;
+    const defaultSubject = 'Book Your Session - Edge Talent';
+    const defaultEmailBody = `Hi ${firstName},\n\nThank you for your interest in Edge Talent!\n\nPlease click the link below to book your session at a time that suits you:\n\n${bookingLink}\n\nYour details are already saved, so you just need to pick a date and time.\n\nIf you have any questions, feel free to reply to this email.\n\nBest regards,\nEdge Talent Team`;
+
+    // Replace placeholders in template
+    const replacePlaceholders = (text) => {
+      if (!text) return '';
+      return text
+        .replace(/\{leadName\}/g, firstName)
+        .replace(/\{fullName\}/g, lead.name || '')
+        .replace(/\{bookingLink\}/g, bookingLink)
+        .replace(/\{email\}/g, lead.email || '')
+        .replace(/\{phone\}/g, lead.phone || '')
+        .replace(/\[NAME\]/gi, firstName)
+        .replace(/\[BOOKING_LINK\]/gi, bookingLink)
+        .replace(/\[lead name\]/gi, firstName);
+    };
+
+    const smsMessage = template?.sms_body ? replacePlaceholders(template.sms_body) : defaultSms;
+    const emailSubject = template?.subject ? replacePlaceholders(template.subject) : defaultSubject;
+    const emailBodyText = template?.email_body ? replacePlaceholders(template.email_body) : defaultEmailBody;
+
+    // Wrap email body in HTML with a clickable button
+    const emailBodyHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        ${emailBodyText.split('\n').map(line => {
+          if (line.trim() === bookingLink) {
+            return `<div style="text-align: center; margin: 24px 0;">
+              <a href="${bookingLink}" style="display: inline-block; padding: 14px 32px; background-color: #1a1a1a; color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600;">Book Your Session</a>
+            </div>
+            <p style="font-size: 13px; color: #999; text-align: center;">Or copy this link: <a href="${bookingLink}" style="color: #1e3a5f;">${bookingLink}</a></p>`;
+          }
+          if (line.trim() === '') return '<br>';
+          return `<p style="font-size: 16px; color: #333; margin: 4px 0;">${line}</p>`;
+        }).join('\n')}
+      </div>
+    `.trim();
+
+    const results = [];
+    const errors = [];
+    const crypto = require('crypto');
+    const now = new Date().toISOString();
+
+    // Send SMS
+    if ((channels === 'sms' || channels === 'both') && lead.phone) {
+      try {
+        const smsResult = await sendCustomMessage(lead.phone, smsMessage);
+        if (smsResult.success) {
+          await supabase.from('messages').insert({
+            id: crypto.randomUUID(),
+            lead_id: lead.id,
+            type: 'sms',
+            status: 'sent',
+            sms_body: smsMessage,
+            recipient_phone: lead.phone,
+            sent_by: req.user.id,
+            sent_by_name: req.user.name,
+            sent_at: now,
+            created_at: now,
+            updated_at: now,
+            delivery_provider: 'thesmsworks',
+            provider_message_id: smsResult.messageId || null
+          });
+          results.push('SMS');
+          console.log(`✅ Booking link SMS sent to ${lead.phone}`);
+        } else {
+          errors.push(`SMS failed: ${smsResult.error || 'Unknown error'}`);
+          console.error(`❌ Booking link SMS failed for ${lead.phone}:`, smsResult.error);
+        }
+      } catch (smsErr) {
+        errors.push(`SMS error: ${smsErr.message}`);
+        console.error('❌ Booking link SMS error:', smsErr.message);
+      }
+    }
+
+    // Send Email
+    if ((channels === 'email' || channels === 'both') && lead.email) {
+      try {
+        const msgId = crypto.randomUUID();
+        const messageData = {
+          id: msgId,
+          lead_id: lead.id,
+          template_id: template?.id || null,
+          type: 'email',
+          subject: emailSubject,
+          email_body: emailBodyHtml,
+          recipient_email: lead.email,
+          recipient_phone: lead.phone || null,
+          sent_by: req.user.id,
+          sent_by_name: req.user.name,
+          status: 'pending',
+          created_at: now,
+          updated_at: now
+        };
+        await dbManager.insert('messages', messageData);
+
+        // Resolve email account (same as send-email route)
+        let resolvedEmailAccount = 'primary';
+        try {
+          const resolution = await emailAccountService.resolveEmailAccount({
+            templateId: template?.id,
+            userId: req.user?.id
+          });
+          if (resolution.type === 'database' && resolution.account) {
+            resolvedEmailAccount = resolution.account;
+          } else {
+            resolvedEmailAccount = resolution.accountKey || template?.email_account || 'primary';
+          }
+        } catch (resolveErr) {
+          resolvedEmailAccount = template?.email_account || 'primary';
+        }
+
+        const emailResult = await MessagingService.sendEmail({
+          id: msgId,
+          recipient_email: lead.email,
+          recipient_name: lead.name,
+          subject: emailSubject,
+          email_body: emailBodyHtml,
+          lead_id: lead.id,
+          template_id: template?.id || null,
+          type: 'email',
+          sent_by: req.user.id,
+          sent_by_name: req.user.name
+        }, resolvedEmailAccount);
+
+        if (emailResult) {
+          results.push('Email');
+          console.log(`✅ Booking link email sent to ${lead.email}`);
+        } else {
+          errors.push('Email send returned false');
+          console.error(`❌ Booking link email failed for ${lead.email}`);
+        }
+      } catch (emailErr) {
+        errors.push(`Email error: ${emailErr.message}`);
+        console.error('❌ Booking link email error:', emailErr.message);
+      }
+    }
+
+    // Add to booking history
+    await addBookingHistoryEntry(lead.id, 'BOOKING_LINK_SENT', req.user.id, req.user.name, {
+      channels: results,
+      bookingLink,
+      bookingCode,
+      templateUsed: template?.name || 'default'
+    }, createLeadSnapshot(lead));
+
+    if (results.length > 0) {
+      res.json({ success: true, message: `Booking link sent via ${results.join(' & ')}`, channels: results, bookingLink, errors: errors.length > 0 ? errors : undefined });
+    } else {
+      res.status(400).json({ success: false, message: errors.length > 0 ? errors.join('; ') : 'Failed to send booking link. Check lead has a valid phone/email.' });
+    }
+  } catch (error) {
+    console.error('Error sending booking link:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
