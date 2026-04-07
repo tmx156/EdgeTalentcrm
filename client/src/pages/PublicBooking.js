@@ -40,7 +40,11 @@ const CardHoldForm = ({ clientSecret, leadId, onSuccess, processing, setProcessi
 
         if (data.success) {
           onSuccess(data.paymentMethodId, data.card);
+        } else {
+          setCardError(data.message || 'Failed to save card. Please try again.');
         }
+      } else {
+        setCardError('Card verification was not completed. Please try again.');
       }
     } catch (err) {
       setCardError('Something went wrong. Please try again.');
@@ -187,6 +191,30 @@ const PublicBooking = () => {
     fetchData();
   }, [fetchData]);
 
+  // Auto-refresh calendar data every 30 seconds so blocked/unblocked slots update in real-time
+  useEffect(() => {
+    if (success || (error && !lead)) return; // Don't poll if booking done or error state
+    const interval = setInterval(async () => {
+      try {
+        const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+        const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
+        const startStr = toLocalDateStr(startDate);
+        const endStr = toLocalDateStr(endDate);
+
+        const [calendarResponse, blockedResponse] = await Promise.all([
+          axios.get(`/api/stats/calendar-public?start=${startStr}&end=${endStr}`),
+          axios.get(`/api/blocked-slots?start_date=${startStr}&end_date=${endStr}`)
+        ]);
+
+        setCalendarData(calendarResponse.data || []);
+        setBlockedSlots(blockedResponse.data || []);
+      } catch (err) {
+        // Silent fail on background refresh
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [currentMonth, success, error, lead]);
+
   const getDaysInMonth = () => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
@@ -239,14 +267,11 @@ const PublicBooking = () => {
     setCurrentStep(3);
   };
 
-  const handleTimeSelect = async (time) => {
-    setSelectedTime(time);
+  const initStripe = async (forceRefresh = false) => {
     setStripeError(null);
-    setCurrentStep(4); // Go to card hold step immediately (shows loading)
-
     try {
-      // Initialize Stripe for card hold step
-      let stripe = stripePromise;
+      // Initialize Stripe
+      let stripe = forceRefresh ? null : stripePromise;
       if (!stripe) {
         const { data } = await axios.get('/api/stripe/config');
         if (data.publishableKey) {
@@ -258,7 +283,8 @@ const PublicBooking = () => {
       }
 
       // Create SetupIntent for this lead
-      if (!clientSecret) {
+      const secret = forceRefresh ? null : clientSecret;
+      if (!secret) {
         const { data } = await axios.post('/api/stripe/create-setup-intent', {
           leadId: lead?.id || leadId,
           email,
@@ -277,8 +303,21 @@ const PublicBooking = () => {
     }
   };
 
+  const handleTimeSelect = async (time) => {
+    setSelectedTime(time);
+    setCurrentStep(4);
+    await initStripe(false);
+  };
+
   const handleSubmitBooking = async () => {
     if (!selectedDate || !selectedTime) return;
+
+    // Validate card was saved
+    if (!cardSaved || !paymentMethodId) {
+      setError('Please save your card details before confirming');
+      setCurrentStep(4);
+      return;
+    }
 
     // Validate name and email
     if (!name || !name.trim()) {
@@ -879,12 +918,7 @@ const PublicBooking = () => {
                     </div>
                     <p className="text-red-600 text-sm mb-4">{stripeError}</p>
                     <motion.button
-                      onClick={() => {
-                        setStripeError(null);
-                        setStripePromise(null);
-                        setClientSecret(null);
-                        handleTimeSelect(selectedTime);
-                      }}
+                      onClick={() => initStripe(true)}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       className="px-6 py-2.5 bg-[#1a1a1a] text-white rounded-xl text-sm font-medium"

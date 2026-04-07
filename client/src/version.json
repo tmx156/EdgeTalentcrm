@@ -1,14 +1,14 @@
 {
-  "version": "1.0.263",
-  "commitHash": "28b3906",
-  "fullCommitHash": "28b39065d64824ce04c75c4b20c0df4808856978",
-  "commitMessage": "Add dual-document finance contracts, lead duplicate review, and lead analysis tab",
-  "commitDate": "2026-03-18 06:37:53 +0000",
+  "version": "1.0.272",
+  "commitHash": "cc81fb0",
+  "fullCommitHash": "cc81fb023e09a722cdd77a80155b180817417368",
+  "commitMessage": "Fix health check authUrl mapping for septenary, add missing tertiary to poller",
+  "commitDate": "2026-04-07 04:15:13 +0100",
   "author": "Tin",
   "branch": "main",
-  "commitCount": 263,
-  "buildTimestamp": "2026-03-20T04:38:05.265Z",
-  "buildId": "28b3906-1773981485266",
+  "commitCount": 272,
+  "buildTimestamp": "2026-04-07T03:16:01.177Z",
+  "buildId": "cc81fb0-1775531761177",
   "releaseName": "Spring Update",
-  "seenKey": "main-28b3906"
+  "seenKey": "main-cc81fb0"
 }

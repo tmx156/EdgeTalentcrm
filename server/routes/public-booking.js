@@ -25,9 +25,19 @@ const supabase = createClient(
 
 // DISABLED - no longer using SalesApe
 // const SALESAPE_CONFIG = { ... };
-let DEFAULT_SALESAPE_BOOKER_ID = null;
+// Default booker for public bookings (SalesApe AI user)
+let DEFAULT_SALESAPE_BOOKER_ID = '00000000-0000-0000-0000-000000000001';
 async function initDefaultBooker() {
-  // SalesApe disabled - no default booker needed
+  // Verify the default booker exists
+  try {
+    const { data } = await supabase.from('users').select('id').eq('id', DEFAULT_SALESAPE_BOOKER_ID).single();
+    if (!data) {
+      console.warn('⚠️ Default public booking booker not found, bookings will have no booker assigned');
+      DEFAULT_SALESAPE_BOOKER_ID = null;
+    }
+  } catch (err) {
+    console.warn('⚠️ Could not verify default booker:', err.message);
+  }
 }
 
 // Initialize on module load
@@ -368,17 +378,17 @@ router.post('/book/:identifier', async (req, res) => {
       // Don't fail the booking if history fails
     }
 
-    // Send booking confirmation using 'Booking Confirmation' template
+    // Send booking confirmation using first active booking_confirmation template
     try {
       const bookingDate = new Date(bookingDateTime);
       await MessagingService.sendBookingConfirmation(
         leadId,
         DEFAULT_SALESAPE_BOOKER_ID, // Use Sally for SalesApe bookings
         bookingDate.toISOString(),
-        { 
-          sendEmail: true, 
-          sendSms: true,
-          templateId: 'template-1764551854893-pzx8htxyc' // Use 'Booking Confirmation' template
+        {
+          sendEmail: true,
+          sendSms: true
+          // No templateId — lets MessagingService pick the first active booking_confirmation template
         }
       );
     } catch (confirmationError) {

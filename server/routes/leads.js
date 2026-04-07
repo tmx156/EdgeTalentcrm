@@ -889,8 +889,24 @@ router.get('/', auth, async (req, res) => {
           }
           return true;
         }
-        // Cancelled, No Show: use booked_at SQL filter - no JS date filtering needed
-        if (targetStatus === 'Cancelled' || targetStatus === 'No Show') return true;
+        // No Show: use booked_at SQL filter - no JS date filtering needed
+        if (targetStatus === 'No Show') return true;
+        // Cancelled: filter by original diary date from booking_history CANCELLATION entry
+        if (targetStatus === 'Cancelled') {
+          if (!status_changed_at_start || !status_changed_at_end) return true;
+          const history = parseHistory(lead);
+          return history.some(entry => {
+            if (entry.action === 'CANCELLATION' ||
+                (entry.action === 'STATUS_CHANGE' && entry.details?.newStatus === 'Cancelled') ||
+                (entry.action === 'BOOKING_STATUS_UPDATE' && entry.details?.bookingStatus === 'Cancel')) {
+              const diaryDate = entry.details?.oldDate;
+              if (diaryDate) {
+                return isDateInRange(diaryDate, status_changed_at_start, status_changed_at_end);
+              }
+            }
+            return false;
+          });
+        }
         // Rejected: uses assigned_at SQL filter - no JS date filtering needed
         if (targetStatus === 'Rejected') return true;
         // Attended: uses date_booked SQL filter - no JS date filtering needed

@@ -253,6 +253,24 @@ router.get('/leads', auth, async (req, res) => {
       return isInDateRange(lead.created_at, dateStart, dateEnd);
     };
 
+    // Check if a cancelled lead's original diary date is within the date range
+    // Looks at CANCELLATION booking_history entry's oldDate (the appointment date on the calendar)
+    const wasCancelledDiaryDateInRange = (lead) => {
+      if (!hasDateFilter) return true;
+      const history = parseHistory(lead);
+      return history.some(entry => {
+        if (entry.action === 'CANCELLATION' ||
+            (entry.action === 'STATUS_CHANGE' && entry.details?.newStatus === 'Cancelled') ||
+            (entry.action === 'BOOKING_STATUS_UPDATE' && entry.details?.bookingStatus === 'Cancel')) {
+          const diaryDate = entry.details?.oldDate;
+          if (diaryDate) {
+            return isInDateRange(diaryDate, dateStart, dateEnd);
+          }
+        }
+        return false;
+      });
+    };
+
     // Check if lead's appointment date (date_booked) is within the date range (for Sales)
     const wasAppointmentDateInRange = (lead) => {
       if (!hasDateFilter) return !!lead.date_booked;
@@ -330,8 +348,8 @@ router.get('/leads', auth, async (req, res) => {
       booked: leads.filter(l => wasBookedInRange(l)).length,
       // attended uses date_booked (appointment date = when they attended)
       attended: leads.filter(l => l.status === 'Attended' && wasAppointmentDateInRange(l)).length,
-      // cancelled uses booked_at date (when booking action was performed)
-      cancelled: leads.filter(l => l.status === 'Cancelled' && wasBookedInRange(l)).length,
+      // cancelled uses original diary date from booking_history CANCELLATION entry
+      cancelled: leads.filter(l => l.status === 'Cancelled' && wasCancelledDiaryDateInRange(l)).length,
       attendedFilter: leads.filter(l => {
         const isAttended = l.status === 'Attended';
         const isBookedButAttended = l.status === 'Booked' && ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'].includes(l.booking_status);
@@ -342,7 +360,7 @@ router.get('/leads', auth, async (req, res) => {
         const isCancelled = l.status === 'Cancelled';
         const isBookedButCancelled = l.status === 'Booked' && l.booking_status === 'Cancel';
         if (!(isCancelled || isBookedButCancelled) || l.booker_id == null) return false;
-        return wasBookedInRange(l);
+        return wasCancelledDiaryDateInRange(l);
       }).length,
       noShow: leads.filter(l => {
         const isNoShow = l.status === 'No Show';
@@ -885,7 +903,8 @@ router.get('/calendar-public', async (req, res) => {
       select: 'id, name, phone, email, status, date_booked, time_booked, booker_id, created_at, is_confirmed',
       order: { date_booked: 'asc' },
       limit: validatedLimit,
-      neq: { postcode: 'ZZGHOST' } // Exclude ghost bookings
+      neq: { postcode: 'ZZGHOST' }, // Exclude ghost bookings
+      in: { status: ['Booked', 'Confirmed', 'Attended', 'Sold', 'Not Sold'] } // Only active bookings, exclude Cancelled/Rejected
     };
 
     // Apply date range filter if provided

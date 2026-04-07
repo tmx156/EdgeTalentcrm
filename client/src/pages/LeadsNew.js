@@ -208,8 +208,8 @@ const LeadsNew = () => {
 
           // date_booked: appointment date (when they actually attended)
           'Attended': 'date_booked',
-          // booked_at: when the booking action was performed (Cancelled/No Show are subsets of Booked)
-          'Cancelled': 'booked_at',
+          // booking_history: filter by original diary date from CANCELLATION entry's oldDate
+          'Cancelled': 'booking_history',
           'No Show': 'booked_at',
           // assigned_at: when lead was assigned
           'Rejected': 'assigned_at',
