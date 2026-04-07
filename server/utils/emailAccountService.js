@@ -196,7 +196,7 @@ class EmailAccountService {
         const assignedId = user.assigned_email_account_id;
 
         // Check if it's an env var account ('primary', 'secondary', 'tertiary', 'quaternary', 'quinary')
-        if (['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary'].includes(assignedId)) {
+        if (['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary', 'septenary'].includes(assignedId)) {
           console.log(`📧 User has env var email account assigned: ${assignedId}`);
           return { type: 'env', accountKey: assignedId };
         }
@@ -520,7 +520,7 @@ class EmailAccountService {
       // Priority 1: Direct email account ID passed
       if (emailAccountId) {
         // Check if it's an env var account
-        if (['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary'].includes(emailAccountId)) {
+        if (['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary', 'septenary'].includes(emailAccountId)) {
           console.log(`📧 Using directly specified env var account: ${emailAccountId}`);
           return { type: 'env', accountKey: emailAccountId };
         }
@@ -545,7 +545,7 @@ class EmailAccountService {
 
         if (templateEmailAccount) {
           // If it's a legacy key ('primary', 'secondary', 'tertiary', 'quaternary', 'quinary'), use env vars
-          if (['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary'].includes(templateEmailAccount)) {
+          if (['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary', 'septenary'].includes(templateEmailAccount)) {
             console.log(`📧 Using template-specified legacy account: ${templateEmailAccount}`);
             return { type: 'env', accountKey: templateEmailAccount };
           }

@@ -61,6 +61,14 @@ const ACCOUNTS = {
     refreshToken: process.env.GMAIL_REFRESH_TOKEN_6,
     redirectUri: process.env.GMAIL_REDIRECT_URI_6 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback6',
     displayName: '6th Account'
+  },
+  septenary: {
+    email: process.env.GMAIL_EMAIL_7 || 'studio@edgetalent.co.uk',
+    clientId: process.env.GMAIL_CLIENT_ID_7,
+    clientSecret: process.env.GMAIL_CLIENT_SECRET_7,
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN_7,
+    redirectUri: process.env.GMAIL_REDIRECT_URI_7 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback7',
+    displayName: '7th Account'
   }
 };
 
@@ -1292,7 +1300,7 @@ function startGmailPoller(socketIoInstance) {
   const pollers = [];
 
   // Start poller for each configured account
-  for (const accountKey of ['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary']) {
+  for (const accountKey of ['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary', 'septenary']) {
     const account = ACCOUNTS[accountKey];
     
     if (!account || !account.clientId || !account.clientSecret || !account.refreshToken) {

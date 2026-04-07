@@ -96,7 +96,7 @@ async function sendEmail(to, subject, text, attachments = [], accountKey = 'prim
     } else {
       // Check if it's an invalid_grant error and we're using secondary/tertiary account or database account
       // Automatically fallback: try default database account first, then primary env var
-      const shouldFallback = emailResult.isInvalidGrant && (accountKey === 'secondary' || accountKey === 'tertiary' || accountKey === 'quaternary' || accountKey === 'quinary' || accountKey === 'senary' || isDbAccount);
+      const shouldFallback = emailResult.isInvalidGrant && (accountKey === 'secondary' || accountKey === 'tertiary' || accountKey === 'quaternary' || accountKey === 'quinary' || accountKey === 'senary' || accountKey === 'septenary' || isDbAccount);
 
       if (shouldFallback) {
         console.log(`⚠️ [${emailId}] ${accountDisplay} token expired, attempting fallback...`);
@@ -193,10 +193,10 @@ async function sendEmail(to, subject, text, attachments = [], accountKey = 'prim
           : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') ||
             'https://edgetalentcrm-production.up.railway.app';
 
-        const authEndpointMap = { secondary: 'auth2', tertiary: 'auth3', quaternary: 'auth4', quinary: 'auth5', senary: 'auth6' };
+        const authEndpointMap = { secondary: 'auth2', tertiary: 'auth3', quaternary: 'auth4', quinary: 'auth5', senary: 'auth6', septenary: 'auth7' };
         const authEndpoint = `${railwayUrl}/api/gmail/${authEndpointMap[accountKey] || 'auth'}`;
 
-        const tokenVarMap = { secondary: 'GMAIL_REFRESH_TOKEN_2', tertiary: 'GMAIL_REFRESH_TOKEN_3', quaternary: 'GMAIL_REFRESH_TOKEN_4', quinary: 'GMAIL_REFRESH_TOKEN_5', senary: 'GMAIL_REFRESH_TOKEN_6' };
+        const tokenVarMap = { secondary: 'GMAIL_REFRESH_TOKEN_2', tertiary: 'GMAIL_REFRESH_TOKEN_3', quaternary: 'GMAIL_REFRESH_TOKEN_4', quinary: 'GMAIL_REFRESH_TOKEN_5', senary: 'GMAIL_REFRESH_TOKEN_6', septenary: 'GMAIL_REFRESH_TOKEN_7' };
         const tokenVar = tokenVarMap[accountKey] || 'GMAIL_REFRESH_TOKEN';
 
         console.log(`❌ ACTION REQUIRED: Re-authenticate at ${authEndpoint}`);
