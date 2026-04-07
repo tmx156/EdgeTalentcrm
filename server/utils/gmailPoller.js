@@ -38,6 +38,14 @@ const ACCOUNTS = {
     redirectUri: process.env.GMAIL_REDIRECT_URI_2 || 'http://localhost:5000/api/gmail/oauth2callback2',
     displayName: 'Secondary Account'
   },
+  tertiary: {
+    email: process.env.GMAIL_EMAIL_3 || 'bookings@edgetalent.co.uk',
+    clientId: process.env.GMAIL_CLIENT_ID_3,
+    clientSecret: process.env.GMAIL_CLIENT_SECRET_3,
+    refreshToken: process.env.GMAIL_REFRESH_TOKEN_3,
+    redirectUri: process.env.GMAIL_REDIRECT_URI_3 || 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback3',
+    displayName: '3rd Account'
+  },
   quaternary: {
     email: process.env.GMAIL_EMAIL_4 || 'appt@edgetalent.co.uk',
     clientId: process.env.GMAIL_CLIENT_ID_4,

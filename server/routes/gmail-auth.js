@@ -344,7 +344,8 @@ router.get('/health', auth, adminAuth, async (req, res) => {
         if (err.message?.includes('invalid_grant') || err.message?.includes('Token has been expired or revoked')) {
           result.status = 'token_expired';
           result.error = 'Refresh token expired or revoked';
-          result.authUrl = `/api/gmail/${key === 'primary' ? 'auth' : 'auth' + key.replace('secondary','2').replace('tertiary','3').replace('quaternary','4').replace('quinary','5').replace('senary','6')}`;
+          const authNumMap = { primary: 'auth', secondary: 'auth2', tertiary: 'auth3', quaternary: 'auth4', quinary: 'auth5', senary: 'auth6', septenary: 'auth7' };
+          result.authUrl = `/api/gmail/${authNumMap[key] || 'auth'}`;
         } else {
           result.status = 'error';
           result.error = err.message;
