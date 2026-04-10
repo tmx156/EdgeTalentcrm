@@ -106,7 +106,7 @@ router.get('/leads', auth, async (req, res) => {
     const buildQuery = (from, to) => {
       let query = dbManager.client
         .from('leads')
-        .select('status, custom_fields, call_status, booker_id, booking_status, has_sale, assigned_at, booked_at, date_booked, booking_history, created_at')
+        .select('status, custom_fields, call_status, booker_id, booking_status, has_sale, assigned_at, booked_at, date_booked, ever_booked, booking_history, created_at')
         .neq('postcode', 'ZZGHOST') // Exclude ghost bookings
         .range(from, to);
 
@@ -225,23 +225,36 @@ router.get('/leads', auth, async (req, res) => {
     };
 
     // Extract the actual booking action date from a lead
-    // Priority: booked_at > BOOKING_CONFIRMATION_SENT timestamp from history > assigned_at
+    // Priority: booked_at > BOOKING_CONFIRMATION_SENT > STATUS_CHANGE -> Booked > assigned_at
     const getBookingActionDate = (lead) => {
       if (lead.booked_at) return lead.booked_at;
 
-      // Check booking_history for BOOKING_CONFIRMATION_SENT (the actual moment the booking was made)
       const history = parseHistory(lead);
       const bookingEntry = history.find(e => e.action === 'BOOKING_CONFIRMATION_SENT');
       if (bookingEntry?.timestamp) return bookingEntry.timestamp;
+
+      const statusToBooked = history.find(
+        e => e.action === 'STATUS_CHANGE' && e.details?.newStatus === 'Booked'
+      );
+      if (statusToBooked?.timestamp) return statusToBooked.timestamp;
 
       // Fall back to assigned_at (same day as booking action in practice)
       return lead.assigned_at;
     };
 
+    // Evidence that a lead was actually booked (even if date_booked was later cleared on cancel)
+    const hadBookingEvidence = (lead) => {
+      if (lead.date_booked || lead.booked_at || lead.ever_booked) return true;
+      const history = parseHistory(lead);
+      if (history.some(e => e.action === 'BOOKING_CONFIRMATION_SENT')) return true;
+      if (history.some(e => e.action === 'STATUS_CHANGE' && e.details?.newStatus === 'Booked')) return true;
+      if (lead.status === 'Cancelled' && history.some(e => e.action === 'CANCELLATION')) return true;
+      return false;
+    };
+
     // Check if lead was booked within the date range
-    // Only matches leads that actually have date_booked or booked_at (were actually booked)
     const wasBookedInRange = (lead) => {
-      if (!lead.date_booked && !lead.booked_at) return false;
+      if (!hadBookingEvidence(lead)) return false;
       const bookedDate = getBookingActionDate(lead);
       if (!hasDateFilter) return true;
       return isInDateRange(bookedDate, dateStart, dateEnd);
