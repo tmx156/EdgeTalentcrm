@@ -203,6 +203,21 @@ router.get('/leads', auth, async (req, res) => {
       }
     };
 
+    // Check if a lead has EVER been in an attended state (even if status changed later)
+    const ATTENDED_BOOKING_STATUSES = ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'];
+    const hasEverAttended = (lead) => {
+      if (lead.status === 'Attended') return true;
+      if (ATTENDED_BOOKING_STATUSES.includes(lead.booking_status)) return true;
+      // Check booking_history for past attendance evidence
+      const history = parseHistory(lead);
+      return history.some(entry => {
+        if (entry.action === 'STATUS_CHANGE' && entry.details?.newStatus === 'Attended') return true;
+        if (entry.action === 'BOOKING_STATUS_UPDATE' &&
+            ATTENDED_BOOKING_STATUSES.includes(entry.details?.bookingStatus)) return true;
+        return false;
+      });
+    };
+
     const isInDateRange = (dateStr, startDate, endDate) => {
       if (!dateStr) return false;
       // Normalize all dates to timestamps for comparison
@@ -309,8 +324,7 @@ router.get('/leads', auth, async (req, res) => {
       if (!hasDateFilter) {
         // Without date filter, check current status
         if (targetStatus === 'Attended') {
-          return lead.status === 'Attended' || 
-            (lead.status === 'Booked' && ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'].includes(lead.booking_status));
+          return hasEverAttended(lead);
         } else if (targetStatus === 'Cancelled') {
           return lead.status === 'Cancelled' || 
             (lead.status === 'Booked' && lead.booking_status === 'Cancel');
@@ -360,13 +374,19 @@ router.get('/leads', auth, async (req, res) => {
       // booked uses booked_at date - counts ALL leads booked in range (including cancelled)
       booked: leads.filter(l => wasBookedInRange(l)).length,
       // attended uses date_booked (appointment date = when they attended)
-      attended: leads.filter(l => l.status === 'Attended' && wasAppointmentDateInRange(l)).length,
+      // A lead that has EVER arrived should always count as attended
+      attended: leads.filter(l => hasEverAttended(l) && wasAppointmentDateInRange(l)).length,
       // cancelled uses original diary date from booking_history CANCELLATION entry
       cancelled: leads.filter(l => l.status === 'Cancelled' && wasCancelledDiaryDateInRange(l)).length,
       attendedFilter: leads.filter(l => {
-        const isAttended = l.status === 'Attended';
-        const isBookedButAttended = l.status === 'Booked' && ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'].includes(l.booking_status);
-        if (!(isAttended || isBookedButAttended) || l.booker_id == null) return false;
+        if (!hasEverAttended(l) || l.booker_id == null) return false;
+        return wasAppointmentDateInRange(l);
+      }).length,
+      // Expected appointments on the diary (for show-up rate denominator)
+      // Leads with date_booked in range, assigned to a booker, excluding cancelled
+      expectedAppointments: leads.filter(l => {
+        if (!l.booker_id || !l.date_booked) return false;
+        if (l.status === 'Cancelled' || l.booking_status === 'Cancel') return false;
         return wasAppointmentDateInRange(l);
       }).length,
       cancelledFilter: leads.filter(l => {
@@ -423,6 +443,10 @@ router.get('/leads', auth, async (req, res) => {
       }).length,
       complete: leads.filter(l => {
         const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'Complete' && l.booker_id != null;
+        return match && wasAppointmentDateInRange(l);
+      }).length,
+      review: leads.filter(l => {
+        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'Review' && l.booker_id != null;
         return match && wasAppointmentDateInRange(l);
       }).length,
       // Revenue (for Reports page) - sales with appointment date in range

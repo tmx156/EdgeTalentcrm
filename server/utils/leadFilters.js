@@ -344,8 +344,21 @@ function matchesStatusFilter(lead, statusFilter, options = {}) {
   if (config.type === 'special') {
     const matchesStatus = config.statusMatch.includes(lead.status);
     const matchesBookingStatus = config.bookingStatusMatch?.includes(lead.booking_status);
-    
-    return matchesStatus || matchesBookingStatus;
+
+    if (matchesStatus || matchesBookingStatus) return true;
+
+    // For Attended filter, also check booking_history for past attendance evidence
+    // A lead that has ever arrived should always count as attended
+    if (statusFilter === 'Attended') {
+      const history = parseBookingHistory(lead.booking_history);
+      return history.some(entry => {
+        if (entry.action === 'STATUS_CHANGE' && config.statusMatch.includes(entry.details?.newStatus)) return true;
+        if (entry.action === 'BOOKING_STATUS_UPDATE' && config.bookingStatusMatch?.includes(entry.details?.bookingStatus)) return true;
+        return false;
+      });
+    }
+
+    return false;
   }
   
   // Call status - check custom_fields.call_status

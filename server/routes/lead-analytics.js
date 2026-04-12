@@ -14,24 +14,43 @@ router.get('/sources', auth, adminAuth, async (req, res) => {
       return res.status(400).json({ message: 'startDate and endDate are required' });
     }
 
-    // Fetch leads in date range
-    const { data: leads, error: leadsErr } = await dbManager.client
-      .from('leads')
-      .select('id, lead_source, status, booking_status, ever_booked')
-      .is('deleted_at', null)
-      .gte('created_at', `${startDate}T00:00:00.000Z`)
-      .lte('created_at', `${endDate}T23:59:59.999Z`);
+    // Fetch leads in date range with pagination (Supabase caps at 1000 rows)
+    const leads = [];
+    let from = 0;
+    const batchSize = 1000;
+    while (true) {
+      const { data: batch, error: batchErr } = await dbManager.client
+        .from('leads')
+        .select('id, lead_source, status, booking_status, ever_booked, booking_history, booked_at, date_booked')
+        .is('deleted_at', null)
+        .gte('created_at', `${startDate}T00:00:00.000Z`)
+        .lte('created_at', `${endDate}T23:59:59.999Z`)
+        .range(from, from + batchSize - 1);
 
-    if (leadsErr) throw leadsErr;
+      if (batchErr) throw batchErr;
+      if (!batch || batch.length === 0) break;
+      leads.push(...batch);
+      from += batchSize;
+      if (batch.length < batchSize) break;
+    }
 
-    // Fetch sales with lead source
-    const { data: sales, error: salesErr } = await dbManager.client
-      .from('sales')
-      .select('amount, lead_id')
-      .gte('created_at', `${startDate}T00:00:00.000Z`)
-      .lte('created_at', `${endDate}T23:59:59.999Z`);
+    // Fetch sales with pagination
+    const sales = [];
+    from = 0;
+    while (true) {
+      const { data: batch, error: batchErr } = await dbManager.client
+        .from('sales')
+        .select('amount, lead_id')
+        .gte('created_at', `${startDate}T00:00:00.000Z`)
+        .lte('created_at', `${endDate}T23:59:59.999Z`)
+        .range(from, from + batchSize - 1);
 
-    if (salesErr) throw salesErr;
+      if (batchErr) throw batchErr;
+      if (!batch || batch.length === 0) break;
+      sales.push(...batch);
+      from += batchSize;
+      if (batch.length < batchSize) break;
+    }
 
     // Build a set of lead IDs in our range for filtering sales
     const leadIdSet = new Set((leads || []).map(l => l.id));
@@ -48,6 +67,41 @@ router.get('/sources', auth, adminAuth, async (req, res) => {
       .lte('period_start', endDate)
       .gte('period_end', startDate);
 
+    // Helper: parse booking_history safely
+    const parseHistory = (lead) => {
+      if (!lead.booking_history) return [];
+      try {
+        const history = typeof lead.booking_history === 'string'
+          ? JSON.parse(lead.booking_history)
+          : lead.booking_history;
+        return Array.isArray(history) ? history : [];
+      } catch (e) {
+        return [];
+      }
+    };
+
+    // Statuses that indicate a lead was booked at some point
+    const BOOKED_STATUSES = ['Booked', 'Attended', 'Cancelled', 'No Show'];
+    const wasEverBooked = (lead) => {
+      if (lead.ever_booked || lead.booked_at || lead.date_booked) return true;
+      if (BOOKED_STATUSES.includes(lead.status)) return true;
+      return false;
+    };
+
+    // Check if a lead has EVER been in an attended state
+    const ATTENDED_BOOKING_STATUSES = ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'];
+    const hasEverAttended = (lead) => {
+      if (lead.status === 'Attended') return true;
+      if (ATTENDED_BOOKING_STATUSES.includes(lead.booking_status)) return true;
+      const history = parseHistory(lead);
+      return history.some(entry => {
+        if (entry.action === 'STATUS_CHANGE' && entry.details?.newStatus === 'Attended') return true;
+        if (entry.action === 'BOOKING_STATUS_UPDATE' &&
+            ATTENDED_BOOKING_STATUSES.includes(entry.details?.bookingStatus)) return true;
+        return false;
+      });
+    };
+
     // Aggregate per source
     const sourceMap = {};
 
@@ -59,6 +113,7 @@ router.get('/sources', auth, adminAuth, async (req, res) => {
           totalLeads: 0,
           booked: 0,
           attended: 0,
+          expectedAppointments: 0,
           sales: 0,
           revenue: 0,
           costPerLead: null,
@@ -68,19 +123,25 @@ router.get('/sources', auth, adminAuth, async (req, res) => {
       const s = sourceMap[source];
       s.totalLeads++;
 
-      if (lead.ever_booked || lead.booking_status === 'Booked' || lead.status === 'Booked') {
+      if (wasEverBooked(lead)) {
         s.booked++;
+        // Count expected appointments (booked but not cancelled) for show-up rate
+        if (lead.status !== 'Cancelled' && lead.booking_status !== 'Cancel') {
+          s.expectedAppointments++;
+        }
       }
 
-      const attendedStatuses = ['Arrived', 'Left', 'No Sale', 'Complete', 'Sale'];
-      if (attendedStatuses.includes(lead.booking_status) || attendedStatuses.includes(lead.status)) {
+      if (hasEverAttended(lead)) {
         s.attended++;
       }
     }
 
-    // Add sales data
-    for (const sale of (sales || [])) {
+    // Add sales data (deduplicate: one sale per lead, keep highest amount)
+    const seenSaleLeads = new Set();
+    for (const sale of sales) {
       if (!sale.lead_id || !leadIdSet.has(sale.lead_id)) continue;
+      if (seenSaleLeads.has(sale.lead_id)) continue;
+      seenSaleLeads.add(sale.lead_id);
       const source = leadSourceMap[sale.lead_id] || 'Unknown';
       if (!sourceMap[source]) {
         sourceMap[source] = {
@@ -88,23 +149,27 @@ router.get('/sources', auth, adminAuth, async (req, res) => {
           totalLeads: 0,
           booked: 0,
           attended: 0,
+          expectedAppointments: 0,
           sales: 0,
           revenue: 0,
           costPerLead: null,
-          totalSpend: null
+          totalSpend: 0
         };
       }
       sourceMap[source].sales++;
       sourceMap[source].revenue += parseFloat(sale.amount) || 0;
     }
 
-    // Apply cost data
+    // Apply cost data (sum all overlapping cost entries per source)
     if (!costsErr && costs) {
       for (const cost of costs) {
         const source = cost.lead_source || 'Unknown';
         if (sourceMap[source]) {
           if (cost.cost_per_lead != null) sourceMap[source].costPerLead = parseFloat(cost.cost_per_lead);
-          if (cost.total_spend != null) sourceMap[source].totalSpend = parseFloat(cost.total_spend);
+          if (cost.total_spend != null) {
+            if (sourceMap[source].totalSpend == null) sourceMap[source].totalSpend = 0;
+            sourceMap[source].totalSpend += parseFloat(cost.total_spend);
+          }
         }
       }
     }
@@ -112,7 +177,7 @@ router.get('/sources', auth, adminAuth, async (req, res) => {
     // Calculate rates and ROI
     const sources = Object.values(sourceMap).map(s => {
       const bookingRate = s.totalLeads > 0 ? ((s.booked / s.totalLeads) * 100) : 0;
-      const showUpRate = s.booked > 0 ? ((s.attended / s.booked) * 100) : 0;
+      const showUpRate = s.expectedAppointments > 0 ? ((s.attended / s.expectedAppointments) * 100) : 0;
       const salesConversion = s.attended > 0 ? ((s.sales / s.attended) * 100) : 0;
 
       // Calculate effective spend
@@ -193,8 +258,9 @@ router.get('/costs', auth, adminAuth, async (req, res) => {
       .select('*')
       .order('period_start', { ascending: false });
 
-    if (startDate) query = query.gte('period_start', startDate);
-    if (endDate) query = query.lte('period_end', endDate);
+    // Use overlap logic (same as /sources): period_start <= endDate AND period_end >= startDate
+    if (endDate) query = query.lte('period_start', endDate);
+    if (startDate) query = query.gte('period_end', startDate);
 
     const { data, error } = await query;
     if (error) throw error;

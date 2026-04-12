@@ -21,6 +21,7 @@ const COLORS = {
   left: '#6366F1',
   noSale: '#F97316',
   complete: '#EC4899',
+  review: '#14B8A6',
   noShow: '#EF4444',
   cancelled: '#6B7280',
   noAnswer: '#F59E0B',
@@ -140,6 +141,7 @@ const Reports = () => {
       const left = counts.leftBuilding || 0;
       const noSale = counts.noSale || 0;
       const complete = counts.complete || 0;
+      const review = counts.review || 0;
 
       // Other statuses
       const noShows = counts.noShow || 0;
@@ -152,12 +154,13 @@ const Reports = () => {
 
       // Calculate rates
       const bookingRate = assigned > 0 ? Math.round((booked / assigned) * 100) : 0;
-      const showUpRate = booked > 0 ? Math.round((attended / booked) * 100) : 0;
+      const expectedAppointments = counts.expectedAppointments || 0;
+      const showUpRate = expectedAppointments > 0 ? Math.round((attended / expectedAppointments) * 100) : 0;
       const salesConversion = attended > 0 ? Math.round((sales / attended) * 100) : 0;
 
       const calculated = {
         assigned, booked, attended, sales, revenue,
-        arrived, left, noSale, complete,
+        arrived, left, noSale, complete, review,
         noShows, cancelled,
         noAnswer, noAnswerX2, noAnswerX3,
         bookingRate, showUpRate, salesConversion
@@ -202,6 +205,7 @@ const Reports = () => {
     { name: 'Left', value: stats.left, color: COLORS.left },
     { name: 'No Sale', value: stats.noSale, color: COLORS.noSale },
     { name: 'Complete', value: stats.complete, color: COLORS.complete },
+    { name: 'Review', value: stats.review, color: COLORS.review },
     { name: 'No Show', value: stats.noShows, color: COLORS.noShow },
   ].filter(d => d.value > 0);
 

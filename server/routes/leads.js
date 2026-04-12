@@ -14,11 +14,12 @@ const { sendSMS, sendAppointmentReminder, sendStatusUpdate, sendCustomMessage } 
 const emailAccountService = require('../utils/emailAccountService');
 const { v4: uuidv4 } = require('uuid'); // Added for UUID generation
 const { generateBookingCode, getBookingUrl } = require('../utils/bookingCodeGenerator');
-const { 
-  filterLeads, 
+const {
+  filterLeads,
   getSqlDateColumn,
   matchesStatusFilter,
   matchesDateFilter,
+  parseBookingHistory,
   STATUS_FILTER_CONFIG
 } = require('../utils/leadFilters');
 
@@ -829,8 +830,16 @@ router.get('/', auth, async (req, res) => {
       // If no date range specified, just check current status
       if (!startDate || !endDate) {
         if (targetStatus === 'Attended') {
-          return lead.status === 'Attended' || 
-            (lead.status === 'Booked' && ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'].includes(lead.booking_status));
+          const ATTENDED_BOOKING_STATUSES = ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'];
+          if (lead.status === 'Attended') return true;
+          if (lead.status === 'Booked' && ATTENDED_BOOKING_STATUSES.includes(lead.booking_status)) return true;
+          // Check booking_history for past attendance evidence
+          const history = parseHistory(lead);
+          return history.some(entry => {
+            if (entry.action === 'STATUS_CHANGE' && entry.details?.newStatus === 'Attended') return true;
+            if (entry.action === 'BOOKING_STATUS_UPDATE' && ATTENDED_BOOKING_STATUSES.includes(entry.details?.bookingStatus)) return true;
+            return false;
+          });
         } else if (targetStatus === 'Cancelled') {
           return lead.status === 'Cancelled' || 
             (lead.status === 'Booked' && lead.booking_status === 'Cancel');
@@ -940,10 +949,20 @@ router.get('/', auth, async (req, res) => {
         let matchesStatus = false;
 
         if (status === 'Attended') {
+          const ATTENDED_BOOKING_STATUSES = ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'];
           const isAttended = lead.status === 'Attended';
           const isBookedButAttended = lead.status === 'Booked' &&
-            ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'].includes(lead.booking_status);
-          matchesStatus = isAttended || isBookedButAttended;
+            ATTENDED_BOOKING_STATUSES.includes(lead.booking_status);
+          // Also check booking_history for past attendance evidence
+          const wasEverAttended = !isAttended && !isBookedButAttended && (() => {
+            const history = parseBookingHistory(lead.booking_history);
+            return history.some(entry => {
+              if (entry.action === 'STATUS_CHANGE' && entry.details?.newStatus === 'Attended') return true;
+              if (entry.action === 'BOOKING_STATUS_UPDATE' && ATTENDED_BOOKING_STATUSES.includes(entry.details?.bookingStatus)) return true;
+              return false;
+            });
+          })();
+          matchesStatus = isAttended || isBookedButAttended || wasEverAttended;
           // Attended filter also requires booker_id (to match stats API attendedFilter)
           if (matchesStatus && !lead.booker_id) return false;
         } else if (status === 'Cancelled') {

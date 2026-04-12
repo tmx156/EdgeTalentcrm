@@ -76,9 +76,17 @@ const LeadAnalysis = () => {
   };
 
   const sortedSources = sourceData?.sources ? [...sourceData.sources].sort((a, b) => {
-    const aVal = a[sortConfig.key] ?? -Infinity;
-    const bVal = b[sortConfig.key] ?? -Infinity;
-    return sortConfig.direction === 'desc' ? bVal - aVal : aVal - bVal;
+    const aVal = a[sortConfig.key];
+    const bVal = b[sortConfig.key];
+    // Handle string comparison (e.g. source name)
+    if (typeof aVal === 'string' || typeof bVal === 'string') {
+      const aStr = (aVal || '').toLowerCase();
+      const bStr = (bVal || '').toLowerCase();
+      return sortConfig.direction === 'desc' ? bStr.localeCompare(aStr) : aStr.localeCompare(bStr);
+    }
+    const aNum = aVal ?? -Infinity;
+    const bNum = bVal ?? -Infinity;
+    return sortConfig.direction === 'desc' ? bNum - aNum : aNum - bNum;
   }) : [];
 
   const openCostModal = (source = '') => {
@@ -160,13 +168,14 @@ const LeadAnalysis = () => {
     </th>
   );
 
-  // Prepare chart data
+  // Prepare chart data — values must be mutually exclusive for stacked bars
+  // Sales ⊂ Attended ⊂ Booked ⊂ Total, so break into non-overlapping segments
   const barChartData = sortedSources.filter(s => s.source !== 'Unknown').slice(0, 10).map(s => ({
     name: s.source?.length > 15 ? s.source.substring(0, 15) + '...' : s.source,
-    Booked: s.booked,
-    Attended: s.attended,
     Sales: s.sales,
-    'Other Leads': Math.max(0, s.totalLeads - s.booked)
+    'Attended (no sale)': Math.max(0, s.attended - s.sales),
+    'Booked (not attended)': Math.max(0, s.booked - s.attended),
+    'Not Booked': Math.max(0, s.totalLeads - s.booked)
   }));
 
   const pieChartData = sortedSources.filter(s => s.revenue > 0).map((s, i) => ({
@@ -349,9 +358,9 @@ const LeadAnalysis = () => {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="Other Leads" stackId="a" fill="#CBD5E1" />
-                      <Bar dataKey="Booked" stackId="a" fill="#3B82F6" />
-                      <Bar dataKey="Attended" stackId="a" fill="#10B981" />
+                      <Bar dataKey="Not Booked" stackId="a" fill="#CBD5E1" />
+                      <Bar dataKey="Booked (not attended)" stackId="a" fill="#3B82F6" />
+                      <Bar dataKey="Attended (no sale)" stackId="a" fill="#10B981" />
                       <Bar dataKey="Sales" stackId="a" fill="#F59E0B" />
                     </BarChart>
                   </ResponsiveContainer>
