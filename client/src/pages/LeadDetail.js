@@ -8,6 +8,7 @@ import LazyImage from '../components/LazyImage';
 import { getOptimizedImageUrl, preloadImages, clearImageQueue, loadImageWithPriority } from '../utils/imageUtils';
 import { getCurrentUKTime } from '../utils/timeUtils';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 // import SalesApeButton from '../components/SalesApeButton'; // DISABLED
 // import SalesApeStatus from '../components/SalesApeStatus'; // DISABLED
 import ImageGalleryModal from '../components/ImageGalleryModal';
@@ -20,6 +21,7 @@ const LeadDetail = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { socket } = useSocket();
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -577,6 +579,23 @@ const LeadDetail = () => {
       fetchPhotos();
     }
   }, [id, fetchLead, fetchTemplates, fetchSale, fetchBookingHistory, fetchUpcomingCallbacks, fetchPhotos]);
+
+  // Listen for real-time card_saved events
+  useEffect(() => {
+    if (!socket || !id) return;
+    const handleCardSaved = (data) => {
+      if (data.leadId === id) {
+        // Update lead state with card info without full refetch
+        setLead(prev => prev ? {
+          ...prev,
+          stripe_payment_method_id: data.paymentMethodId,
+          stripe_customer_id: data.stripeCustomerId
+        } : prev);
+      }
+    };
+    socket.on('card_saved', handleCardSaved);
+    return () => socket.off('card_saved', handleCardSaved);
+  }, [socket, id]);
 
   // Handle lead list updates (navigation arrows)
   useEffect(() => {
@@ -2840,6 +2859,33 @@ const LeadDetail = () => {
                 />
               )}
               
+              {/* Card On File Status */}
+              {lead.stripe_payment_method_id ? (
+                <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-3">
+                  <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-emerald-700">Card On File</p>
+                    <p className="text-[10px] text-emerald-600">Booking secured with card hold</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3">
+                  <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-amber-700">No Card On File</p>
+                    <p className="text-[10px] text-amber-600">Send booking link to capture card</p>
+                  </div>
+                </div>
+              )}
+
               {/* Send Booking Link Buttons */}
               {!editing && (lead.phone || lead.email) && (
                 <div className="mt-4 space-y-2">

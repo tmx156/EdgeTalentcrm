@@ -96,6 +96,68 @@ router.get('/lead/:identifier', async (req, res) => {
 });
 
 /**
+ * @route   POST /api/public/booking/save-card/:identifier
+ * @desc    Save Stripe card details to a lead (no booking, just card capture)
+ * @access  Public
+ */
+router.post('/save-card/:identifier', async (req, res) => {
+  try {
+    const { identifier } = req.params;
+    const { paymentMethodId, stripeCustomerId, name, email } = req.body;
+
+    if (!paymentMethodId || !stripeCustomerId) {
+      return res.status(400).json({ success: false, message: 'Payment method and customer ID are required' });
+    }
+
+    const { lead, error: leadError } = await findLeadByIdentifier(identifier);
+    if (leadError || !lead) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
+    const updateData = {
+      stripe_payment_method_id: paymentMethodId,
+      stripe_customer_id: stripeCustomerId,
+      updated_at: new Date().toISOString()
+    };
+
+    // Update name/email if changed
+    if (name && name !== lead.name) updateData.name = name;
+    if (email && email !== lead.email) updateData.email = email;
+
+    const { error: updateError } = await supabase
+      .from('leads')
+      .update(updateData)
+      .eq('id', lead.id);
+
+    if (updateError) {
+      console.error('Error saving card to lead:', updateError);
+      return res.status(500).json({ success: false, message: 'Failed to save card details' });
+    }
+
+    console.log(`💳 Card saved for ${lead.name} (${lead.id}): PM=${paymentMethodId}`);
+
+    // Emit real-time event so LeadDetail page updates instantly
+    if (global.io) {
+      global.io.emit('card_saved', {
+        leadId: lead.id,
+        paymentMethodId,
+        stripeCustomerId,
+        timestamp: new Date().toISOString()
+      });
+      global.io.emit('lead_updated', {
+        leadId: lead.id,
+        changes: { stripe_payment_method_id: paymentMethodId, stripe_customer_id: stripeCustomerId }
+      });
+    }
+
+    res.json({ success: true, message: 'Card saved successfully', leadId: lead.id });
+  } catch (error) {
+    console.error('Error saving card:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * @route   GET /api/public/booking/availability
  * @desc    Get available booking slots (public, no auth required)
  * @access  Public

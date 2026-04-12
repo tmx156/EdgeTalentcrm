@@ -1,14 +1,14 @@
 {
-  "version": "1.0.272",
-  "commitHash": "cc81fb0",
-  "fullCommitHash": "cc81fb023e09a722cdd77a80155b180817417368",
-  "commitMessage": "Fix health check authUrl mapping for septenary, add missing tertiary to poller",
-  "commitDate": "2026-04-07 04:15:13 +0100",
+  "version": "1.0.275",
+  "commitHash": "d5ff719",
+  "fullCommitHash": "d5ff71967dbddeaa1758581feaa564d481c12b9b",
+  "commitMessage": "fix(stats): count booked leads after cancel clears date_booked",
+  "commitDate": "2026-04-10 20:23:02 +0100",
   "author": "Tin",
   "branch": "main",
-  "commitCount": 272,
-  "buildTimestamp": "2026-04-07T03:16:01.177Z",
-  "buildId": "cc81fb0-1775531761177",
+  "commitCount": 275,
+  "buildTimestamp": "2026-04-12T05:40:10.255Z",
+  "buildId": "d5ff719-1775972410255",
   "releaseName": "Spring Update",
-  "seenKey": "main-cc81fb0"
+  "seenKey": "main-d5ff719"
 }
