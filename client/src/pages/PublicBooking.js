@@ -338,7 +338,7 @@ const PublicBooking = () => {
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
           className="text-center mb-6 sm:mb-12 pt-2 sm:pt-8">
           <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extralight text-[#1a1a1a] tracking-tight mb-2 sm:mb-3">
-            Secure Your Booking
+            Secure Your Photo Assessment
           </h1>
           <p className="text-[#1a1a1a]/50 text-sm sm:text-lg">Save your card to confirm your appointment</p>
         </motion.div>
@@ -458,10 +458,10 @@ const PublicBooking = () => {
                 </motion.div>
 
                 <h2 className="text-2xl sm:text-3xl font-light text-[#1a1a1a] text-center mb-2 sm:mb-3">
-                  Secure Your Booking
+                  Secure Your Photo Assessment
                 </h2>
-                <p className="text-center text-[#1a1a1a]/50 text-sm sm:text-base mb-6 sm:mb-8">
-                  We require a card on file to secure your appointment. <strong>You will not be charged.</strong>
+                <p className="text-center text-[#1a1a1a]/60 text-sm sm:text-base mb-6 sm:mb-8">
+                  We require a card on file to secure your Photo Assessment. <strong className="text-[#6B46C1] font-bold">You will not be charged.</strong>
                 </p>
 
                 {/* Trust badges */}
