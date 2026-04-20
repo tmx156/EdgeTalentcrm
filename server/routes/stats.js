@@ -78,6 +78,7 @@ router.get('/leads-public', async (req, res) => {
 // @access  Private
 router.get('/leads', auth, async (req, res) => {
   try {
+    const startTime = Date.now();
     // Accept generic date_start/date_end for per-status date logic
     // Also accept legacy params for backward compatibility
     const { created_at_start, created_at_end, assigned_at_start, assigned_at_end, date_start, date_end, booker } = req.query;
@@ -361,100 +362,100 @@ router.get('/leads', auth, async (req, res) => {
       });
     };
 
-    // --- Count leads per status with per-status date logic ---
+    // --- Single-pass counting for performance (was 30+ separate .filter() calls) ---
     const result = {
-      // total = when date filter active: leads created in range (matches "All" tab list); otherwise all leads
-      total: hasDateFilter ? leads.filter(l => wasCreatedInRange(l)).length : leads.length,
-      new: leads.filter(l => l.status === 'New' && wasCreatedInRange(l)).length,
-      // OPTION B: assigned shows leads by assigned_at date (regardless of current status)
-      assigned: leads.filter(l => {
-        // Check if lead was assigned in the date range
-        return wasAssignedInRange(l);
-      }).length,
-      // booked uses booked_at date - counts ALL leads booked in range (including cancelled)
-      booked: leads.filter(l => wasBookedInRange(l)).length,
-      // attended uses date_booked (appointment date = when they attended)
-      // A lead that has EVER arrived should always count as attended
-      attended: leads.filter(l => hasEverAttended(l) && wasAppointmentDateInRange(l)).length,
-      // cancelled uses original diary date from booking_history CANCELLATION entry
-      cancelled: leads.filter(l => l.status === 'Cancelled' && wasCancelledDiaryDateInRange(l)).length,
-      attendedFilter: leads.filter(l => {
-        if (!hasEverAttended(l) || l.booker_id == null) return false;
-        return wasAppointmentDateInRange(l);
-      }).length,
-      // Expected appointments on the diary (for show-up rate denominator)
-      // Leads with date_booked in range, assigned to a booker, excluding cancelled
-      expectedAppointments: leads.filter(l => {
-        if (!l.booker_id || !l.date_booked) return false;
-        if (l.status === 'Cancelled' || l.booking_status === 'Cancel') return false;
-        return wasAppointmentDateInRange(l);
-      }).length,
-      cancelledFilter: leads.filter(l => {
-        const isCancelled = l.status === 'Cancelled';
-        const isBookedButCancelled = l.status === 'Booked' && l.booking_status === 'Cancel';
-        if (!(isCancelled || isBookedButCancelled) || l.booker_id == null) return false;
-        return wasCancelledDiaryDateInRange(l);
-      }).length,
-      noShow: leads.filter(l => {
-        const isNoShow = l.status === 'No Show';
-        const isBookedButNoShow = l.status === 'Booked' && l.booking_status === 'No Show';
-        if (!(isNoShow || isBookedButNoShow) || l.booker_id == null) return false;
-        return wasBookedInRange(l);
-      }).length,
-      // rejected uses assigned_at date
-      rejected: leads.filter(l => l.status === 'Rejected' && wasAssignedInRange(l)).length,
-      // Legacy status counts (assigned_at for backward compat)
-      callback: leads.filter(l => l.status === 'Call Back' && wasAssignedInRange(l)).length,
-      noAnswer: leads.filter(l => l.status === 'No Answer' && wasAssignedInRange(l)).length,
-      notInterested: leads.filter(l => l.status === 'Not Interested' && wasAssignedInRange(l)).length,
-      // call_status-based counts use assigned_at date
-      noAnswerCall: leads.filter(l => getCallStatus(l) === 'No answer' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      noAnswerX2: leads.filter(l => getCallStatus(l) === 'No Answer x2' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      noAnswerX3: leads.filter(l => getCallStatus(l) === 'No Answer x3' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      leftMessage: leads.filter(l => getCallStatus(l) === 'Left Message' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      notInterestedCall: leads.filter(l => getCallStatus(l) === 'Not interested' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      callBack: leads.filter(l => getCallStatus(l) === 'Call back' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      wrongNumber: leads.filter(l => getCallStatus(l) === 'Wrong number' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      // sales uses date_booked (appointment date on calendar)
-      salesConverted: (() => {
-        const salesLeads = leads.filter(l => l.has_sale > 0 && l.booker_id != null && wasAppointmentDateInRange(l));
-        if (hasDateFilter) {
-          console.log(`🔍 Sales count debug: ${salesLeads.length} leads with sales in date range ${dateStart} to ${dateEnd}`);
-          salesLeads.slice(0, 3).forEach(l => {
-            console.log(`   Lead ${l.id?.slice(-8)}: date_booked=${l.date_booked}, has_sale=${l.has_sale}`);
-          });
-        }
-        return salesLeads.length;
-      })(),
-      notQualified: leads.filter(l => getCallStatus(l) === 'Not Qualified' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      inProgress: leads.filter(l => getCallStatus(l) === 'In Progress' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      noPhoto: leads.filter(l => (getCallStatus(l) === 'No photo' || l.status === 'No photo') && hasNotProgressed(l) && wasAssignedInRange(l)).length,
-      // Attendance sub-breakdown (for Reports page) - uses date_booked like attendedFilter
-      arrived: leads.filter(l => {
-        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'Arrived' && l.booker_id != null;
-        return match && wasAppointmentDateInRange(l);
-      }).length,
-      leftBuilding: leads.filter(l => {
-        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'Left' && l.booker_id != null;
-        return match && wasAppointmentDateInRange(l);
-      }).length,
-      noSale: leads.filter(l => {
-        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'No Sale' && l.booker_id != null;
-        return match && wasAppointmentDateInRange(l);
-      }).length,
-      complete: leads.filter(l => {
-        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'Complete' && l.booker_id != null;
-        return match && wasAppointmentDateInRange(l);
-      }).length,
-      review: leads.filter(l => {
-        const match = (l.status === 'Attended' || l.status === 'Booked') && l.booking_status === 'Review' && l.booker_id != null;
-        return match && wasAppointmentDateInRange(l);
-      }).length,
-      // Revenue (for Reports page) - sales with appointment date in range
-      revenue: 0 // sale_amount column doesn't exist on leads table yet
+      total: 0, new: 0, assigned: 0, booked: 0, attended: 0, cancelled: 0,
+      attendedFilter: 0, expectedAppointments: 0, cancelledFilter: 0, noShow: 0,
+      rejected: 0, callback: 0, noAnswer: 0, notInterested: 0,
+      noAnswerCall: 0, noAnswerX2: 0, noAnswerX3: 0, leftMessage: 0,
+      notInterestedCall: 0, callBack: 0, wrongNumber: 0, salesConverted: 0,
+      notQualified: 0, inProgress: 0, noPhoto: 0,
+      arrived: 0, leftBuilding: 0, noSale: 0, complete: 0, review: 0,
+      revenue: 0
     };
 
-    console.log(`✅ Lead counts: Total=${result.total}, New=${result.new}, Booked=${result.booked}, Attended=${result.attendedFilter}, Sales=${result.salesConverted}, Cancelled=${result.cancelledFilter}`);
+    for (let i = 0; i < leads.length; i++) {
+      const l = leads[i];
+      const status = l.status;
+      const callStatus = getCallStatus(l);
+      const notProgressed = hasNotProgressed(l);
+      const assignedInRange = wasAssignedInRange(l);
+      const appointmentInRange = wasAppointmentDateInRange(l);
+
+      // total
+      if (hasDateFilter) { if (wasCreatedInRange(l)) result.total++; }
+      else result.total++;
+
+      // Simple status counts
+      if (status === 'New' && wasCreatedInRange(l)) result.new++;
+      if (assignedInRange) result.assigned++;
+      if (wasBookedInRange(l)) result.booked++;
+      if (status === 'Rejected' && assignedInRange) result.rejected++;
+
+      // Legacy status counts
+      if (status === 'Call Back' && assignedInRange) result.callback++;
+      if (status === 'No Answer' && assignedInRange) result.noAnswer++;
+      if (status === 'Not Interested' && assignedInRange) result.notInterested++;
+
+      // Attended/cancelled/noShow (complex checks)
+      const everAttended = hasEverAttended(l);
+      if (everAttended && appointmentInRange) result.attended++;
+      if (status === 'Cancelled' && wasCancelledDiaryDateInRange(l)) result.cancelled++;
+
+      if (everAttended && l.booker_id != null && appointmentInRange) result.attendedFilter++;
+
+      if (l.booker_id && l.date_booked && status !== 'Cancelled' && l.booking_status !== 'Cancel' && appointmentInRange) {
+        result.expectedAppointments++;
+      }
+
+      const isCancelled = status === 'Cancelled';
+      const isBookedButCancelled = status === 'Booked' && l.booking_status === 'Cancel';
+      if ((isCancelled || isBookedButCancelled) && l.booker_id != null && wasCancelledDiaryDateInRange(l)) {
+        result.cancelledFilter++;
+      }
+
+      const isNoShow = status === 'No Show';
+      const isBookedButNoShow = status === 'Booked' && l.booking_status === 'No Show';
+      if ((isNoShow || isBookedButNoShow) && l.booker_id != null && wasBookedInRange(l)) {
+        result.noShow++;
+      }
+
+      // Call status counts (single check per lead)
+      if (notProgressed && assignedInRange && callStatus) {
+        switch (callStatus) {
+          case 'No answer': result.noAnswerCall++; break;
+          case 'No Answer x2': result.noAnswerX2++; break;
+          case 'No Answer x3': result.noAnswerX3++; break;
+          case 'Left Message': result.leftMessage++; break;
+          case 'Not interested': result.notInterestedCall++; break;
+          case 'Call back': result.callBack++; break;
+          case 'Wrong number': result.wrongNumber++; break;
+          case 'Not Qualified': result.notQualified++; break;
+          case 'In Progress': result.inProgress++; break;
+          case 'No photo': result.noPhoto++; break;
+        }
+      }
+      // noPhoto also checks status column
+      if (status === 'No photo' && notProgressed && assignedInRange && callStatus !== 'No photo') {
+        result.noPhoto++;
+      }
+
+      // Sales
+      if (l.has_sale > 0 && l.booker_id != null && appointmentInRange) result.salesConverted++;
+
+      // Attendance sub-breakdown
+      if ((status === 'Attended' || status === 'Booked') && l.booker_id != null && appointmentInRange) {
+        switch (l.booking_status) {
+          case 'Arrived': result.arrived++; break;
+          case 'Left': result.leftBuilding++; break;
+          case 'No Sale': result.noSale++; break;
+          case 'Complete': result.complete++; break;
+          case 'Review': result.review++; break;
+        }
+      }
+    }
+
+    console.log(`✅ Lead counts (${Date.now() - startTime}ms, ${leads.length} leads): Total=${result.total}, New=${result.new}, Booked=${result.booked}, Attended=${result.attendedFilter}, Sales=${result.salesConverted}, Cancelled=${result.cancelledFilter}`);
 
     res.json(result);
   } catch (error) {

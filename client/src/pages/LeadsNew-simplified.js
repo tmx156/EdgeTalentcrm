@@ -85,7 +85,7 @@ const LeadsNewSimplified = () => {
     total: 0, assigned: 0, booked: 0, attendedFilter: 0, cancelledFilter: 0,
     noShow: 0, noAnswerCall: 0, noAnswerX2: 0, noAnswerX3: 0,
     leftMessage: 0, notInterestedCall: 0, callBack: 0, wrongNumber: 0,
-    salesConverted: 0, notQualified: 0, rejected: 0
+    salesConverted: 0, notQualified: 0, inProgress: 0, rejected: 0
   });
 
   // Filters

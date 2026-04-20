@@ -1080,7 +1080,8 @@ const LeadDetail = () => {
       { value: 'Call back', label: 'Call back', trigger: 'callback' },
       { value: 'Wrong number', label: 'Wrong number', trigger: 'close' },
       { value: 'Sales/converted - purchased', label: 'Sales/converted - purchased', trigger: 'callback' },
-      { value: 'Not Qualified', label: 'Not Qualified', trigger: 'close' }
+      { value: 'Not Qualified', label: 'Not Qualified', trigger: 'close' },
+      { value: 'In Progress', label: 'In Progress', trigger: null }
     ];
 
     // Dynamically build status options - add x2/x3 if "No answer" was selected before
@@ -1186,7 +1187,8 @@ const LeadDetail = () => {
             'Call back': 'Call back',
             'Wrong number': 'Wrong Number',
             'Sales/converted - purchased': 'Sales/converted - purchased',
-            'Not Qualified': 'Not Qualified'
+            'Not Qualified': 'Not Qualified',
+            'In Progress': 'In Progress'
           };
 
           const filterStatus = statusToFilterMap[status] || 'all';
@@ -1277,6 +1279,8 @@ const LeadDetail = () => {
         case 'Not Qualified':
         case 'Wrong number':
           return 'bg-red-100 text-red-800 border-red-300';
+        case 'In Progress':
+          return 'bg-orange-100 text-orange-800 border-orange-300';
         default:
           return 'bg-gray-100 text-gray-800 border-gray-300';
       }

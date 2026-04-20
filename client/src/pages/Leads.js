@@ -487,6 +487,12 @@ const Leads = () => {
     }
   }, [dateFilter, customDateStart, customDateEnd, getDateRange]);
 
+  const fetchLeadCountsTimerRef = useRef(null);
+  const debouncedFetchLeadCounts = useCallback(() => {
+    if (fetchLeadCountsTimerRef.current) clearTimeout(fetchLeadCountsTimerRef.current);
+    fetchLeadCountsTimerRef.current = setTimeout(() => fetchLeadCounts(), 500);
+  }, [fetchLeadCounts]);
+
   // Fetch leads when filters or pagination change
   useEffect(() => {
     const fetchData = async () => {
@@ -690,9 +696,9 @@ const Leads = () => {
             setLeads(prevLeads => [newLead, ...prevLeads]);
           }
           // Refresh counts whenever a lead is created
-          fetchLeadCounts();
+          debouncedFetchLeadCounts();
           break;
-          
+
         case 'LEAD_UPDATED':
           // Update existing lead
           const updatedLead = update.data.lead;
@@ -704,9 +710,9 @@ const Leads = () => {
               ).filter(lead => shouldIncludeLead(lead))
           );
           // Refresh counts whenever a lead is updated
-          fetchLeadCounts();
+          debouncedFetchLeadCounts();
           break;
-          
+
         case 'LEAD_ASSIGNED':
           // Update lead assignment
           const assignedLead = update.data.lead;
@@ -718,28 +724,28 @@ const Leads = () => {
               )
           );
           // Refresh counts whenever a lead is assigned
-          fetchLeadCounts();
+          debouncedFetchLeadCounts();
           break;
-          
+
         case 'LEAD_DELETED':
           // Remove deleted lead
           const deletedLeadId = update.data.leadId;
-          setLeads(prevLeads => 
+          setLeads(prevLeads =>
             prevLeads.filter(lead => lead.id !== deletedLeadId)
           );
           // Refresh counts whenever a lead is deleted
-          fetchLeadCounts();
+          debouncedFetchLeadCounts();
           break;
-          
+
         default:
           // For any other updates, refresh the list and counts
           triggerRefresh();
-          fetchLeadCounts();
+          debouncedFetchLeadCounts();
       }
     });
 
     return unsubscribe;
-  }, [subscribeToLeadUpdates, statusFilter, searchTerm, fetchLeadCounts]);
+  }, [subscribeToLeadUpdates, statusFilter, searchTerm, debouncedFetchLeadCounts]);
 
 
   const fetchSalesTeam = async () => {

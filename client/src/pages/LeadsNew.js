@@ -39,6 +39,7 @@ const LeadsNew = () => {
     wrongNumber: 0,
     salesConverted: 0,
     notQualified: 0,
+    inProgress: 0,
     attendedFilter: 0,
     cancelledFilter: 0,
     noShow: 0
@@ -371,8 +372,9 @@ const LeadsNew = () => {
     { value: 'Wrong number', label: '📞 Wrong number', count: leadCounts.wrongNumber },
     { value: 'Sales', label: '💰 Sales', count: leadCounts.salesConverted },
     { value: 'Not Qualified', label: '❌ Not Qualified', count: leadCounts.notQualified },
+    { value: 'In Progress', label: '🔄 In Progress', count: leadCounts.inProgress },
     ...(user?.role === 'admin' ? [{ value: 'Rejected', label: 'Rejected', count: leadCounts.rejected }] : [])
-  ], [leadCounts.total, leadCounts.new, leadCounts.assigned, leadCounts.booked, leadCounts.attendedFilter, leadCounts.cancelledFilter, leadCounts.noShow, leadCounts.noAnswerCall, leadCounts.noAnswerX2, leadCounts.noAnswerX3, leadCounts.leftMessage, leadCounts.notInterestedCall, leadCounts.callBack, leadCounts.wrongNumber, leadCounts.salesConverted, leadCounts.notQualified, leadCounts.rejected, user?.role]);
+  ], [leadCounts.total, leadCounts.new, leadCounts.assigned, leadCounts.booked, leadCounts.attendedFilter, leadCounts.cancelledFilter, leadCounts.noShow, leadCounts.noAnswerCall, leadCounts.noAnswerX2, leadCounts.noAnswerX3, leadCounts.leftMessage, leadCounts.notInterestedCall, leadCounts.callBack, leadCounts.wrongNumber, leadCounts.salesConverted, leadCounts.notQualified, leadCounts.inProgress, leadCounts.rejected, user?.role]);
 
   // Handle navigation state from sidebar
   useEffect(() => {

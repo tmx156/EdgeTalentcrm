@@ -789,6 +789,7 @@ const Layout = ({ children }) => {
     { name: 'Wrong number', status: 'Wrong number', icon: '📞', color: 'text-teal-600' },
     { name: 'Sales/converted - purchased', status: 'Sales/converted - purchased', icon: '💰', color: 'text-green-600' },
     { name: 'Not Qualified', status: 'Not Qualified', icon: '❌', color: 'text-red-600' },
+    { name: 'In Progress', status: 'In Progress', icon: '🔄', color: 'text-orange-600' },
     { name: 'Rejected', status: 'Rejected', icon: '🚫', color: 'text-red-600' },
   ];
 

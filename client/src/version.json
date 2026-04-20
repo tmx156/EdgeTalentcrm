@@ -1,14 +1,14 @@
 {
-  "version": "1.0.278",
-  "commitHash": "cde4327",
-  "fullCommitHash": "cde4327d7ff0b6fdecf162848fb8d476ace6ce1e",
-  "commitMessage": "Update booking link copy to 'Secure Your Photo Assessment'",
-  "commitDate": "2026-04-13 04:43:41 +0100",
+  "version": "1.0.279",
+  "commitHash": "63db172",
+  "fullCommitHash": "63db172289526c46c7257ea1932a20964fc2bcd0",
+  "commitMessage": "Add 4th diary slot and 'In Progress' call status",
+  "commitDate": "2026-04-20 06:17:45 +0100",
   "author": "Tin",
   "branch": "main",
-  "commitCount": 278,
-  "buildTimestamp": "2026-04-20T05:05:12.279Z",
-  "buildId": "cde4327-1776661512280",
+  "commitCount": 279,
+  "buildTimestamp": "2026-04-20T05:42:53.275Z",
+  "buildId": "63db172-1776663773276",
   "releaseName": "Spring Update",
-  "seenKey": "main-cde4327"
+  "seenKey": "main-63db172"
 }

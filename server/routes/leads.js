@@ -490,7 +490,8 @@ router.get('/', auth, async (req, res) => {
       'Call back': 'Call back',  // Database has "Call back" (two words)
       'Wrong number': 'Wrong number',  // Database has "Wrong number" (lowercase 'n')
       'Sales/converted - purchased': 'Sales/converted - purchased',
-      'Not Qualified': 'Not Qualified'
+      'Not Qualified': 'Not Qualified',
+      'In Progress': 'In Progress'
     };
     const isCallStatusFilter = status && status !== 'all' && status.toLowerCase() !== 'sales' && statusToCallStatusMap[status];
 
