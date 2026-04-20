@@ -5,20 +5,20 @@ import { toLocalDateStr } from '../utils/timeUtils';
 // Time slots configuration matching updated schedule
 // 🔵 = Male, 🩷 = Female, 💛🔵 = Child/Male (striped), ⚫ = Blank/Unavailable
 const TIME_SLOTS = [
-  { time: '10:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷' },
-  { time: '10:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
-  { time: '11:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
-  { time: '11:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷' },
-  { time: '12:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵' },
-  { time: '12:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷' },
-  { time: '13:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵' },
-  { time: '13:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
-  { time: '14:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
-  { time: '14:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
-  { time: '15:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷' },
-  { time: '15:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵' },
-  { time: '16:00', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵' },
-  { time: '16:30', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵' }
+  { time: '10:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '10:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '11:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '11:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '12:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '12:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '13:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '13:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '14:00', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '14:30', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '15:00', slot1Type: 'female', slot1Emoji: '🩷', slot2Type: 'female', slot2Emoji: '🩷', slot3Type: 'female', slot3Emoji: '🩷', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '15:30', slot1Type: 'child-male', slot1Emoji: '💛🔵', slot2Type: 'child-male', slot2Emoji: '💛🔵', slot3Type: 'child-male', slot3Emoji: '💛🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '16:00', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' },
+  { time: '16:30', slot1Type: 'male', slot1Emoji: '🔵', slot2Type: 'male', slot2Emoji: '🔵', slot3Type: 'male', slot3Emoji: '🔵', slot4Type: 'child-male', slot4Emoji: '💛🔵' }
 ];
 
 const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, onEventClick }) => {
@@ -201,7 +201,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
 
       {/* Compact Weekly Grid */}
       <div className="overflow-x-auto">
-        <div className="min-w-[1200px]">
+        <div className="min-w-[1400px]">
           {/* Day Headers */}
           <div className="grid grid-cols-[100px_repeat(7,1fr)] gap-0 border border-gray-300 rounded-lg overflow-hidden bg-white">
             {/* Top-left corner cell */}
@@ -251,6 +251,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                         <span>S1</span>
                         <span>S2</span>
                         <span>S3</span>
+                        <span>S4</span>
                       </>
                     )}
                   </div>
@@ -273,12 +274,15 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                   const slot1Event = getEventForDayTimeSlot(day, slotConfig.time, 1);
                   const slot2Event = getEventForDayTimeSlot(day, slotConfig.time, 2);
                   const slot3Event = getEventForDayTimeSlot(day, slotConfig.time, 3);
+                  const slot4Event = getEventForDayTimeSlot(day, slotConfig.time, 4);
                   const slot1All = getEventsForDayTimeSlot(day, slotConfig.time, 1);
                   const slot2All = getEventsForDayTimeSlot(day, slotConfig.time, 2);
                   const slot3All = getEventsForDayTimeSlot(day, slotConfig.time, 3);
+                  const slot4All = getEventsForDayTimeSlot(day, slotConfig.time, 4);
                   const slot1Overflow = slot1All.length > 1 ? slot1All.slice(1) : [];
                   const slot2Overflow = slot2All.length > 1 ? slot2All.slice(1) : [];
                   const slot3Overflow = slot3All.length > 1 ? slot3All.slice(1) : [];
+                  const slot4Overflow = slot4All.length > 1 ? slot4All.slice(1) : [];
                   const dayStr = toLocalDateStr(day);
 
                   return (
@@ -288,7 +292,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                         timeIndex === TIME_SLOTS.length - 1 ? '' : 'border-b'
                       } ${dayIndex === 6 ? 'border-r-0' : ''}`}
                     >
-                      <div className="grid grid-cols-3 gap-1 h-full">
+                      <div className="grid grid-cols-4 gap-1 h-full">
                         {/* Slot 1 */}
                         <div
                           className={`compact-cell ${getCellBackground(slot1Event, day, slotConfig.time, 1)} rounded ${isSlotBlocked(day, slotConfig.time, 1) || slotConfig.slot1Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200 relative`}
@@ -448,6 +452,65 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                                     +{slot3Overflow.length} more
                                   </div>
                                   {slot3Overflow.map((evt, i) => (
+                                    <button
+                                      key={evt.id || i}
+                                      className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 truncate transition-colors"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOverflowDropdown(null);
+                                        onEventClick(evt);
+                                      }}
+                                    >
+                                      {evt.name}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Slot 4 */}
+                        <div
+                          className={`compact-cell ${getCellBackground(slot4Event, day, slotConfig.time, 4)} rounded ${isSlotBlocked(day, slotConfig.time, 4) || slotConfig.slot4Type === 'blank' ? 'cursor-not-allowed' : 'cursor-pointer hover:opacity-80'} transition-opacity flex items-center justify-center border border-gray-200 relative`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isSlotBlocked(day, slotConfig.time, 4) || slotConfig.slot4Type === 'blank') return;
+                            if (slot4Event) {
+                              onEventClick(slot4Event);
+                            } else {
+                              onDayClick(day, slotConfig.time, 4);
+                            }
+                          }}
+                          title={isSlotBlocked(day, slotConfig.time, 4) ? 'Blocked' : slotConfig.slot4Type === 'blank' ? 'Unavailable' : (slot4Event ? `${slot4Event.name} - Slot 4${slot4Overflow.length ? ` (+${slot4Overflow.length} more)` : ''}` : `Book ${slotConfig.time} Slot 4 (${slotConfig.slot4Type})`)}
+                        >
+                          {isSlotBlocked(day, slotConfig.time, 4) ? (
+                            <span className="text-xs">🔒</span>
+                          ) : slot4Event ? getCellContent(slot4Event) : slotConfig.slot4Emoji && <span className="text-xs">{slotConfig.slot4Emoji}</span>}
+                          {/* Overflow badge */}
+                          {slot4Overflow.length > 0 && (
+                            <div className="absolute -top-1 -right-1" ref={overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 4 ? dropdownRef : null}>
+                              <button
+                                className="bg-red-500 text-white font-bold rounded-full flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
+                                style={{ fontSize: '9px', width: '16px', height: '16px', lineHeight: '16px' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOverflowDropdown(
+                                    overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 4
+                                      ? null
+                                      : { dateStr: dayStr, time: slotConfig.time, slot: 4 }
+                                  );
+                                }}
+                                title={`${slot4Overflow.length} more booking(s)`}
+                              >
+                                +{slot4Overflow.length}
+                              </button>
+                              {overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 4 && (
+                                <div className="absolute top-5 right-0 bg-white border border-gray-300 rounded-lg shadow-lg z-50 min-w-[160px] py-1">
+                                  <div className="px-2 py-1 text-xs font-semibold text-gray-500 border-b border-gray-200">
+                                    +{slot4Overflow.length} more
+                                  </div>
+                                  {slot4Overflow.map((evt, i) => (
                                     <button
                                       key={evt.id || i}
                                       className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-100 truncate transition-colors"

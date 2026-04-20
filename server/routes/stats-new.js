@@ -95,7 +95,8 @@ router.get('/leads', auth, async (req, res) => {
       callBack: filterLeads(leads, 'Call back', dateRange).length,
       wrongNumber: filterLeads(leads, 'Wrong number', dateRange).length,
       salesConverted: filterLeads(leads, 'Sales', dateRange).filter(l => l.booker_id).length,
-      notQualified: filterLeads(leads, 'Not Qualified', dateRange).length
+      notQualified: filterLeads(leads, 'Not Qualified', dateRange).length,
+      inProgress: filterLeads(leads, 'In Progress', dateRange).length
     };
 
     console.log('📊 Lead counts:', {

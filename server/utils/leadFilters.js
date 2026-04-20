@@ -136,7 +136,15 @@ const STATUS_FILTER_CONFIG = {
     dateColumn: 'assigned_at',
     description: 'Not qualified leads'
   },
-  
+
+  'In Progress': {
+    type: 'call_status',
+    callStatusMatch: 'In Progress',
+    excludeProgressed: true,
+    dateColumn: 'assigned_at',
+    description: 'In progress leads'
+  },
+
   // Sales filter
   'Sales': {
     type: 'has_sale',

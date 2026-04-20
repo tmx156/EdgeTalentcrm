@@ -7383,7 +7383,8 @@ router.patch('/:id/call-status', auth, async (req, res) => {
       'Call back',
       'Wrong number',
       'Sales/converted - purchased',
-      'Not Qualified'
+      'Not Qualified',
+      'In Progress'
     ];
 
     if (!validStatuses.includes(callStatus)) {

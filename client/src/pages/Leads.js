@@ -1714,6 +1714,7 @@ const Leads = () => {
                   <option value="Wrong Number">📞 Wrong number</option>
                   <option value="Sales/converted - purchased">💰 Sales/converted - purchased</option>
                   <option value="Not Qualified">❌ Not Qualified</option>
+                  <option value="In Progress">🔄 In Progress</option>
                 </>
               ) : (
                 <>
@@ -1725,6 +1726,7 @@ const Leads = () => {
                   <option value="Assigned">👤 Assigned</option>
                   <option value="Rejected">Rejected</option>
                   <option value="sales">💰 Sales</option>
+                  <option value="In Progress">🔄 In Progress</option>
                 </>
               )}
             </select>

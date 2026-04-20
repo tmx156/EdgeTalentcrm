@@ -143,6 +143,15 @@ const Calendar = () => {
           e.time_booked === slot.time && parseInt(e.booking_slot) === 3
         );
 
+        // Check slot 4 availability
+        const slot4Blocked = dateBlockedSlots.some(b =>
+          (!b.time_slot || b.time_slot === slot.time) &&
+          (!b.slot_number || parseInt(b.slot_number) === 4)
+        );
+        const slot4Booked = bookedSlots.some(e =>
+          e.time_booked === slot.time && parseInt(e.booking_slot) === 4
+        );
+
         // If any slot is available, add to available list
         if (!slot1Blocked && !slot1Booked) {
           available.push({ time: slot.time, slot: 1, label: `${slot.label} - Slot 1` });
@@ -152,6 +161,9 @@ const Calendar = () => {
         }
         if (!slot3Blocked && !slot3Booked) {
           available.push({ time: slot.time, slot: 3, label: `${slot.label} - Slot 3` });
+        }
+        if (!slot4Blocked && !slot4Booked) {
+          available.push({ time: slot.time, slot: 4, label: `${slot.label} - Slot 4` });
         }
       });
 
@@ -164,6 +176,7 @@ const Calendar = () => {
         fallback.push({ time: slot.time, slot: 1, label: `${slot.label} - Slot 1` });
         fallback.push({ time: slot.time, slot: 2, label: `${slot.label} - Slot 2` });
         fallback.push({ time: slot.time, slot: 3, label: `${slot.label} - Slot 3` });
+        fallback.push({ time: slot.time, slot: 4, label: `${slot.label} - Slot 4` });
       });
       setReviewAvailableSlots(fallback);
     } finally {
@@ -3571,6 +3584,7 @@ const Calendar = () => {
                         <option value={1}>Slot 1</option>
                         <option value={2}>Slot 2</option>
                         <option value={3}>Slot 3</option>
+                        <option value={4}>Slot 4</option>
                       </select>
                       <p className="text-xs text-gray-500 mt-1">
                         Select which slot column to book the appointment in
@@ -5247,7 +5261,7 @@ const Calendar = () => {
                   </option>
                   {reviewAvailableSlots.map((slot, idx) => (
                     <option key={`${slot.time}-${slot.slot}-${idx}`} value={`${slot.time}|${slot.slot}`}>
-                      {slot.label} {slot.slot === 1 ? '(Slot 1)' : slot.slot === 2 ? '(Slot 2)' : '(Slot 3)'}
+                      {slot.label} (Slot {slot.slot})
                     </option>
                   ))}
                 </select>

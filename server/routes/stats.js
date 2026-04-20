@@ -427,6 +427,7 @@ router.get('/leads', auth, async (req, res) => {
         return salesLeads.length;
       })(),
       notQualified: leads.filter(l => getCallStatus(l) === 'Not Qualified' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
+      inProgress: leads.filter(l => getCallStatus(l) === 'In Progress' && hasNotProgressed(l) && wasAssignedInRange(l)).length,
       noPhoto: leads.filter(l => (getCallStatus(l) === 'No photo' || l.status === 'No photo') && hasNotProgressed(l) && wasAssignedInRange(l)).length,
       // Attendance sub-breakdown (for Reports page) - uses date_booked like attendedFilter
       arrived: leads.filter(l => {

@@ -80,7 +80,7 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
 
   // Get bookings for a specific day - OPTIMIZED: Use pre-indexed map instead of filtering
   const getBookingsForDay = (day) => {
-    if (!day) return { slot1: [], slot2: [], slot3: [] };
+    if (!day) return { slot1: [], slot2: [], slot3: [], slot4: [] };
 
     const dayStr = toLocalDateStr(day);
     const dayBookings = eventsByDate.get(dayStr) || [];
@@ -88,14 +88,15 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
     const slot1 = dayBookings.filter(e => e.booking_slot === 1);
     const slot2 = dayBookings.filter(e => e.booking_slot === 2);
     const slot3 = dayBookings.filter(e => e.booking_slot === 3);
+    const slot4 = dayBookings.filter(e => e.booking_slot === 4);
 
-    return { slot1, slot2, slot3 };
+    return { slot1, slot2, slot3, slot4 };
   };
 
   // Get booking count summary for a day
   const getBookingSummary = (day) => {
-    const { slot1, slot2, slot3 } = getBookingsForDay(day);
-    const allBookings = [...slot1, ...slot2, ...slot3];
+    const { slot1, slot2, slot3, slot4 } = getBookingsForDay(day);
+    const allBookings = [...slot1, ...slot2, ...slot3, ...slot4];
     const total = allBookings.length;
     const confirmed = allBookings.filter(e => e.is_confirmed).length;
 
@@ -105,7 +106,7 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
     const readSms = allBookings.filter(e => e.hasReceivedSms && !e.hasUnreadSms).length;
     const readEmail = allBookings.filter(e => e.hasReceivedEmail && !e.hasUnreadEmail).length;
 
-    return { total, confirmed, slot1Count: slot1.length, slot2Count: slot2.length, slot3Count: slot3.length, unreadSms, unreadEmail, readSms, readEmail };
+    return { total, confirmed, slot1Count: slot1.length, slot2Count: slot2.length, slot3Count: slot3.length, slot4Count: slot4.length, unreadSms, unreadEmail, readSms, readEmail };
   };
 
   // Check if a day is fully blocked (entire day blocked, not just specific time slots)
@@ -184,10 +185,10 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
               );
             }
 
-            const { total, confirmed, slot1Count, slot2Count, slot3Count, unreadSms, unreadEmail, readSms, readEmail } = getBookingSummary(day);
+            const { total, confirmed, slot1Count, slot2Count, slot3Count, slot4Count, unreadSms, unreadEmail, readSms, readEmail } = getBookingSummary(day);
             const isToday = day.toDateString() === today.toDateString();
             const isPast = day < today;
-            const { slot1, slot2, slot3 } = getBookingsForDay(day);
+            const { slot1, slot2, slot3, slot4 } = getBookingsForDay(day);
             const isBlocked = isDayFullyBlocked(day);
 
             return (
@@ -243,6 +244,14 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
                       </div>
                     )}
 
+                    {/* Slot 4 Bookings */}
+                    {slot4Count > 0 && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                        <span className="text-xs text-gray-600">S4: {slot4Count}</span>
+                      </div>
+                    )}
+
                     {/* Confirmed Count */}
                     {confirmed > 0 && (
                       <div className="flex items-center gap-1">
@@ -253,7 +262,7 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
 
                     {/* Show first few booking names with status colors */}
                     <div className="mt-1 space-y-0.5">
-                      {[...slot1, ...slot2, ...slot3].slice(0, 3).map((event, idx) => (
+                      {[...slot1, ...slot2, ...slot3, ...slot4].slice(0, 3).map((event, idx) => (
                         <div
                           key={event.id}
                           className={`text-xs truncate px-1.5 py-0.5 rounded cursor-pointer transition-all hover:opacity-80 ${getStatusColor(event)} ${getTextColor(event)}`}

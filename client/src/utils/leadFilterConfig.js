@@ -139,7 +139,15 @@ export const STATUS_FILTER_CONFIG = {
     label: '❌ Not Qualified',
     description: 'When not qualified recorded'
   },
-  
+
+  'In Progress': {
+    type: 'call_status',
+    callStatusMatch: 'In Progress',
+    dateColumn: 'booking_history',
+    label: '🔄 In Progress',
+    description: 'When in progress recorded'
+  },
+
   // Sales
   'Sales': {
     type: 'has_sale',
@@ -235,7 +243,8 @@ export function getStatusOptions(userRole) {
     { value: 'Call back', label: '📞 Call back', count: 'callBack' },
     { value: 'Wrong number', label: '📞 Wrong number', count: 'wrongNumber' },
     { value: 'Sales', label: '💰 Sales', count: 'salesConverted' },
-    { value: 'Not Qualified', label: '❌ Not Qualified', count: 'notQualified' }
+    { value: 'Not Qualified', label: '❌ Not Qualified', count: 'notQualified' },
+    { value: 'In Progress', label: '🔄 In Progress', count: 'inProgress' }
   ];
   
   // Add Rejected for admin users

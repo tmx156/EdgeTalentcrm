@@ -58,8 +58,8 @@ router.post('/', auth, adminAuth, async (req, res) => {
     }
 
     // Validate slot_number if provided
-    if (slot_number && ![1, 2, 3].includes(slot_number)) {
-      return res.status(400).json({ message: 'slot_number must be 1, 2, or 3' });
+    if (slot_number && ![1, 2, 3, 4].includes(slot_number)) {
+      return res.status(400).json({ message: 'slot_number must be 1, 2, 3, or 4' });
     }
 
     // Check if this exact block already exists (use admin client to bypass RLS)
@@ -134,8 +134,8 @@ router.post('/bulk', auth, adminAuth, async (req, res) => {
     }
 
     // Validate slot_number if provided
-    if (slot_number && ![1, 2, 3].includes(slot_number)) {
-      return res.status(400).json({ message: 'slot_number must be 1, 2, or 3' });
+    if (slot_number && ![1, 2, 3, 4].includes(slot_number)) {
+      return res.status(400).json({ message: 'slot_number must be 1, 2, 3, or 4' });
     }
 
     // Create blocked slots for all dates (use admin client to bypass RLS)

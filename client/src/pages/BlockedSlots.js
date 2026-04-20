@@ -253,7 +253,7 @@ const BlockedSlots = () => {
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Time Slots Overview</h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Slot 1 Column */}
             <div>
               <h3 className="text-md font-semibold text-gray-700 mb-3 text-center">Slot 1</h3>
@@ -346,6 +346,37 @@ const BlockedSlots = () => {
                 ))}
               </div>
             </div>
+
+            {/* Slot 4 Column */}
+            <div>
+              <h3 className="text-md font-semibold text-gray-700 mb-3 text-center">Slot 4</h3>
+              <div className="space-y-2">
+                {timeSlots.map((time) => (
+                  <div
+                    key={`slot4-${time}`}
+                    className={`p-3 rounded-lg border ${
+                      isSlotBlocked(time, 4)
+                        ? 'bg-red-100 border-red-300'
+                        : 'bg-green-100 border-green-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{time}</span>
+                      {isSlotBlocked(time, 4) ? (
+                        <span className="text-sm text-red-600 flex items-center gap-1">
+                          <FiLock /> Blocked
+                        </span>
+                      ) : (
+                        <span className="text-sm text-green-600">Available</span>
+                      )}
+                    </div>
+                    {isSlotBlocked(time, 4) && (
+                      <p className="text-xs text-gray-600 mt-1">{getBlockReason(time, 4)}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -417,6 +448,7 @@ const BlockedSlots = () => {
                     <option value="1">Slot 1</option>
                     <option value="2">Slot 2</option>
                     <option value="3">Slot 3</option>
+                    <option value="4">Slot 4</option>
                   </select>
                 </div>
               )}
