@@ -481,17 +481,36 @@ const LeadsNew = () => {
     const dateRange = getDateRange();
     
     // Determine which date parameters to pass based on status filter
+    // Must match statusDateColumnMap used in fetchLeads
     const dateParams = {};
     if (dateRange) {
-      if (statusFilter === 'all') {
+      const statusDateColumnMap = {
+        'all': 'created_at', 'New': 'created_at',
+        'Assigned': 'assigned_at', 'Rejected': 'assigned_at',
+        'Booked': 'booked_at', 'No Show': 'booked_at',
+        'Sales': 'date_booked', 'Attended': 'date_booked',
+        'Cancelled': 'booking_history',
+        'No answer': 'assigned_at', 'No Answer x2': 'assigned_at', 'No Answer x3': 'assigned_at',
+        'Left Message': 'assigned_at', 'Not interested': 'assigned_at',
+        'Call back': 'assigned_at', 'Wrong number': 'assigned_at',
+        'Not Qualified': 'assigned_at', 'In Progress': 'assigned_at'
+      };
+      const dateColumn = statusDateColumnMap[statusFilter] || 'assigned_at';
+      if (dateColumn === 'created_at') {
         dateParams.created_at_start = dateRange.start;
         dateParams.created_at_end = dateRange.end;
-      } else if (statusFilter === 'Booked' || statusFilter === 'Sales') {
-        dateParams.booked_at_start = dateRange.start;
-        dateParams.booked_at_end = dateRange.end;
-      } else {
+      } else if (dateColumn === 'assigned_at') {
         dateParams.assigned_at_start = dateRange.start;
         dateParams.assigned_at_end = dateRange.end;
+      } else if (dateColumn === 'booked_at') {
+        dateParams.booked_at_start = dateRange.start;
+        dateParams.booked_at_end = dateRange.end;
+      } else if (dateColumn === 'date_booked') {
+        dateParams.date_booked_start = dateRange.start;
+        dateParams.date_booked_end = dateRange.end;
+      } else if (dateColumn === 'booking_history') {
+        dateParams.status_changed_at_start = dateRange.start;
+        dateParams.status_changed_at_end = dateRange.end;
       }
     }
     

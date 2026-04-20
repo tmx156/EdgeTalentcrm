@@ -413,18 +413,12 @@ const Leads = () => {
       const dateRange = getDateRange();
 
       if (dateRange) {
-        // Use assigned_at for stats counters to match the "Date Assigned" filter
-        // This ensures counts reflect leads assigned in the date range, not created
         params.assigned_at_start = dateRange.start;
         params.assigned_at_end = dateRange.end;
-        console.log('📊 Fetching counts with Date Assigned filter:', dateRange);
       }
 
       const response = await axios.get('/api/stats/leads', { params });
-      console.log('📊 Fetched lead counts with date filter:', response.data);
-      console.log('📊 Response status:', response.status);
-      console.log('📊 Full response:', JSON.stringify(response.data, null, 2));
-      
+
       // Ensure we have valid data
       if (response.data && typeof response.data === 'object') {
         setLeadCounts({
@@ -499,9 +493,6 @@ const Leads = () => {
       setLoading(true);
       try {
         const token = localStorage.getItem('token');
-        console.log('🔑 Using token for /api/leads:', token);
-        console.log('🔍 Fetching leads with statusFilter:', statusFilter);
-        console.log('🔍 Search term:', debouncedSearchTerm);
 
         // Build params object
         const params = {
@@ -511,16 +502,11 @@ const Leads = () => {
           search: debouncedSearchTerm || '' // Ensure empty string instead of undefined
         };
         
-        console.log('📊 Fetching leads with limit:', leadsPerPage, 'params:', params);
-
         // Add date filter if applicable
         const dateRange = getDateRange();
         if (dateRange) {
-          // Always use assigned_at for "Date Assigned" filter
-          // This tracks when leads were assigned, not when they were created
           params.assigned_at_start = dateRange.start;
           params.assigned_at_end = dateRange.end;
-          console.log('📅 Date Assigned filter applied:', dateFilter, dateRange);
         }
 
         const response = await axios.get('/api/leads', {
@@ -528,18 +514,6 @@ const Leads = () => {
           params
         });
         
-        console.log('📋 Fetched leads response:', response.data);
-        console.log('📋 Total leads fetched:', response.data.leads?.length || 0);
-        console.log('🔍 Status filter used:', statusFilter);
-        
-        // Debug image URLs
-        if (response.data.leads && response.data.leads.length > 0) {
-          console.log('🖼️ Sample image URLs from API:');
-          response.data.leads.slice(0, 3).forEach(lead => {
-            console.log(`  ${lead.name}: image_url = "${lead.image_url}"`);
-          });
-        }
-
         setLeads(response.data.leads || []);
         setTotalPages(response.data.totalPages || 1);
         setTotalLeads(response.data.total || 0);

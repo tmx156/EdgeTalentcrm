@@ -459,8 +459,10 @@ router.get('/', auth, async (req, res) => {
   try {
     const { page = 1, limit = 50, status, booker, search, created_at_start, created_at_end, assigned_at_start, assigned_at_end, status_changed_at_start, status_changed_at_end, booked_at_start, booked_at_end, date_booked_start, date_booked_end } = req.query;
 
-    // Validate and cap limit to prevent performance issues
-    const validatedLimit = Math.min(parseInt(limit) || 50, 100);
+    // Validate and cap limit - allow higher limit for navigation requests
+    const isNavRequest = req.query.nav === 'true';
+    const maxLimit = isNavRequest ? 2000 : 100;
+    const validatedLimit = Math.min(parseInt(limit) || 50, maxLimit);
     const pageInt = Math.max(parseInt(page) || 1, 1);
     const from = (pageInt - 1) * validatedLimit;
     const to = from + validatedLimit - 1;
@@ -510,13 +512,17 @@ router.get('/', auth, async (req, res) => {
     // Include custom_fields for call_status filtering
     // For call_status filtering or Assigned/Booked with date filters, we need to fetch more leads 
     // to filter in JavaScript so we don't use range() initially - we'll paginate after filtering
+    // Use lightweight select for navigation requests (only need id, name, image for prev/next)
+    const navSelect = 'id, name, image_url, status, call_status, booker_id, created_at, assigned_at, custom_fields, postcode, booking_status, date_booked, has_sale, booked_at, booking_history';
+    const fullSelect = 'id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, is_double_confirmed, booking_status, has_sale, created_at, assigned_at, booked_at, custom_fields, call_status, review_date, review_time, review_slot, lead_source, entry_date, booking_history';
     let dataQuery = supabase
       .from('leads')
-      .select('id, name, phone, email, postcode, age, gender, image_url, booker_id, created_by_user_id, updated_by_user_id, status, date_booked, is_confirmed, is_double_confirmed, booking_status, has_sale, created_at, assigned_at, booked_at, custom_fields, review_date, review_time, review_slot, lead_source, entry_date, booking_history', { count: 'exact' })
+      .select(isNavRequest ? navSelect : fullSelect, { count: 'exact' })
       .order('created_at', { ascending: false });
     
     // Only apply range for filters that don't need JS filtering
-    if (!isCallStatusFilter && !needsJsDateFiltering) {
+    // call_status filters now use SQL so they can use range() too
+    if (!needsJsDateFiltering && !isSpecialStatusFilter) {
       dataQuery = dataQuery.range(from, to);
     }
 
@@ -558,11 +564,14 @@ router.get('/', auth, async (req, res) => {
         const callStatusValue = statusToCallStatusMap[status];
         
         if (callStatusValue) {
-          // For call_status filtering (applies to all users), we'll filter after fetching
-          // since Supabase JSONB filtering can be complex
-          // Don't apply status filter here - we'll filter by call_status after fetching
-          // Also don't apply range - we'll fetch more and paginate after filtering
-          console.log(`📊 Filtering by call_status: ${callStatusValue} (will filter after fetch, then paginate)`);
+          // Filter by call_status column directly in SQL for performance
+          dataQuery = dataQuery
+            .eq('call_status', callStatusValue)
+            .not('status', 'in', '(Booked,Attended,Cancelled,Rejected,Sale)');
+          countQuery = countQuery
+            .eq('call_status', callStatusValue)
+            .not('status', 'in', '(Booked,Attended,Cancelled,Rejected,Sale)');
+          console.log(`📊 Filtering by call_status in SQL: ${callStatusValue}`);
         } else if (isSpecialStatusFilter) {
           // For special status filters (Attended, Cancelled, No Show), we need to check
           // both the status field AND booking_status field
@@ -673,9 +682,132 @@ router.get('/', auth, async (req, res) => {
     // Execute queries
     let leads, leadsError, totalCount;
 
-    // For call_status filtering or Assigned/Booked with date filters, we need to fetch ALL leads 
+    // Navigation requests: fetch all matching leads server-side (bypass Supabase 1000 row limit)
+    if (isNavRequest) {
+      leads = [];
+      let navFrom = 0;
+      const navBatch = 1000;
+      while (true) {
+        const batchQuery = supabase
+          .from('leads')
+          .select(navSelect)
+          .order('created_at', { ascending: false })
+          .neq('postcode', 'ZZGHOST')
+          .range(navFrom, navFrom + navBatch - 1);
+
+        // Role-based filters
+        if (req.user.role === 'photographer') {
+          batchQuery.in('status', ['Booked', 'Attended', 'Sale']);
+        } else if (req.user.role !== 'admin' && req.user.role !== 'viewer') {
+          batchQuery.eq('booker_id', req.user.id).neq('status', 'Rejected');
+        }
+        if (booker) batchQuery.eq('booker_id', booker);
+
+        // Status filter
+        if (status && status !== 'all') {
+          const callStatusValue = statusToCallStatusMap[status];
+          if (status.toLowerCase() === 'sales') {
+            batchQuery.eq('has_sale', 1);
+          } else if (callStatusValue) {
+            batchQuery.eq('call_status', callStatusValue).not('status', 'in', '(Booked,Attended,Cancelled,Rejected,Sale)');
+          } else if (status === 'Booked') {
+            batchQuery.not('date_booked', 'is', null);
+          } else if (!isSpecialStatusFilter && status !== 'Assigned') {
+            batchQuery.eq('status', status);
+          }
+        }
+
+        // Search filter (must match main path fields)
+        if (search && String(search).trim().length > 0) {
+          const term = String(search).trim();
+          const escapedTerm = term.replace(/[%_\\]/g, '\\$&');
+          const like = `%${escapedTerm}%`;
+          batchQuery.or([`name.ilike.${like}`, `phone.ilike.${like}`, `parent_phone.ilike.${like}`, `email.ilike.${like}`, `postcode.ilike.${like}`].join(','));
+        }
+
+        // Date filters (must match main path)
+        if (assigned_at_start && assigned_at_end) {
+          batchQuery.gte('assigned_at', assigned_at_start).lte('assigned_at', assigned_at_end);
+        } else if (booked_at_start && booked_at_end) {
+          const bookedOrFilter = `and(booked_at.gte.${booked_at_start},booked_at.lte.${booked_at_end}),and(booked_at.is.null,date_booked.not.is.null,assigned_at.gte.${booked_at_start},assigned_at.lte.${booked_at_end})`;
+          batchQuery.or(bookedOrFilter);
+        } else if (date_booked_start && date_booked_end) {
+          batchQuery.gte('date_booked', date_booked_start).lte('date_booked', date_booked_end);
+        } else if (created_at_start && created_at_end) {
+          batchQuery.gte('created_at', created_at_start).lte('created_at', created_at_end);
+        }
+
+        const { data: batch, error: batchError } = await batchQuery;
+        if (batchError) { leadsError = batchError; break; }
+        if (!batch || batch.length === 0) break;
+        leads = leads.concat(batch);
+        navFrom += navBatch;
+        if (batch.length < navBatch) break;
+      }
+
+      // Apply JS filtering for special statuses (must match main path exactly)
+      if (isSpecialStatusFilter && status) {
+        const ATTENDED_BOOKING_STATUSES = ['Arrived', 'Left', 'No Sale', 'Complete', 'Review'];
+        const parseHistory = (lead) => {
+          if (!lead.booking_history) return [];
+          try {
+            const h = typeof lead.booking_history === 'string' ? JSON.parse(lead.booking_history) : lead.booking_history;
+            return Array.isArray(h) ? h : [];
+          } catch (e) { return []; }
+        };
+        const isDateInRange = (dateStr, start, end) => {
+          if (!dateStr) return false;
+          const d = new Date(dateStr);
+          return d >= new Date(start) && d <= new Date(end);
+        };
+        leads = leads.filter(lead => {
+          if (status === 'Attended') {
+            const isAttended = lead.status === 'Attended';
+            const isBookedButAttended = lead.status === 'Booked' && ATTENDED_BOOKING_STATUSES.includes(lead.booking_status);
+            const wasEverAttended = !isAttended && !isBookedButAttended && parseHistory(lead).some(entry =>
+              (entry.action === 'STATUS_CHANGE' && entry.details?.newStatus === 'Attended') ||
+              (entry.action === 'BOOKING_STATUS_UPDATE' && ATTENDED_BOOKING_STATUSES.includes(entry.details?.bookingStatus))
+            );
+            return (isAttended || isBookedButAttended || wasEverAttended) && lead.booker_id != null;
+          } else if (status === 'Cancelled') {
+            const match = lead.status === 'Cancelled' || (lead.status === 'Booked' && lead.booking_status === 'Cancel');
+            return match && lead.booker_id != null;
+          } else if (status === 'No Show') {
+            const match = lead.status === 'No Show' || (lead.status === 'Booked' && lead.booking_status === 'No Show');
+            return match && lead.booker_id != null;
+          } else if (status === 'Sales') {
+            return lead.has_sale > 0 && lead.booker_id != null;
+          } else if (status === 'Rejected') {
+            return lead.status === 'Rejected';
+          }
+          return true;
+        });
+      }
+
+      // Apply date-specific filtering for Booked status with date range
+      if (status === 'Booked' && booked_at_start && booked_at_end) {
+        leads = leads.filter(lead => {
+          if (!lead.date_booked && !lead.booked_at) return false;
+          const bookedDate = new Date(lead.booked_at || lead.assigned_at);
+          return bookedDate >= new Date(booked_at_start) && bookedDate <= new Date(booked_at_end);
+        });
+      }
+
+      totalCount = leads.length;
+      console.log(`🧭 Nav request: fetched ${leads.length} leads for navigation`);
+
+      // Return lightweight response for navigation
+      return res.json({
+        leads: leads.map(l => ({ id: l.id, name: l.name, image_url: l.image_url, status: l.status, call_status: l.call_status })),
+        total: totalCount,
+        totalPages: 1,
+        currentPage: 1
+      });
+    }
+
+    // For special status filters, we need to fetch ALL leads
     // using pagination to bypass Supabase's default 1000 row limit
-    if (isCallStatusFilter || isSpecialStatusFilter || needsJsDateFiltering) {
+    if (isSpecialStatusFilter || needsJsDateFiltering) {
       console.log(`📊 Using pagination to fetch all leads for call_status filtering...`);
       leads = [];
       let paginationFrom = 0;
@@ -925,26 +1057,7 @@ router.get('/', auth, async (req, res) => {
       return true;
     };
 
-    if (isCallStatusFilter) {
-      const callStatusValue = statusToCallStatusMap[status];
-      // Filter by call_status BUT exclude leads that have progressed beyond "Assigned"
-      const progressedStatuses = ['Booked', 'Attended', 'Cancelled', 'Rejected', 'Sale'];
-
-      allFilteredLeadsForCount = (leads || []).filter(lead => {
-        const hasMatchingCallStatus = getCallStatus(lead) === callStatusValue;
-        const hasProgressed = progressedStatuses.includes(lead.status);
-
-        // Check if the call_status was set within the date range (if date filter active)
-        const matchesDate = filterByStatusDate(lead, status);
-
-        return hasMatchingCallStatus && !hasProgressed && matchesDate;
-      });
-      console.log(`📊 Filtered ${allFilteredLeadsForCount.length} leads by call_status: ${callStatusValue} ${hasStatusChangeDateFilter ? '(with status change date filter)' : ''} (excluded progressed leads)`);
-
-      // Apply pagination to filtered results
-      filteredLeads = allFilteredLeadsForCount.slice(from, to + 1);
-      console.log(`📄 Paginated to ${filteredLeads.length} leads (page ${pageInt}, showing ${from} to ${Math.min(to, allFilteredLeadsForCount.length - 1)} of ${allFilteredLeadsForCount.length})`);
-    } else if (isSpecialStatusFilter) {
+    if (isSpecialStatusFilter) {
       // For special status filters (Attended, Cancelled, No Show, Sales, Rejected), filter by status AND booking_status
       allFilteredLeadsForCount = (leads || []).filter(lead => {
         let matchesStatus = false;
@@ -1039,7 +1152,7 @@ router.get('/', auth, async (req, res) => {
 
     // Get total count - for filters with JS filtering, use the pre-paginated filtered count
     let total = typeof totalCount === 'number' ? totalCount : 0;
-    if ((isCallStatusFilter || isSpecialStatusFilter || needsJsDateFiltering) && allFilteredLeadsForCount !== null) {
+    if ((isSpecialStatusFilter || needsJsDateFiltering) && allFilteredLeadsForCount !== null) {
       // For filters that use JS filtering, use the count from filtered leads (before pagination)
       total = allFilteredLeadsForCount.length;
       console.log(`📊 Total count for filter: ${total}`);

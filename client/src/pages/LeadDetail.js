@@ -207,62 +207,56 @@ const LeadDetail = () => {
   // Define fetchAllLeads before it's used in useEffect
   const fetchAllLeads = useCallback(async () => {
     try {
-      // Use location.state directly to avoid timing issues with filterContext state
-      // (React state updates are async, so filterContext may not be set yet when this runs)
       const statusFilter = location.state?.statusFilter || filterContext.statusFilter;
       const searchTerm = location.state?.searchTerm || filterContext.searchTerm;
       const assigned_at_start = location.state?.assigned_at_start || filterContext.assigned_at_start;
       const assigned_at_end = location.state?.assigned_at_end || filterContext.assigned_at_end;
+      const booked_at_start = location.state?.booked_at_start || filterContext.booked_at_start;
+      const booked_at_end = location.state?.booked_at_end || filterContext.booked_at_end;
+      const date_booked_start = location.state?.date_booked_start || filterContext.date_booked_start;
+      const date_booked_end = location.state?.date_booked_end || filterContext.date_booked_end;
+      const created_at_start = location.state?.created_at_start || filterContext.created_at_start;
+      const created_at_end = location.state?.created_at_end || filterContext.created_at_end;
+      const status_changed_at_start = location.state?.status_changed_at_start || filterContext.status_changed_at_start;
+      const status_changed_at_end = location.state?.status_changed_at_end || filterContext.status_changed_at_end;
 
-      const params = {};
-      if (statusFilter && statusFilter !== 'all') {
-        params.status = statusFilter;
-      }
-      if (searchTerm) {
-        params.search = searchTerm;
-      }
-      if (assigned_at_start && assigned_at_end) {
-        params.assigned_at_start = assigned_at_start;
-        params.assigned_at_end = assigned_at_end;
-      }
-
-      // For navigation, we need ALL filtered leads, so we'll fetch in pages and combine
-      // This works for both regular status filters and call_status filters
-      const allFilteredLeads = [];
-      let currentPage = 1;
-      let hasMore = true;
-      const pageSize = 100; // Fetch in chunks of 100
-
-      while (hasMore) {
-        params.page = currentPage;
-        params.limit = pageSize;
-
-        const response = await axios.get('/api/leads', { params });
-        const pageLeads = response.data.leads || response.data || [];
-        
-        if (pageLeads.length === 0) {
-          hasMore = false;
-        } else {
-          allFilteredLeads.push(...pageLeads);
-          
-          // Check if there are more pages
-          const totalPages = response.data.totalPages || 1;
-          if (currentPage >= totalPages || pageLeads.length < pageSize) {
-            hasMore = false;
-          } else {
-            currentPage++;
-          }
-        }
-      }
-
-      console.log(`✅ Fetched ${allFilteredLeads.length} total leads for navigation (status: ${statusFilter || 'all'})`);
-
-      // If we have filtered leads from navigation state, use those instead
+      // Use leads from navigation state if available
       const filteredLeadsFromState = location.state?.filteredLeads || filterContext.filteredLeads;
-      const leadsToUse = filteredLeadsFromState?.length > 0 ? filteredLeadsFromState : allFilteredLeads;
+      let leadsToUse;
+
+      if (filteredLeadsFromState?.length > 0) {
+        leadsToUse = filteredLeadsFromState;
+      } else {
+        // Fetch all matching leads in a single request for navigation
+        const params = { page: 1, limit: 2000, nav: 'true' };
+        if (statusFilter && statusFilter !== 'all') params.status = statusFilter;
+        if (searchTerm) params.search = searchTerm;
+        if (assigned_at_start && assigned_at_end) {
+          params.assigned_at_start = assigned_at_start;
+          params.assigned_at_end = assigned_at_end;
+        }
+        if (booked_at_start && booked_at_end) {
+          params.booked_at_start = booked_at_start;
+          params.booked_at_end = booked_at_end;
+        }
+        if (date_booked_start && date_booked_end) {
+          params.date_booked_start = date_booked_start;
+          params.date_booked_end = date_booked_end;
+        }
+        if (created_at_start && created_at_end) {
+          params.created_at_start = created_at_start;
+          params.created_at_end = created_at_end;
+        }
+        if (status_changed_at_start && status_changed_at_end) {
+          params.status_changed_at_start = status_changed_at_start;
+          params.status_changed_at_end = status_changed_at_end;
+        }
+        const response = await axios.get('/api/leads', { params });
+        leadsToUse = response.data.leads || response.data || [];
+      }
       setAllLeads(leadsToUse);
 
-      // Also update filterContext to match what we're using (for display and navigation)
+      // Update filterContext
       if (statusFilter !== filterContext.statusFilter || searchTerm !== filterContext.searchTerm || assigned_at_start !== filterContext.assigned_at_start) {
         setFilterContext(prev => ({
           ...prev,
@@ -274,7 +268,7 @@ const LeadDetail = () => {
         }));
       }
 
-      // Find current lead's position - handle both string and ObjectId formats
+      // Find current lead's position
       const index = leadsToUse.findIndex(lead =>
         lead.id === id ||
         lead.id.toString() === id ||

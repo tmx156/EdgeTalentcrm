@@ -4,6 +4,32 @@ const dbManager = require('../database-connection-manager');
 
 const router = express.Router();
 
+// In-memory cache for stats (per user + date range)
+const statsCache = new Map();
+const STATS_CACHE_TTL = 10000; // 10 seconds
+
+function getStatsCacheKey(userId, query) {
+  return `${userId}:${query.assigned_at_start || ''}:${query.assigned_at_end || ''}:${query.date_start || ''}:${query.date_end || ''}:${query.booker || ''}`;
+}
+
+function getCachedStats(key) {
+  const entry = statsCache.get(key);
+  if (entry && Date.now() - entry.timestamp < STATS_CACHE_TTL) {
+    return entry.data;
+  }
+  statsCache.delete(key);
+  return null;
+}
+
+function setCachedStats(key, data) {
+  statsCache.set(key, { data, timestamp: Date.now() });
+  // Prevent memory leak - cap at 100 entries
+  if (statsCache.size > 100) {
+    const oldest = statsCache.keys().next().value;
+    statsCache.delete(oldest);
+  }
+}
+
 // @route   GET /api/stats/leads-public
 // @desc    Get lead status counts for dashboard (OPTIMIZED with database aggregation)
 // @access  Public (temporary)
@@ -79,6 +105,15 @@ router.get('/leads-public', async (req, res) => {
 router.get('/leads', auth, async (req, res) => {
   try {
     const startTime = Date.now();
+
+    // Check cache first
+    const cacheKey = getStatsCacheKey(req.user.id, req.query);
+    const cached = getCachedStats(cacheKey);
+    if (cached) {
+      console.log(`⚡ Stats cache hit (${Date.now() - startTime}ms)`);
+      return res.json(cached);
+    }
+
     // Accept generic date_start/date_end for per-status date logic
     // Also accept legacy params for backward compatibility
     const { created_at_start, created_at_end, assigned_at_start, assigned_at_end, date_start, date_end, booker } = req.query;
@@ -457,6 +492,7 @@ router.get('/leads', auth, async (req, res) => {
 
     console.log(`✅ Lead counts (${Date.now() - startTime}ms, ${leads.length} leads): Total=${result.total}, New=${result.new}, Booked=${result.booked}, Attended=${result.attendedFilter}, Sales=${result.salesConverted}, Cancelled=${result.cancelledFilter}`);
 
+    setCachedStats(cacheKey, result);
     res.json(result);
   } catch (error) {
     console.error('Lead stats error:', error);

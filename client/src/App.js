@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { 
   Routes, 
   Route, 
@@ -24,12 +24,13 @@ import Sales from './pages/Sales';
 import Messages from './pages/MessagesNew'; // Updated to use premium Gmail-style design
 // import SalesApe from './pages/SalesApe'; // DISABLED - no longer using SalesApe
 import BlockedSlots from './pages/BlockedSlots';
-import PublicBooking from './pages/PublicBooking';
 import Photographer from './pages/Photographer';
 import ContractSigning from './pages/ContractSigning';
 import ContractEditor from './pages/ContractEditor';
 import EmailAccounts from './pages/EmailAccounts';
 import PriceList from './pages/PriceList';
+
+const PublicBooking = lazy(() => import('./pages/PublicBooking'));
 
 // Create browser history
 const history = createBrowserHistory();
@@ -78,7 +79,7 @@ function App() {
               {/* Public booking page - no authentication required */}
               <Route 
                 path="/book/:leadId" 
-                element={<PublicBooking />} 
+                element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div></div>}><PublicBooking /></Suspense>}
               />
               {/* Public contract signing page - no authentication required */}
               <Route
