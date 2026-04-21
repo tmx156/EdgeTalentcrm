@@ -6661,7 +6661,7 @@ router.post('/bulk-communication', auth, async (req, res) => {
             };
             
             // Resolve email account: template > user assignment > default
-            let resolvedEmailAccount = customTemplate.email_account;
+            let resolvedEmailAccount = 'primary';
             try {
               const resolution = await emailAccountService.resolveEmailAccount({
                 templateId: template?.id,
@@ -6669,10 +6669,14 @@ router.post('/bulk-communication', auth, async (req, res) => {
               });
               if (resolution.type === 'database' && resolution.account) {
                 resolvedEmailAccount = resolution.account;
-                console.log(`📧 Using resolved email account: ${resolution.account.email}`);
+                console.log(`📧 Bulk email using: ${resolution.account.email} (database)`);
+              } else {
+                resolvedEmailAccount = resolution.accountKey || template?.email_account || 'primary';
+                console.log(`📧 Bulk email using: ${resolvedEmailAccount} (legacy)`);
               }
             } catch (resolveErr) {
               console.error('📧 Email account resolution error, using default:', resolveErr.message);
+              resolvedEmailAccount = template?.email_account || 'primary';
             }
 
             console.log(`📧 Sending email to ${lead.email}...`);
