@@ -525,6 +525,18 @@ app.use('/api/contract-templates', contractTemplatesRoutes);
 // Public Booking API (for client self-service booking)
 const publicBookingRoutes = require('./routes/public-booking');
 app.use('/api/public/booking', publicBookingRoutes);
+// Alex AI (ReplyDesk) Public Booking API
+const publicBookingAlexRoutes = require('./routes/public-booking-alex');
+app.use('/api/public/booking-alex', publicBookingAlexRoutes);
+// ReplyDesk Calendar API (for Alex AI to check/book slots)
+const replydeskCalendarRoutes = require('./routes/replydesk-calendar');
+app.use('/api/calendar', replydeskCalendarRoutes);
+// ReplyDesk Webhook (send leads to / receive updates from ReplyDesk)
+const { router: replydeskWebhookRouter } = require('./routes/replydesk-webhook');
+app.use('/api/replydesk-webhook', replydeskWebhookRouter);
+// ReplyDesk Dashboard (Alex AI monitoring)
+const replydeskDashboardRoutes = require('./routes/replydesk-dashboard');
+app.use('/api/replydesk-dashboard', replydeskDashboardRoutes);
 // Stripe API (for payment processing and card holds)
 app.use('/api/stripe', stripeRoutes);
 // Gmail API Authentication Routes

@@ -23,6 +23,7 @@ import Finance from './pages/Finance';
 import Sales from './pages/Sales';
 import Messages from './pages/MessagesNew'; // Updated to use premium Gmail-style design
 // import SalesApe from './pages/SalesApe'; // DISABLED - no longer using SalesApe
+import Alex from './pages/Alex';
 import BlockedSlots from './pages/BlockedSlots';
 import Photographer from './pages/Photographer';
 import ContractSigning from './pages/ContractSigning';
@@ -31,6 +32,7 @@ import EmailAccounts from './pages/EmailAccounts';
 import PriceList from './pages/PriceList';
 
 const PublicBooking = lazy(() => import('./pages/PublicBooking'));
+const PublicBookingAlex = lazy(() => import('./pages/PublicBookingAlex'));
 
 // Create browser history
 const history = createBrowserHistory();
@@ -81,6 +83,11 @@ function App() {
                 path="/book/:leadId" 
                 element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div></div>}><PublicBooking /></Suspense>}
               />
+              {/* Alex AI public booking page - no authentication required */}
+              <Route
+                path="/book-alex/:leadId"
+                element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500"></div></div>}><PublicBookingAlex /></Suspense>}
+              />
               {/* Public contract signing page - no authentication required */}
               <Route
                 path="/sign-contract/:token"
@@ -106,6 +113,7 @@ function App() {
                           <Route path="/sales" element={<Sales />} />
                           <Route path="/messages" element={<Messages />} />
                           {/* <Route path="/salesape" element={<SalesApe />} /> DISABLED */}
+                          <Route path="/alex" element={<Alex />} />
                           <Route path="/blocked-slots" element={<BlockedSlots />} />
                           <Route path="/photographer" element={<Photographer />} />
                           <Route path="/email-accounts" element={<EmailAccounts />} />

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alex AI Integration — Feature Documentation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; color: #1a1a2e; line-height: 1.7; }
+
+  .email-wrapper { max-width: 720px; margin: 0 auto; background: #fff; }
+
+  /* Header */
+  .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); padding: 48px 40px; text-align: center; }
+  .header img { height: 48px; margin-bottom: 24px; }
+  .header h1 { color: #fff; font-size: 28px; font-weight: 300; letter-spacing: -0.5px; margin-bottom: 8px; }
+  .header p { color: rgba(255,255,255,0.6); font-size: 14px; font-weight: 400; }
+  .badge { display: inline-block; background: rgba(255,255,255,0.15); color: #fff; padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-top: 16px; backdrop-filter: blur(4px); }
+
+  /* Content */
+  .content { padding: 40px; }
+  .content h2 { font-size: 20px; font-weight: 600; color: #1a1a2e; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 2px solid #f0f0f0; }
+  .content h2:first-child { margin-top: 0; }
+  .content p { font-size: 15px; color: #444; margin-bottom: 16px; }
+
+  /* Feature Cards */
+  .features { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+  .feature-card { background: #f8f9fa; border-radius: 12px; padding: 24px; border: 1px solid #e9ecef; }
+  .feature-icon { font-size: 28px; margin-bottom: 12px; }
+  .feature-card h3 { font-size: 15px; font-weight: 600; color: #1a1a2e; margin-bottom: 6px; }
+  .feature-card p { font-size: 13px; color: #666; margin: 0; line-height: 1.5; }
+
+  /* Flow Steps */
+  .flow { margin: 24px 0; }
+  .flow-step { display: flex; gap: 16px; margin-bottom: 20px; }
+  .flow-num { width: 36px; height: 36px; background: linear-gradient(135deg, #1a1a2e, #0f3460); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+  .flow-content h4 { font-size: 15px; font-weight: 600; color: #1a1a2e; margin-bottom: 4px; }
+  .flow-content p { font-size: 13px; color: #666; margin: 0; }
+  .flow-arrow { text-align: center; color: #ccc; font-size: 18px; margin: -8px 0 -8px 10px; }
+
+  /* Screenshot placeholder */
+  .screenshot { background: linear-gradient(135deg, #f8f9fa, #e9ecef); border: 2px dashed #dee2e6; border-radius: 12px; padding: 40px; text-align: center; margin: 20px 0; color: #999; font-size: 13px; }
+
+  /* Tech section */
+  .tech-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .tech-item { background: #1a1a2e; color: #fff; padding: 14px 18px; border-radius: 8px; font-size: 13px; }
+  .tech-item .label { color: rgba(255,255,255,0.5); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .tech-item .value { font-weight: 600; font-size: 14px; }
+
+  /* API endpoints */
+  .endpoint { background: #f8f9fa; border-left: 3px solid #0f3460; padding: 12px 16px; margin: 10px 0; border-radius: 0 8px 8px 0; font-family: 'SF Mono', Monaco, monospace; font-size: 13px; }
+  .method { font-weight: 700; color: #0f3460; }
+  .method.post { color: #28a745; }
+  .method.delete { color: #dc3545; }
+
+  /* Status badges */
+  .status-flow { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; align-items: center; }
+  .status-badge { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .status-new { background: #e3f2fd; color: #1565c0; }
+  .status-qualifying { background: #fff8e1; color: #f57f17; }
+  .status-objection { background: #fff3e0; color: #e65100; }
+  .status-offered { background: #f3e5f5; color: #7b1fa2; }
+  .status-booked { background: #e8f5e9; color: #2e7d32; }
+  .status-human { background: #ffebee; color: #c62828; }
+  .arrow { color: #ccc; font-size: 16px; }
+
+  /* Booking page preview */
+  .booking-preview { background: #fafafa; border-radius: 16px; padding: 32px; text-align: center; border: 1px solid #e9ecef; margin: 20px 0; }
+  .booking-preview h3 { font-size: 22px; font-weight: 300; color: #1a1a1a; margin-bottom: 8px; }
+  .booking-preview p { font-size: 13px; color: #999; }
+  .step-pills { display: flex; justify-content: center; gap: 8px; margin: 20px 0; }
+  .pill { padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+  .pill-navy { background: #1e3a5f; color: #fff; }
+  .pill-pink { background: #D4145A; color: #fff; }
+  .pill-rose { background: #9B2335; color: #fff; }
+  .pill-gold { background: #C9A227; color: #fff; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px; }
+  th { background: #f8f9fa; text-align: left; padding: 10px 14px; font-weight: 600; color: #1a1a2e; border-bottom: 2px solid #e9ecef; }
+  td { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; color: #555; }
+
+  /* Footer */
+  .footer { background: #f8f9fa; padding: 32px 40px; text-align: center; border-top: 1px solid #e9ecef; }
+  .footer p { font-size: 12px; color: #999; }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .features, .tech-grid { grid-template-columns: 1fr; }
+    .content { padding: 24px; }
+    .header { padding: 32px 24px; }
+    .header h1 { font-size: 22px; }
+    .status-flow { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+
+<div class="email-wrapper">
+  <!-- Header -->
+  <div class="header">
+    <h1>Alex AI Integration</h1>
+    <p>WhatsApp AI Sales Agent — CRM Integration</p>
+    <div class="badge">New Feature</div>
+  </div>
+
+  <div class="content">
+    <!-- Overview -->
+    <h2>Overview</h2>
+    <p>
+      We've integrated <strong>Alex</strong>, an AI-powered WhatsApp sales agent, directly into the CRM.
+      Alex automatically contacts leads via WhatsApp, qualifies them through a structured sales conversation,
+      handles objections, and guides them to book an appointment — all without manual intervention.
+    </p>
+    <p>
+      The integration is two-way: the CRM sends leads to Alex, and Alex reports back with real-time status
+      updates, conversation summaries, and booking confirmations. Everything is tracked in a dedicated
+      <strong>Alex AI Dashboard</strong> inside the CRM.
+    </p>
+
+    <!-- What's New -->
+    <h2>What's Been Built</h2>
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-icon">🤖</div>
+        <h3>Alex AI Dashboard</h3>
+        <p>New page in the CRM to monitor all leads sent to Alex — queue status, conversation progress, and performance analytics.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📲</div>
+        <h3>Send to Alex Button</h3>
+        <p>One-click button on every lead detail page to send a lead to Alex for WhatsApp qualification.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📅</div>
+        <h3>Booking Page</h3>
+        <p>Premium self-service booking page that Alex sends to leads. Connected to the live diary with real-time availability.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔌</div>
+        <h3>Calendar API</h3>
+        <p>REST API that Alex can call during conversations to check available slots and book appointments in real-time.</p>
+      </div>
+    </div>
+
+    <!-- How It Works -->
+    <h2>How It Works</h2>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="flow-num">1</div>
+        <div class="flow-content">
+          <h4>Send Lead to Alex</h4>
+          <p>A CRM user opens a lead's detail page and clicks <strong>"Send to Alex AI"</strong>. The lead's name, phone (formatted to +44), email, and a personalised booking link are sent to Alex.</p>
+        </div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <div class="flow-num">2</div>
+        <div class="flow-content">
+          <h4>Alex Contacts the Lead via WhatsApp</h4>
+          <p>Alex initiates a WhatsApp conversation and runs a structured qualification script: Hook → Connection → Qualification → Education → Close. All progress is reported back to the CRM in real-time.</p>
+        </div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <div class="flow-num">3</div>
+        <div class="flow-content">
+          <h4>Lead Books via the Booking Page</h4>
+          <p>When ready, Alex shares a personalised booking link. The lead opens it and sees a premium booking page connected to the live CRM diary — they pick a date, time, confirm their details, and book.</p>
+        </div>
+      </div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-step">
+        <div class="flow-num">4</div>
+        <div class="flow-content">
+          <h4>Booking Confirmed in CRM</h4>
+          <p>The booking appears instantly in the CRM diary. A confirmation is sent to the lead via SMS and email using the existing booking confirmation template. The lead's status updates to "Booked" across the CRM and the Alex dashboard.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lead Status Flow -->
+    <h2>Lead Status Tracking</h2>
+    <p>As Alex works through the conversation, the lead's status updates in real-time on the dashboard:</p>
+    <div class="status-flow">
+      <span class="status-badge status-new">New</span>
+      <span class="arrow">→</span>
+      <span class="status-badge status-qualifying">Qualifying</span>
+      <span class="arrow">→</span>
+      <span class="status-badge status-objection">Objection</span>
+      <span class="arrow">→</span>
+      <span class="status-badge status-offered">Booking Offered</span>
+      <span class="arrow">→</span>
+      <span class="status-badge status-booked">Booked</span>
+    </div>
+    <p style="margin-top: 12px;">If Alex encounters a complex situation, the lead is escalated:</p>
+    <div class="status-flow">
+      <span class="status-badge status-human">Human Required</span>
+    </div>
+    <p style="margin-top: 8px; font-size: 13px; color: #888;">This triggers an alert on the dashboard so a team member can take over manually.</p>
+
+    <!-- Booking Page -->
+    <h2>Client Booking Page</h2>
+    <p>The booking page Alex sends to leads is a 4-step premium flow:</p>
+    <div class="booking-preview">
+      <h3>Book Your Session</h3>
+      <p>Select your preferred date and time</p>
+      <div class="step-pills">
+        <span class="pill pill-navy">1. Details</span>
+        <span class="pill pill-pink">2. Date</span>
+        <span class="pill pill-rose">3. Time</span>
+        <span class="pill pill-gold">4. Confirm</span>
+      </div>
+      <p style="margin-top: 16px; font-size: 12px; color: #bbb;">
+        Connected to the live CRM diary &bull; 30-minute slots &bull; Weekdays only &bull; 3-week window<br>
+        Shares the same blocked slots and availability as the main diary
+      </p>
+    </div>
+    <p>
+      <strong>Booking link format:</strong><br>
+      <code style="background: #f0f0f0; padding: 4px 10px; border-radius: 4px; font-size: 13px;">
+        https://www.edgetalentdiary.co.uk/book-alex/{lead-name}-booking
+      </code>
+    </p>
+
+    <!-- Dashboard -->
+    <h2>Alex AI Dashboard</h2>
+    <p>Accessible from the CRM sidebar (admin only), the dashboard provides:</p>
+    <table>
+      <tr><th>Feature</th><th>Description</th></tr>
+      <tr><td><strong>Queue Manager</strong></td><td>All leads sent to Alex, grouped by status, with search and filtering</td></tr>
+      <tr><td><strong>Conversation Viewer</strong></td><td>Status pipeline and conversation summary for each lead</td></tr>
+      <tr><td><strong>Performance Analytics</strong></td><td>Engagement rates, conversion rates, and funnel visualization by time period</td></tr>
+      <tr><td><strong>Card View</strong></td><td>Visual grid of all leads with colour-coded status cards</td></tr>
+      <tr><td><strong>Real-time Updates</strong></td><td>WebSocket-powered live updates — no page refresh needed</td></tr>
+      <tr><td><strong>Add/Remove Leads</strong></td><td>Search CRM leads and add to queue, or remove leads from the queue</td></tr>
+    </table>
+
+    <!-- Technical Details -->
+    <h2>Technical Details</h2>
+
+    <div class="tech-grid">
+      <div class="tech-item">
+        <div class="label">Authentication</div>
+        <div class="value">API Key (per-tenant)</div>
+      </div>
+      <div class="tech-item">
+        <div class="label">Protocol</div>
+        <div class="value">HTTPS REST API</div>
+      </div>
+      <div class="tech-item">
+        <div class="label">Real-time</div>
+        <div class="value">WebSocket (Socket.io)</div>
+      </div>
+      <div class="tech-item">
+        <div class="label">Booking Slots</div>
+        <div class="value">30 min / 4 parallel</div>
+      </div>
+    </div>
+
+    <h3 style="font-size: 15px; margin: 24px 0 12px; color: #1a1a2e;">API Endpoints Built</h3>
+
+    <p style="font-size: 13px; color: #888; margin-bottom: 8px;"><strong>Calendar API</strong> (for Alex to query during conversations)</p>
+    <div class="endpoint"><span class="method">GET</span> /api/calendar/available-slots?date=YYYY-MM-DD&days=N</div>
+    <div class="endpoint"><span class="method post">POST</span> /api/calendar/book</div>
+    <div class="endpoint"><span class="method delete">DELETE</span> /api/calendar/book/:bookingId</div>
+
+    <p style="font-size: 13px; color: #888; margin: 16px 0 8px;"><strong>Webhook</strong> (two-way communication)</p>
+    <div class="endpoint"><span class="method post">POST</span> /api/replydesk-webhook/trigger/:leadId <span style="color: #999;">— Send lead to Alex</span></div>
+    <div class="endpoint"><span class="method post">POST</span> /api/replydesk-webhook/update <span style="color: #999;">— Receive status updates from Alex</span></div>
+
+    <p style="font-size: 13px; color: #888; margin: 16px 0 8px;"><strong>Booking Page</strong> (public, no auth)</p>
+    <div class="endpoint"><span class="method">GET</span> /api/public/booking-alex/availability</div>
+    <div class="endpoint"><span class="method">GET</span> /api/public/booking-alex/lead/:identifier</div>
+    <div class="endpoint"><span class="method post">POST</span> /api/public/booking-alex/book/:identifier</div>
+
+    <h3 style="font-size: 15px; margin: 24px 0 12px; color: #1a1a2e;">Database Changes</h3>
+    <p style="font-size: 13px; color: #666;">7 new tracking columns added to the leads table:</p>
+    <table>
+      <tr><th>Column</th><th>Purpose</th></tr>
+      <tr><td><code>replydesk_sent_at</code></td><td>When the lead was sent to Alex</td></tr>
+      <tr><td><code>replydesk_status</code></td><td>Current qualification stage</td></tr>
+      <tr><td><code>replydesk_lead_id</code></td><td>Alex's internal reference ID</td></tr>
+      <tr><td><code>replydesk_lead_code</code></td><td>Alex's lead tracking code</td></tr>
+      <tr><td><code>replydesk_last_updated</code></td><td>Last status update timestamp</td></tr>
+      <tr><td><code>replydesk_conversation_summary</code></td><td>AI-generated conversation summary</td></tr>
+      <tr><td><code>replydesk_error</code></td><td>Error details if something failed</td></tr>
+    </table>
+
+    <h3 style="font-size: 15px; margin: 24px 0 12px; color: #1a1a2e;">Security</h3>
+    <table>
+      <tr><th>Measure</th><th>Detail</th></tr>
+      <tr><td>Webhook Authentication</td><td>Mandatory secret key validation on all incoming webhooks</td></tr>
+      <tr><td>Calendar API Auth</td><td>API key required for all calendar endpoints</td></tr>
+      <tr><td>Double-Booking Protection</td><td>Post-write conflict detection prevents concurrent bookings on the same slot</td></tr>
+      <tr><td>Phone Formatting</td><td>Automatically converts local UK numbers to E.164 (+44) format</td></tr>
+      <tr><td>Dashboard Access</td><td>Admin-only — hidden from bookers, photographers, and viewers</td></tr>
+      <tr><td>HTTPS Only</td><td>All communication over TLS</td></tr>
+    </table>
+
+    <!-- What Stays the Same -->
+    <h2>What Hasn't Changed</h2>
+    <p>The existing booking system and diary are completely untouched:</p>
+    <table>
+      <tr><th>Unchanged</th><th>Detail</th></tr>
+      <tr><td>Existing booking page</td><td><code>/book/{code}</code> still works exactly as before</td></tr>
+      <tr><td>Main diary</td><td>Same calendar view, same blocked slots, same 4-slot system</td></tr>
+      <tr><td>Booking confirmations</td><td>Uses the same existing confirmation template (SMS + Email)</td></tr>
+      <tr><td>Lead management</td><td>No changes to existing lead statuses, filters, or workflows</td></tr>
+    </table>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>Edge Talent CRM &bull; Alex AI Integration &bull; April 2026</p>
+    <p style="margin-top: 8px;">Built with the ReplyDesk AI Platform</p>
+  </div>
+</div>
+
+</body>
+</html>

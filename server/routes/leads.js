@@ -6999,6 +6999,41 @@ router.post('/:id/send-booking-link', auth, async (req, res) => {
   }
 });
 
+// @route   POST /api/leads/:id/send-to-replydesk
+// @desc    Send lead to ReplyDesk (Alex AI) for WhatsApp qualification
+// @access  Private
+router.post('/:id/send-to-replydesk', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const leads = await dbManager.query('leads', {
+      select: '*',
+      eq: { id }
+    });
+
+    if (!leads || leads.length === 0) {
+      return res.status(404).json({ success: false, message: 'Lead not found' });
+    }
+
+    const lead = leads[0];
+    const { sendLeadToReplyDesk } = require('./replydesk-webhook');
+    const result = await sendLeadToReplyDesk(lead);
+
+    res.json({
+      success: true,
+      message: `Lead "${lead.name}" sent to ReplyDesk successfully`,
+      replydesk_lead_id: result.lead_id,
+      replydesk_lead_code: result.lead_code
+    });
+  } catch (error) {
+    console.error('Error sending lead to ReplyDesk:', error);
+    res.status(error.code === 'MISSING_PHONE' || error.code === 'INVALID_PHONE' ? 400 : 500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
 // @route   POST /api/leads/:id/send-booking-confirmation
 // @desc    Send booking confirmation SMS
 // @access  Private

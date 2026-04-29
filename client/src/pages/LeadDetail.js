@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 // import SalesApeButton from '../components/SalesApeButton'; // DISABLED
 // import SalesApeStatus from '../components/SalesApeStatus'; // DISABLED
+import ReplyDeskButton from '../components/ReplyDeskButton';
 import ImageGalleryModal from '../components/ImageGalleryModal';
 import PresentationGallery from '../components/PresentationGallery';
 import GmailEmailRenderer from '../components/GmailEmailRenderer';
@@ -2983,7 +2984,10 @@ const LeadDetail = () => {
                 </div>
               )}
 
-              {/* SalesApe Status Display - DISABLED */}
+              {/* ReplyDesk (Alex AI) Integration */}
+              {!editing && (
+                <ReplyDeskButton lead={lead} onSuccess={() => fetchLead()} />
+              )}
             </div>
           </div>
         </div>
