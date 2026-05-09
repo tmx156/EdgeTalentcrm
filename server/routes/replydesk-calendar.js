@@ -33,20 +33,27 @@ initDefaultBooker();
  */
 router.get('/available-slots', replydeskAuth, async (req, res) => {
   try {
-    const { date, days = 1 } = req.query;
+    const { date, days, from, to } = req.query;
 
-    if (!date) {
+    const startDate = date || from;
+    if (!startDate) {
       return res.status(400).json({
         success: false,
-        message: 'date parameter is required (YYYY-MM-DD format)'
+        message: 'date or from parameter is required (YYYY-MM-DD format)'
       });
     }
 
-    const numDays = Math.min(parseInt(days) || 1, 30);
-    const results = [];
+    let numDays;
+    if (to) {
+      const fromMs = new Date(startDate).getTime();
+      const toMs = new Date(to).getTime();
+      numDays = Math.min(Math.ceil((toMs - fromMs) / (24 * 60 * 60 * 1000)) + 1, 30);
+    } else {
+      numDays = Math.min(parseInt(days) || 1, 30);
+    }
 
-    // Parse date parts directly to avoid timezone shifting
-    const [startYear, startMonth, startDay] = date.split('-').map(Number);
+    const results = [];
+    const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
 
     for (let i = 0; i < numDays; i++) {
       const currentDate = new Date(startYear, startMonth - 1, startDay + i);
@@ -93,12 +100,15 @@ router.get('/available-slots', replydeskAuth, async (req, res) => {
  */
 router.post('/book', replydeskAuth, async (req, res) => {
   try {
-    const { slot_id, lead_name, lead_phone, lead_email, notes, lead_id } = req.body;
+    const { slot_id, notes, lead_id } = req.body;
+    const lead_name = req.body.lead_name || req.body.name;
+    const lead_phone = req.body.lead_phone || req.body.phone;
+    const lead_email = req.body.lead_email || req.body.email;
 
     if (!lead_phone && !lead_id) {
       return res.status(400).json({
         success: false,
-        message: 'lead_phone or lead_id is required'
+        message: 'phone or lead_id is required'
       });
     }
 
