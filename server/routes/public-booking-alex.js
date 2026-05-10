@@ -82,7 +82,7 @@ router.get('/availability', async (req, res) => {
 
     const { data: blockedSlots, error: blockedError } = await supabase
       .from('blocked_slots')
-      .select('date, time_slot')
+      .select('date, time_slot, slot_number')
       .gte('date', startDate)
       .lte('date', endDate);
 
@@ -102,8 +102,12 @@ router.get('/availability', async (req, res) => {
     (blockedSlots || []).forEach(block => {
       const dateStr = block.date.split('T')[0];
       if (!blockedByDate[dateStr]) blockedByDate[dateStr] = [];
-      if (block.time_slot) {
+      if (block.time_slot && block.slot_number) {
         blockedByDate[dateStr].push(block.time_slot);
+      } else if (block.time_slot && !block.slot_number) {
+        for (let i = 0; i < 4; i++) blockedByDate[dateStr].push(block.time_slot);
+      } else if (!block.time_slot && block.slot_number) {
+        ALL_TIME_SLOTS.forEach(s => blockedByDate[dateStr].push(s.time));
       } else {
         fullDayBlocks.add(dateStr);
       }

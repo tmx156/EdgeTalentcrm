@@ -5,6 +5,7 @@ const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const { auth } = require('../middleware/auth');
 const { generateBookingCode } = require('../utils/bookingCodeGenerator');
+const { findFirstAvailableSlotNumber } = require('../utils/calendarConstants');
 
 const supabase = createClient(
   config.supabase.url,
@@ -79,6 +80,9 @@ async function sendLeadToReplyDesk(lead) {
       name: lead.name?.trim() || 'Unknown',
       phone: formattedPhone,
       email: lead.email?.trim() || undefined,
+      gender: lead.gender || undefined,
+      age: lead.age ? String(lead.age) : undefined,
+      postcode: lead.postcode && lead.postcode !== 'ZZGHOST' ? lead.postcode : undefined,
       source: lead.source || 'Edge Talent CRM',
       notes: notesWithBooking
     };
@@ -265,9 +269,25 @@ router.post('/update', async (req, res) => {
 
     // If status is Booked and booking info provided, update CRM booking
     if (status === 'Booked' && booking_date && booking_time) {
+      const { data: bookedLeads } = await supabase
+        .from('leads')
+        .select('id, time_booked, booking_slot')
+        .eq('date_booked', booking_date)
+        .in('status', ['Booked', 'Confirmed'])
+        .neq('id', lead.id)
+        .neq('postcode', 'ZZGHOST');
+
+      const { data: blockedSlots } = await supabase
+        .from('blocked_slots')
+        .select('date, time_slot, slot_number')
+        .eq('date', booking_date);
+
+      const slotNumber = findFirstAvailableSlotNumber(bookedLeads, blockedSlots, booking_time);
+
       updateData.status = 'Booked';
       updateData.date_booked = booking_date;
       updateData.time_booked = booking_time;
+      updateData.booking_slot = slotNumber;
       updateData.booked_at = new Date().toISOString();
       updateData.ever_booked = true;
       updateData.is_confirmed = true;
