@@ -57,6 +57,9 @@ router.get('/available-slots', replydeskAuth, async (req, res) => {
 
     for (let i = 0; i < numDays; i++) {
       const currentDate = new Date(startYear, startMonth - 1, startDay + i);
+      const dayOfWeek = currentDate.getDay();
+
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) continue;
 
       const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
       const slots = await getAvailableSlots(dateStr, supabase);
