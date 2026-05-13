@@ -189,7 +189,7 @@ router.post('/book', replydeskAuth, async (req, res) => {
       booking_slot: slotNumber,
       booked_at: new Date().toISOString(),
       ever_booked: true,
-      is_confirmed: true,
+      is_confirmed: false,
       updated_at: new Date().toISOString(),
     };
     if (DEFAULT_BOOKER_ID) updateData.booker_id = DEFAULT_BOOKER_ID;
@@ -269,7 +269,7 @@ router.post('/book', replydeskAuth, async (req, res) => {
         lead.id,
         DEFAULT_BOOKER_ID,
         bookingDate.toISOString(),
-        { sendEmail: true, sendSms: true }
+        { sendEmail: true, sendSms: true, templateId: 'template-1772086713575-19rl3l5xz' }
       );
     } catch (confirmError) {
       console.error('Error sending booking confirmation:', confirmError);
@@ -341,16 +341,22 @@ router.delete('/book/:bookingId', replydeskAuth, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Booking not found' });
     }
 
+    const cancelData = {
+      status: 'Cancelled',
+      date_booked: null,
+      time_booked: null,
+      booking_slot: null,
+      is_confirmed: false,
+      updated_at: new Date().toISOString()
+    };
+    if (lead.replydesk_sent_at) {
+      cancelData.replydesk_status = 'cancelled';
+      cancelData.replydesk_last_updated = new Date().toISOString();
+    }
+
     const { error: updateError } = await supabase
       .from('leads')
-      .update({
-        status: 'Cancelled',
-        date_booked: null,
-        time_booked: null,
-        booking_slot: null,
-        is_confirmed: false,
-        updated_at: new Date().toISOString()
-      })
+      .update(cancelData)
       .eq('id', lead.id);
 
     if (updateError) {

@@ -121,7 +121,7 @@ router.get('/availability', async (req, res) => {
       const dateStr = currentDate.toISOString().split('T')[0];
       const dayOfWeek = currentDate.getDay();
 
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+      if (dayOfWeek === 0 || dayOfWeek === 6) {
         const bookedTimes = bookingsByDate[dateStr] || [];
         const blockedTimes = blockedByDate[dateStr] || [];
         const isFullyBlocked = fullDayBlocks.has(dateStr);
@@ -210,7 +210,7 @@ router.post('/book/:identifier', async (req, res) => {
       booking_slot: slotNumber,
       booked_at: new Date().toISOString(),
       ever_booked: true,
-      is_confirmed: true,
+      is_confirmed: false,
       updated_at: new Date().toISOString(),
     };
     if (DEFAULT_BOOKER_ID) updateData.booker_id = DEFAULT_BOOKER_ID;
@@ -291,7 +291,7 @@ router.post('/book/:identifier', async (req, res) => {
         leadId,
         DEFAULT_BOOKER_ID,
         bookingDate.toISOString(),
-        { sendEmail: true, sendSms: true }
+        { sendEmail: true, sendSms: true, templateId: 'template-1772086713575-19rl3l5xz' }
       );
     } catch (confirmError) {
       console.error('Error sending booking confirmation:', confirmError);

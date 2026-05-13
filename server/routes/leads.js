@@ -2096,7 +2096,12 @@ router.post('/', auth, async (req, res) => {
           is_confirmed: bodyWithoutId.is_confirmed ? 1 : 0,
           booking_status: bodyWithoutId.booking_status || (isReschedule ? 'Reschedule' : null)
         };
-        
+
+        if (existingLeads[0].replydesk_sent_at) {
+          updateData.replydesk_status = 'Booked';
+          updateData.replydesk_last_updated = new Date().toISOString();
+        }
+
         const updateResult = await dbManager.update('leads', updateData, { id: _id });
         
         // Get updated lead
@@ -3307,6 +3312,16 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
         console.error('⚠️ Booking history update failed (non-critical):', err.message);
         // Don't throw - status update should still succeed
       });
+    }
+    // Sync ReplyDesk status if this lead was sent to Alex AI
+    if (oldStatus !== req.body.status && req.body.status && lead.replydesk_sent_at) {
+      const statusMap = { 'Booked': 'Booked', 'Cancelled': 'cancelled', 'Rejected': 'cancelled', 'Attended': 'Booked' };
+      const rdStatus = statusMap[req.body.status];
+      if (rdStatus) {
+        supabase.from('leads').update({ replydesk_status: rdStatus, replydesk_last_updated: new Date().toISOString() }).eq('id', req.params.id)
+          .then(() => { if (global.io) global.io.emit('replydesk_queue_update', { action: 'updated', leadId: req.params.id, status: rdStatus }); })
+          .catch(err => console.error('ReplyDesk status sync failed:', err.message));
+      }
     }
     // Update user statistics if status changed (non-blocking)
     if (oldStatus !== req.body.status && req.body.status && lead.booker_id) {

@@ -290,7 +290,7 @@ router.post('/update', async (req, res) => {
       updateData.booking_slot = slotNumber;
       updateData.booked_at = new Date().toISOString();
       updateData.ever_booked = true;
-      updateData.is_confirmed = true;
+      updateData.is_confirmed = false;
     }
 
     const { error: updateError } = await supabase
