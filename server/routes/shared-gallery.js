@@ -3,6 +3,7 @@ const { auth } = require('../middleware/auth');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
 const MessagingService = require('../utils/messagingService');
 const emailAccountService = require('../utils/emailAccountService');
 
@@ -155,7 +156,7 @@ router.post('/', auth, async (req, res) => {
           const htmlBody = buildGalleryEmailHTML(leadName, finalUrl, photo_ids.length);
 
           const message = {
-            id: `gallery-share-${galleryId}-${Date.now()}`,
+            id: uuidv4(),
             lead_id,
             recipient_email: lead.email,
             subject: 'Your Photo Gallery is Ready',
