@@ -33,6 +33,7 @@ import PriceList from './pages/PriceList';
 
 const PublicBooking = lazy(() => import('./pages/PublicBooking'));
 const PublicBookingAlex = lazy(() => import('./pages/PublicBookingAlex'));
+const PublicGallery = lazy(() => import('./pages/PublicGallery'));
 
 // Create browser history
 const history = createBrowserHistory();
@@ -92,6 +93,11 @@ function App() {
               <Route
                 path="/sign-contract/:token"
                 element={<ContractSigning />}
+              />
+              {/* Public photo gallery - no authentication required */}
+              <Route
+                path="/gallery/:token"
+                element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div></div>}><PublicGallery /></Suspense>}
               />
               <Route
                 path="/*"

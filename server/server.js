@@ -554,6 +554,8 @@ app.use('/api/postcode', postcodeRoutes);
 // Email Accounts API (for managing email account pool)
 app.use('/api/email-accounts', emailAccountsRoutes);
 app.use('/api/lead-analytics', leadAnalyticsRoutes);
+const sharedGalleryRoutes = require('./routes/shared-gallery');
+app.use('/api/shared-gallery', sharedGalleryRoutes);
 // TEMPORARILY DISABLED: app.use('/api/performance', require('./routes/performance'));
 
 // --- Lightweight short link storage for long booking confirmations ---

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import { FiDollarSign, FiTrendingUp, FiCalendar, FiUser, FiCreditCard, FiFilter, FiEye, FiPlus, FiTrash2, FiMail, FiMessageSquare, FiSend, FiFileText, FiImage, FiCheckCircle, FiClock, FiDownload, FiExternalLink, FiChevronDown } from 'react-icons/fi';
+import { FiDollarSign, FiTrendingUp, FiCalendar, FiUser, FiCreditCard, FiFilter, FiEye, FiPlus, FiTrash2, FiMail, FiMessageSquare, FiSend, FiFileText, FiImage, FiCheckCircle, FiClock, FiDownload, FiExternalLink, FiChevronDown, FiShare2, FiCopy, FiCheck } from 'react-icons/fi';
 import axios from 'axios';
 import { toLocalDateStr } from '../utils/timeUtils';
 import SalesCommunicationModal from '../components/SalesCommunicationModal';
@@ -35,6 +35,10 @@ const Sales = () => {
   const [fullSaleDetails, setFullSaleDetails] = useState(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showAllPhotos, setShowAllPhotos] = useState(false);
+  const [sharingPhotos, setSharingPhotos] = useState(false);
+  const [shareLink, setShareLink] = useState(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [emailSentNotice, setEmailSentNotice] = useState(false);
 
   const [financeData, setFinanceData] = useState({
     totalAmount: '',
@@ -139,6 +143,9 @@ const Sales = () => {
     setFullSaleDetails(null);
     setActiveTab('details');
     setShowAllPhotos(false);
+    setShareLink(null);
+    setLinkCopied(false);
+    setEmailSentNotice(false);
     setShowModal(true);
     // Fetch full details including contract and photos
     await fetchSaleDetails(sale.id);
@@ -201,6 +208,43 @@ const Sales = () => {
       month: 'short',
       day: 'numeric'
     });
+  };
+
+  const sharePhotos = async (sale, photos) => {
+    if (!sale || !photos?.length) return;
+    setSharingPhotos(true);
+    setShareLink(null);
+    setLinkCopied(false);
+    try {
+      const galleryUrl = `${window.location.origin}/gallery/`;
+      const res = await axios.post('/api/shared-gallery', {
+        sale_id: sale.id,
+        lead_id: sale.lead_id,
+        photo_ids: photos.map(p => p.id),
+        send_email: true,
+        gallery_url_prefix: galleryUrl
+      });
+      if (res.data.success) {
+        const url = `${window.location.origin}/gallery/${res.data.token}`;
+        setShareLink(url);
+        if (res.data.email_sent) {
+          setEmailSentNotice(true);
+          setTimeout(() => setEmailSentNotice(false), 4000);
+        }
+      }
+    } catch (err) {
+      console.error('Error creating share link:', err);
+      alert('Failed to create share link');
+    } finally {
+      setSharingPhotos(false);
+    }
+  };
+
+  const copyShareLink = () => {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   };
 
   const resendEmailReceipt = async (sale) => {
@@ -950,15 +994,68 @@ const Sales = () => {
 
                     {/* Selected Photos Section */}
                     <div className="mt-6 bg-gradient-to-br from-orange-50 to-yellow-50 p-6 rounded-2xl border border-orange-200">
-                      <h4 className="font-bold text-gray-800 mb-4 flex items-center">
-                        <FiImage className="h-5 w-5 text-orange-600 mr-2" />
-                        Selected Photos
-                        {fullSaleDetails?.selected_photos?.length > 0 && (
-                          <span className="ml-2 px-2 py-0.5 bg-orange-200 text-orange-800 text-xs rounded-full">
-                            {fullSaleDetails.selected_photos.length} photos
-                          </span>
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="font-bold text-gray-800 flex items-center">
+                          <FiImage className="h-5 w-5 text-orange-600 mr-2" />
+                          Selected Photos
+                          {fullSaleDetails?.selected_photos?.length > 0 && (
+                            <span className="ml-2 px-2 py-0.5 bg-orange-200 text-orange-800 text-xs rounded-full">
+                              {fullSaleDetails.selected_photos.length} photos
+                            </span>
+                          )}
+                        </h4>
+                        {fullSaleDetails?.selected_photos?.length > 0 && !shareLink && (
+                          <button
+                            onClick={() => sharePhotos(selectedSale, fullSaleDetails.selected_photos)}
+                            disabled={sharingPhotos}
+                            className="flex items-center px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm rounded-lg transition-colors duration-200 shadow-sm disabled:opacity-50"
+                          >
+                            {sharingPhotos ? (
+                              <>
+                                <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white mr-1.5"></div>
+                                Creating...
+                              </>
+                            ) : (
+                              <>
+                                <FiShare2 className="h-3.5 w-3.5 mr-1.5" />
+                                Share with Client
+                              </>
+                            )}
+                          </button>
                         )}
-                      </h4>
+                      </div>
+                      {shareLink && (
+                        <div className="mb-4">
+                          {emailSentNotice && (
+                            <div className="mb-2 flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                              <FiMail className="h-4 w-4" />
+                              Gallery link emailed to client
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 bg-white border border-orange-200 rounded-lg p-3">
+                            <input
+                              type="text"
+                              readOnly
+                              value={shareLink}
+                              className="flex-1 text-sm text-gray-700 bg-transparent outline-none truncate"
+                            />
+                            <button
+                              onClick={copyShareLink}
+                              className={`flex items-center px-3 py-1.5 text-sm rounded-lg transition-colors duration-200 ${linkCopied ? 'bg-green-500 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'}`}
+                            >
+                              {linkCopied ? <><FiCheck className="h-3.5 w-3.5 mr-1" /> Copied</> : <><FiCopy className="h-3.5 w-3.5 mr-1" /> Copy</>}
+                            </button>
+                            <a
+                              href={shareLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center px-3 py-1.5 text-sm rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors duration-200"
+                            >
+                              <FiExternalLink className="h-3.5 w-3.5 mr-1" /> Open
+                            </a>
+                          </div>
+                        </div>
+                      )}
                       {loadingDetails ? (
                         <div className="flex items-center justify-center py-4">
                           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-500"></div>
