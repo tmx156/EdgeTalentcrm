@@ -103,11 +103,11 @@ router.post('/', auth, async (req, res) => {
     // Check if a gallery already exists for this sale
     const { data: existing } = await supabase
       .from('shared_galleries')
-      .select('id, token')
+      .select('id, token, email_sent')
       .eq('sale_id', sale_id)
       .single();
 
-    let isNew = false;
+    let alreadyEmailed = false;
 
     if (existing) {
       await supabase
@@ -116,8 +116,8 @@ router.post('/', auth, async (req, res) => {
         .eq('id', existing.id);
       token = existing.token;
       galleryId = existing.id;
+      alreadyEmailed = existing.email_sent === true;
     } else {
-      isNew = true;
       token = generateShareToken();
       const { data, error } = await supabase
         .from('shared_galleries')
@@ -139,9 +139,9 @@ router.post('/', auth, async (req, res) => {
       galleryId = data.id;
     }
 
-    // Only send email on first creation to avoid duplicates
+    // Send email if not already sent for this gallery
     let emailSent = false;
-    if (send_email && lead_id && isNew) {
+    if (send_email && lead_id && !alreadyEmailed) {
       try {
         const { data: lead } = await supabase
           .from('leads')
@@ -180,6 +180,10 @@ router.post('/', auth, async (req, res) => {
 
           await MessagingService.sendEmail(message, resolvedEmailAccount);
           emailSent = true;
+          await supabase
+            .from('shared_galleries')
+            .update({ email_sent: true })
+            .eq('id', galleryId);
           console.log(`📧 Gallery email sent to ${lead.email} for sale ${sale_id}`);
         }
       } catch (emailErr) {
