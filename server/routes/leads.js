@@ -1298,7 +1298,7 @@ router.get('/calendar', auth, async (req, res) => {
       .select(`
         id, name, phone, email, age, status, date_booked, booked_at, booker_id,
         is_confirmed, is_double_confirmed, booking_status, has_sale, time_booked, booking_slot,
-        created_at, postcode, notes, image_url, review_date, review_time, review_slot,
+        created_at, postcode, notes, image_url, review_date, review_time, review_slot, booking_history,
         date_of_birth, height_inches, chest_inches, waist_inches, hips_inches, eye_color, hair_color, hair_length
       `)
       .or('date_booked.not.is.null,status.eq.Booked')
@@ -2103,13 +2103,48 @@ router.post('/', auth, async (req, res) => {
         }
 
         const updateResult = await dbManager.update('leads', updateData, { id: _id });
-        
+
         // Get updated lead
         const updated = await dbManager.query('leads', {
           select: '*',
           eq: { id: _id }
         });
-        
+
+        // RESCHEDULE TRACKING: if this lead already had a booking on a DIFFERENT date,
+        // record a RESCHEDULE history entry. This is what powers the "rescheduled away"
+        // ghost marker on the original calendar slot AND lets reports credit the
+        // original date (arrivals/sales). Without it, the old date_booked is lost.
+        try {
+          const oldDate = existingLeads[0].date_booked;
+          const newDate = updateData.date_booked;
+          const oldDay = oldDate ? String(oldDate).split('T')[0] : null;
+          const newDay = newDate ? String(newDate).split('T')[0] : null;
+          if (oldDay && newDay && oldDay !== newDay) {
+            await addBookingHistoryEntry(
+              _id,
+              'RESCHEDULE',
+              req.user.id,
+              req.user.name,
+              {
+                oldDate,
+                newDate,
+                // Preserve the ORIGINAL slot/time so the ghost lands in the exact slot
+                // (date_booked stores 00:00, so the real time lives in time_booked).
+                oldTimeBooked: existingLeads[0].time_booked || null,
+                oldBookingSlot: existingLeads[0].booking_slot || null,
+                newTimeBooked: updateData.time_booked || null,
+                newBookingSlot: updateData.booking_slot || null,
+                reason: rescheduleReason || 'Appointment rescheduled',
+                notes: `Appointment rescheduled from ${oldDay} to ${newDay}`
+              },
+              createLeadSnapshot(updated[0])
+            );
+            console.log(`📅 RESCHEDULE recorded for lead ${_id}: ${oldDay} → ${newDay}`);
+          }
+        } catch (e) {
+          console.error('⚠️ RESCHEDULE history entry failed (non-critical):', e.message);
+        }
+
         // Send booking confirmation if requested (NON-BLOCKING)
         if (updateData.date_booked && (bodyWithoutId.sendEmail || bodyWithoutId.sendSms)) {
           console.log(`📧 Triggering non-blocking booking confirmation for lead ${_id}`);
@@ -2247,7 +2282,7 @@ router.post('/', auth, async (req, res) => {
 
       // Use Supabase to check for duplicates
       const existingLeads = await dbManager.query('leads', {
-        select: 'id, name, phone, status, date_booked',
+        select: 'id, name, phone, status, date_booked, time_booked, booking_slot, booker_id',
         is: { deleted_at: null },
       });
 
@@ -2294,6 +2329,37 @@ router.post('/', auth, async (req, res) => {
             eq: { id: existingLead.id }
           });
           const updatedLead = updatedLeads[0];
+
+          // RESCHEDULE TRACKING (duplicate-match path): record the original date so the
+          // calendar keeps a "rescheduled away" ghost and reports credit the original date.
+          try {
+            const oldDate = existingLead.date_booked;
+            const newDate = updateFields.date_booked;
+            const oldDay = oldDate ? String(oldDate).split('T')[0] : null;
+            const newDay = newDate ? String(newDate).split('T')[0] : null;
+            if (oldDay && newDay && oldDay !== newDay) {
+              await addBookingHistoryEntry(
+                existingLead.id,
+                'RESCHEDULE',
+                req.user.id,
+                req.user.name,
+                {
+                  oldDate,
+                  newDate,
+                  oldTimeBooked: existingLead.time_booked || null,
+                  oldBookingSlot: existingLead.booking_slot || null,
+                  newTimeBooked: updateFields.time_booked || null,
+                  newBookingSlot: updateFields.booking_slot || null,
+                  reason: rescheduleReason || 'Appointment rescheduled',
+                  notes: `Appointment rescheduled from ${oldDay} to ${newDay}`
+                },
+                createLeadSnapshot(updatedLead)
+              );
+              console.log(`📅 RESCHEDULE recorded (duplicate path) for lead ${existingLead.id}: ${oldDay} → ${newDay}`);
+            }
+          } catch (e) {
+            console.error('⚠️ RESCHEDULE history entry failed (non-critical):', e.message);
+          }
 
           // Immediately trigger booking confirmation on duplicate-update path as well (NON-BLOCKING)
           if (finalBody.date_booked && (sendEmail || sendSms)) {
@@ -3187,6 +3253,10 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
         {
           oldDate: oldDateBooked,
           newDate: req.body.date_booked,
+          // Preserve the original slot/time so the calendar can show a "rescheduled away"
+          // ghost marker in the exact slot it used to occupy on the original date.
+          oldTimeBooked: lead.time_booked || null,
+          oldBookingSlot: lead.booking_slot || null,
           oldBookingStatus: lead.booking_status,
           newBookingStatus: req.body.booking_status,
           oldIsConfirmed: lead.is_confirmed,
@@ -3313,7 +3383,7 @@ router.put('/:id([0-9a-fA-F-]{36})', auth, async (req, res) => {
         // Don't throw - status update should still succeed
       });
     }
-    // Sync ReplyDesk status if this lead was sent to Alex AI
+    // Sync ReplyDesk status if this lead was sent to Alex A.I
     if (oldStatus !== req.body.status && req.body.status && lead.replydesk_sent_at) {
       const statusMap = { 'Booked': 'Booked', 'Cancelled': 'cancelled', 'Rejected': 'cancelled', 'Attended': 'Booked' };
       const rdStatus = statusMap[req.body.status];
@@ -7015,7 +7085,7 @@ router.post('/:id/send-booking-link', auth, async (req, res) => {
 });
 
 // @route   POST /api/leads/:id/send-to-replydesk
-// @desc    Send lead to ReplyDesk (Alex AI) for WhatsApp qualification
+// @desc    Send lead to Alex A.I for WhatsApp qualification
 // @access  Private
 router.post('/:id/send-to-replydesk', auth, async (req, res) => {
   try {

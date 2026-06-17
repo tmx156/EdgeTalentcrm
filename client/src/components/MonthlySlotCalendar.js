@@ -38,6 +38,7 @@ const MonthlySlotCalendar = ({ currentDate, events, blockedSlots = [], onDayClic
     const index = new Map();
     events.forEach(event => {
       if (!event.date_booked) return;
+      if (event.isRescheduledAway) return; // ghosts don't count toward monthly totals
       const dateStr = toLocalDateStr(new Date(event.date_booked));
       if (!index.has(dateStr)) {
         index.set(dateStr, []);

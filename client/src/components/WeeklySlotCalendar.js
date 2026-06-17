@@ -125,17 +125,42 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
     });
   };
 
-  // Get all events for a slot (returns array)
+  // Get all REAL events for a slot (excludes rescheduled-away ghosts)
   const getEventsForDayTimeSlot = (day, time, slot) => {
     const dayStr = toLocalDateStr(day);
     const key = `${dayStr}_${time}_${slot}`;
-    return eventsBySlot.get(key) || [];
+    return (eventsBySlot.get(key) || []).filter(e => !e.isRescheduledAway);
   };
 
-  // Get primary (first) event for a slot
+  // Get primary (first) real event for a slot
   const getEventForDayTimeSlot = (day, time, slot) => {
     const arr = getEventsForDayTimeSlot(day, time, slot);
     return arr.length > 0 ? arr[0] : null;
+  };
+
+  // Get a "rescheduled away" ghost marker for a slot (booking that used to be here)
+  const getGhostForDayTimeSlot = (day, time, slot) => {
+    const dayStr = toLocalDateStr(day);
+    const key = `${dayStr}_${time}_${slot}`;
+    const arr = eventsBySlot.get(key) || [];
+    return arr.find(e => e.isRescheduledAway) || null;
+  };
+
+  // Render the greyed ghost marker (strikethrough name + where it moved to)
+  const getGhostContent = (ghost) => {
+    if (!ghost) return null;
+    let movedLabel = '';
+    if (ghost.movedTo) {
+      const d = new Date(ghost.movedTo);
+      if (!isNaN(d.getTime())) movedLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    }
+    return (
+      <div className="text-sm text-gray-500 truncate flex items-center gap-0.5" title={`${ghost.name} rescheduled${movedLabel ? ` to ${movedLabel}` : ''}`}>
+        <FiClock className="inline-block w-4 h-4 text-gray-400 flex-shrink-0" />
+        <span className="line-through font-medium">{ghost.name}</span>
+        {movedLabel && <span className="not-italic text-xs">→{movedLabel}</span>}
+      </div>
+    );
   };
 
   // Get cell content for compact view
@@ -183,10 +208,11 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
     if (!event) return 'bg-white';
     
     if (event.has_sale) return 'bg-blue-400';
+    if (event.booking_status === 'Review') return 'bg-purple-400'; // Review - purple (matches day view)
     if (event.is_confirmed) return 'bg-green-400';
     if (event.booking_status === 'Arrived') return 'bg-red-400';
     if (event.booking_status === 'Left') return 'bg-gray-400';
-    
+
     return 'bg-orange-400';
   };
 
@@ -283,6 +309,11 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                   const slot2Overflow = slot2All.length > 1 ? slot2All.slice(1) : [];
                   const slot3Overflow = slot3All.length > 1 ? slot3All.slice(1) : [];
                   const slot4Overflow = slot4All.length > 1 ? slot4All.slice(1) : [];
+                  // Rescheduled-away ghost markers (only shown when the slot has no real booking)
+                  const slot1Ghost = !slot1Event ? getGhostForDayTimeSlot(day, slotConfig.time, 1) : null;
+                  const slot2Ghost = !slot2Event ? getGhostForDayTimeSlot(day, slotConfig.time, 2) : null;
+                  const slot3Ghost = !slot3Event ? getGhostForDayTimeSlot(day, slotConfig.time, 3) : null;
+                  const slot4Ghost = !slot4Event ? getGhostForDayTimeSlot(day, slotConfig.time, 4) : null;
                   const dayStr = toLocalDateStr(day);
 
                   return (
@@ -309,7 +340,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                         >
                           {isSlotBlocked(day, slotConfig.time, 1) ? (
                             <span className="text-xs">🔒</span>
-                          ) : slot1Event ? getCellContent(slot1Event) : slotConfig.slot1Emoji && <span className="text-xs">{slotConfig.slot1Emoji}</span>}
+                          ) : slot1Event ? getCellContent(slot1Event) : slot1Ghost ? getGhostContent(slot1Ghost) : slotConfig.slot1Emoji && <span className="text-xs">{slotConfig.slot1Emoji}</span>}
                           {/* Overflow badge */}
                           {slot1Overflow.length > 0 && (
                             <div className="absolute -top-1 -right-1" ref={overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 1 ? dropdownRef : null}>
@@ -368,7 +399,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                         >
                           {isSlotBlocked(day, slotConfig.time, 2) ? (
                             <span className="text-xs">🔒</span>
-                          ) : slot2Event ? getCellContent(slot2Event) : slotConfig.slot2Emoji && <span className="text-xs">{slotConfig.slot2Emoji}</span>}
+                          ) : slot2Event ? getCellContent(slot2Event) : slot2Ghost ? getGhostContent(slot2Ghost) : slotConfig.slot2Emoji && <span className="text-xs">{slotConfig.slot2Emoji}</span>}
                           {/* Overflow badge */}
                           {slot2Overflow.length > 0 && (
                             <div className="absolute -top-1 -right-1" ref={overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 2 ? dropdownRef : null}>
@@ -427,7 +458,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                         >
                           {isSlotBlocked(day, slotConfig.time, 3) ? (
                             <span className="text-xs">🔒</span>
-                          ) : slot3Event ? getCellContent(slot3Event) : slotConfig.slot3Emoji && <span className="text-xs">{slotConfig.slot3Emoji}</span>}
+                          ) : slot3Event ? getCellContent(slot3Event) : slot3Ghost ? getGhostContent(slot3Ghost) : slotConfig.slot3Emoji && <span className="text-xs">{slotConfig.slot3Emoji}</span>}
                           {/* Overflow badge */}
                           {slot3Overflow.length > 0 && (
                             <div className="absolute -top-1 -right-1" ref={overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 3 ? dropdownRef : null}>
@@ -486,7 +517,7 @@ const WeeklySlotCalendar = ({ weekStart, events, blockedSlots = [], onDayClick, 
                         >
                           {isSlotBlocked(day, slotConfig.time, 4) ? (
                             <span className="text-xs">🔒</span>
-                          ) : slot4Event ? getCellContent(slot4Event) : slotConfig.slot4Emoji && <span className="text-xs">{slotConfig.slot4Emoji}</span>}
+                          ) : slot4Event ? getCellContent(slot4Event) : slot4Ghost ? getGhostContent(slot4Ghost) : slotConfig.slot4Emoji && <span className="text-xs">{slotConfig.slot4Emoji}</span>}
                           {/* Overflow badge */}
                           {slot4Overflow.length > 0 && (
                             <div className="absolute -top-1 -right-1" ref={overflowDropdown?.dateStr === dayStr && overflowDropdown?.time === slotConfig.time && overflowDropdown?.slot === 4 ? dropdownRef : null}>

@@ -184,16 +184,39 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
     });
   };
 
-  // Get all events for a slot (returns array)
+  // Get all REAL events for a slot (excludes rescheduled-away ghosts)
   const getEventsForSlot = (time, slot) => {
     const key = `${time}_${slot}`;
-    return eventsBySlot.get(key) || [];
+    return (eventsBySlot.get(key) || []).filter(e => !e.isRescheduledAway);
   };
 
-  // Get primary (first) event for a slot — keeps existing rendering unchanged
+  // Get primary (first) real event for a slot — keeps existing rendering unchanged
   const getEventForSlot = (time, slot) => {
     const arr = getEventsForSlot(time, slot);
     return arr.length > 0 ? arr[0] : null;
+  };
+
+  // Get a "rescheduled away" ghost marker for a slot (booking that used to be here)
+  const getGhostForSlot = (time, slot) => {
+    const key = `${time}_${slot}`;
+    const arr = eventsBySlot.get(key) || [];
+    return arr.find(e => e.isRescheduledAway) || null;
+  };
+
+  // Render the greyed ghost marker (strikethrough name + where it moved to)
+  const getGhostContent = (ghost) => {
+    if (!ghost) return null;
+    let movedLabel = '';
+    if (ghost.movedTo) {
+      const d = new Date(ghost.movedTo);
+      if (!isNaN(d.getTime())) movedLabel = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    }
+    return (
+      <div className="text-sm text-gray-500 truncate flex items-center justify-center gap-1" title={`${ghost.name} rescheduled${movedLabel ? ` to ${movedLabel}` : ''}`}>
+        <span className="line-through font-medium">{ghost.name}</span>
+        {movedLabel && <span className="text-xs">→ {movedLabel}</span>}
+      </div>
+    );
   };
 
   // Get status indicator - LARGER AND MORE VISIBLE
@@ -353,6 +376,11 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
           const slot2Overflow = slot2All.length > 1 ? slot2All.slice(1) : [];
           const slot3Overflow = slot3All.length > 1 ? slot3All.slice(1) : [];
           const slot4Overflow = slot4All.length > 1 ? slot4All.slice(1) : [];
+          // Rescheduled-away ghost markers (only shown when the slot has no real booking)
+          const slot1Ghost = !slot1Event ? getGhostForSlot(slotConfig.time, 1) : null;
+          const slot2Ghost = !slot2Event ? getGhostForSlot(slotConfig.time, 2) : null;
+          const slot3Ghost = !slot3Event ? getGhostForSlot(slotConfig.time, 3) : null;
+          const slot4Ghost = !slot4Event ? getGhostForSlot(slotConfig.time, 4) : null;
 
           return (
             <div
@@ -414,6 +442,11 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                     {slot1Event.phone && (
                       <div className="text-xs text-gray-600 mt-1">{slot1Event.phone}</div>
                     )}
+                  </div>
+                ) : slot1Ghost ? (
+                  <div className="text-center w-full">
+                    {getGhostContent(slot1Ghost)}
+                    <div className="text-gray-400 text-xs mt-1">Click to Book</div>
                   </div>
                 ) : (
                   <div className="text-gray-400 text-sm text-center">
@@ -513,6 +546,11 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                       <div className="text-xs text-gray-600 mt-1">{slot2Event.phone}</div>
                     )}
                   </div>
+                ) : slot2Ghost ? (
+                  <div className="text-center w-full">
+                    {getGhostContent(slot2Ghost)}
+                    <div className="text-gray-400 text-xs mt-1">Click to Book</div>
+                  </div>
                 ) : (
                   <div className="text-gray-400 text-sm text-center">
                     Click to Book
@@ -609,6 +647,11 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                       <div className="text-xs text-gray-600 mt-1">{slot3Event.phone}</div>
                     )}
                   </div>
+                ) : slot3Ghost ? (
+                  <div className="text-center w-full">
+                    {getGhostContent(slot3Ghost)}
+                    <div className="text-gray-400 text-xs mt-1">Click to Book</div>
+                  </div>
                 ) : (
                   <div className="text-gray-400 text-sm text-center">
                     Click to Book
@@ -704,6 +747,11 @@ const SlotCalendar = ({ selectedDate, events, blockedSlots = [], onSlotClick, on
                     {slot4Event.phone && (
                       <div className="text-xs text-gray-600 mt-1">{slot4Event.phone}</div>
                     )}
+                  </div>
+                ) : slot4Ghost ? (
+                  <div className="text-center w-full">
+                    {getGhostContent(slot4Ghost)}
+                    <div className="text-gray-400 text-xs mt-1">Click to Book</div>
                   </div>
                 ) : (
                   <div className="text-gray-400 text-sm text-center">

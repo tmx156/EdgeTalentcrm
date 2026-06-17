@@ -4,6 +4,10 @@ const dbManager = require('../database-connection-manager');
 
 const router = express.Router();
 
+// Alex A.I fixed booker UUID. For Alex, "assigned" means "leads sent to Alex"
+// (tracked by replydesk_sent_at), not leads where booker_id = Alex.
+const ALEX_AI_USER_ID = '00000000-0000-0000-0000-000000000001';
+
 // In-memory cache for stats (per user + date range)
 const statsCache = new Map();
 const STATS_CACHE_TTL = 10000; // 10 seconds
@@ -139,10 +143,13 @@ router.get('/leads', auth, async (req, res) => {
     // Build base query for fetching leads with pagination
     // When date filter is active, we fetch ALL leads (no SQL date filter) and apply per-status date logic in JS
     // This is because each status tab needs a different date column
+    // Alex A.I report: count leads SENT to Alex (replydesk_sent_at), not booker_id = Alex
+    const isAlexReport = booker === ALEX_AI_USER_ID && req.user.role === 'admin';
+
     const buildQuery = (from, to) => {
       let query = dbManager.client
         .from('leads')
-        .select('status, custom_fields, call_status, booker_id, booking_status, has_sale, assigned_at, booked_at, date_booked, ever_booked, booking_history, created_at')
+        .select('status, custom_fields, call_status, booker_id, booking_status, has_sale, assigned_at, booked_at, date_booked, ever_booked, booking_history, created_at, replydesk_sent_at')
         .neq('postcode', 'ZZGHOST') // Exclude ghost bookings
         .range(from, to);
 
@@ -155,7 +162,12 @@ router.get('/leads', auth, async (req, res) => {
 
       // Optional booker filter (for admin per-booker reports)
       if (booker && req.user.role === 'admin') {
-        query = query.eq('booker_id', booker);
+        if (isAlexReport) {
+          // Alex's "assigned" = leads sent to him via ReplyDesk, regardless of booker_id
+          query = query.not('replydesk_sent_at', 'is', null);
+        } else {
+          query = query.eq('booker_id', booker);
+        }
       }
 
       // When NO date filter is active, apply legacy filters or role-based defaults
@@ -275,6 +287,13 @@ router.get('/leads', auth, async (req, res) => {
       return isInDateRange(lead.assigned_at, dateStart, dateEnd);
     };
 
+    // Alex A.I: a lead counts as "assigned" when it was sent to Alex (replydesk_sent_at) in range
+    const wasSentToAlexInRange = (lead) => {
+      if (!lead.replydesk_sent_at) return false;
+      if (!hasDateFilter) return true;
+      return isInDateRange(lead.replydesk_sent_at, dateStart, dateEnd);
+    };
+
     // Extract the actual booking action date from a lead
     // Priority: booked_at > BOOKING_CONFIRMATION_SENT > STATUS_CHANGE -> Booked > assigned_at
     const getBookingActionDate = (lead) => {
@@ -339,6 +358,54 @@ router.get('/leads', auth, async (req, res) => {
     const wasAppointmentDateInRange = (lead) => {
       if (!hasDateFilter) return !!lead.date_booked;
       return isInDateRange(lead.date_booked, dateStart, dateEnd);
+    };
+
+    // The appointment date that was ACTIVE when the lead actually arrived / bought.
+    // If a lead arrives and buys on their booked date, then is rescheduled afterwards,
+    // current date_booked points at the new future date — but the arrival/sale really
+    // belongs to the ORIGINAL date. We reconstruct that date by walking the reschedule
+    // chain: the date active at the moment of attendance is the oldDate of the earliest
+    // RESCHEDULE that happened AFTER attendance. (No snapshot dependency.)
+    const getEffectiveAttendanceDate = (lead) => {
+      const history = parseHistory(lead);
+      if (!history.length) return lead.date_booked;
+
+      // When did the lead first reach an attended / sale state?
+      let attendanceTs = null;
+      for (const e of history) {
+        const reached =
+          e.action === 'SALE_COMPLETED' ||
+          (e.action === 'STATUS_CHANGE' && e.details?.newStatus === 'Attended') ||
+          (e.action === 'BOOKING_STATUS_UPDATE' && ATTENDED_BOOKING_STATUSES.includes(e.details?.bookingStatus));
+        if (reached && e.timestamp) {
+          const ts = new Date(e.timestamp).getTime();
+          if (!isNaN(ts) && (attendanceTs === null || ts < attendanceTs)) attendanceTs = ts;
+        }
+      }
+      // Never attended (e.g. has_sale only / no history evidence) → use current date_booked
+      if (attendanceTs === null) return lead.date_booked;
+
+      // Date active at attendance = oldDate of the earliest reschedule AFTER attendance
+      let bestReschedTs = null;
+      let activeDate = null;
+      for (const e of history) {
+        if (e.action === 'RESCHEDULE' && e.details?.oldDate && e.timestamp) {
+          const ts = new Date(e.timestamp).getTime();
+          if (!isNaN(ts) && ts > attendanceTs && (bestReschedTs === null || ts < bestReschedTs)) {
+            bestReschedTs = ts;
+            activeDate = e.details.oldDate;
+          }
+        }
+      }
+      // No reschedule after attendance → date_booked never moved post-attendance
+      return activeDate || lead.date_booked;
+    };
+
+    // Attendance/sale attribution: count toward the date the lead actually arrived/bought
+    const wasAttendanceDateInRange = (lead) => {
+      const d = getEffectiveAttendanceDate(lead);
+      if (!hasDateFilter) return !!d;
+      return isInDateRange(d, dateStart, dateEnd);
     };
 
     // Check if a call_status was set within the date range (via booking_history CALL_STATUS_UPDATE)
@@ -414,8 +481,12 @@ router.get('/leads', auth, async (req, res) => {
       const status = l.status;
       const callStatus = getCallStatus(l);
       const notProgressed = hasNotProgressed(l);
-      const assignedInRange = wasAssignedInRange(l);
+      // For Alex's report, "assigned" = sent to Alex; for everyone else, normal assigned_at logic
+      const assignedInRange = isAlexReport ? wasSentToAlexInRange(l) : wasAssignedInRange(l);
       const appointmentInRange = wasAppointmentDateInRange(l);
+      // For arrivals/sales: attribute to the date the lead actually arrived/bought,
+      // not the current date_booked (which may have moved if rescheduled afterwards).
+      const attendanceInRange = wasAttendanceDateInRange(l);
 
       // total
       if (hasDateFilter) { if (wasCreatedInRange(l)) result.total++; }
@@ -434,10 +505,10 @@ router.get('/leads', auth, async (req, res) => {
 
       // Attended/cancelled/noShow (complex checks)
       const everAttended = hasEverAttended(l);
-      if (everAttended && appointmentInRange) result.attended++;
+      if (everAttended && attendanceInRange) result.attended++;
       if (status === 'Cancelled' && wasCancelledDiaryDateInRange(l)) result.cancelled++;
 
-      if (everAttended && l.booker_id != null && appointmentInRange) result.attendedFilter++;
+      if (everAttended && l.booker_id != null && attendanceInRange) result.attendedFilter++;
 
       if (l.booker_id && l.date_booked && status !== 'Cancelled' && l.booking_status !== 'Cancel' && appointmentInRange) {
         result.expectedAppointments++;
@@ -476,10 +547,10 @@ router.get('/leads', auth, async (req, res) => {
       }
 
       // Sales
-      if (l.has_sale > 0 && l.booker_id != null && appointmentInRange) result.salesConverted++;
+      if (l.has_sale > 0 && l.booker_id != null && attendanceInRange) result.salesConverted++;
 
       // Attendance sub-breakdown
-      if ((status === 'Attended' || status === 'Booked') && l.booker_id != null && appointmentInRange) {
+      if ((status === 'Attended' || status === 'Booked') && l.booker_id != null && attendanceInRange) {
         switch (l.booking_status) {
           case 'Arrived': result.arrived++; break;
           case 'Left': result.leftBuilding++; break;

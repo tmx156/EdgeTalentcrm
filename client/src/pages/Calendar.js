@@ -108,6 +108,7 @@ const Calendar = () => {
       const selectedDate = new Date(selectedDateStr);
       const bookedSlots = events.filter(event => {
         if (!event.date_booked) return false;
+        if (event.isRescheduledAway) return false; // ghosts don't occupy a slot
         const eventDate = new Date(event.date_booked);
         return toLocalDateStr(eventDate) === selectedDateStr;
       });
@@ -452,12 +453,14 @@ const Calendar = () => {
   
   // Memoize fetchEvents to prevent recreating it on every render
   const fetchEvents = useCallback(async (force = false) => {
-    // If force refresh, clear the cache
+    // If force refresh, clear the cache so we actually re-fetch.
+    // NOTE: we intentionally do NOT clear events here — keeping the current events
+    // on screen avoids a jarring blank flash; the fresh set atomically REPLACES them
+    // when the fetch returns (see the force branch in setEvents below).
     if (force) {
       console.log('📅 Force refresh: Clearing calendar cache');
       loadedRangesRef.current = new Set();
       setLoadedRanges(new Set());
-      setEvents([]);
     }
     
     // Prevent multiple simultaneous calls
@@ -686,7 +689,24 @@ const Calendar = () => {
               isDoubleConfirmed: isDoubleConfirmed
             }
           };
-          
+
+          // If this booking has been sent to "Review" with a DIFFERENT review date,
+          // grey out the ORIGINAL date (exactly like a reschedule) and let the separate
+          // review event be the active appointment on the review date.
+          if (lead.booking_status === 'Review' && lead.review_date) {
+            const mainDay = lead.date_booked ? String(lead.date_booked).split('T')[0] : null;
+            const reviewDay = String(lead.review_date).split('T')[0];
+            if (mainDay && reviewDay && mainDay !== reviewDay) {
+              event.isRescheduledAway = true;
+              event.movedTo = lead.review_date;
+              event.backgroundColor = '#d1d5db';
+              event.borderColor = '#9ca3af';
+              event.extendedProps.isRescheduledAway = true;
+              event.extendedProps.movedTo = lead.review_date;
+              event.extendedProps.displayStatus = 'Review (moved)';
+            }
+          }
+
           return event;
         })
         .filter(event => event !== null); // Remove any null events from invalid dates
@@ -718,13 +738,144 @@ const Calendar = () => {
 
       console.log(`📅 Calendar: Final events array has ${finalEvents.length} unique events`);
 
+      // GHOST EVENTS: when a booking is rescheduled, the original slot is vacated.
+      // We render a greyed "rescheduled away" marker on the original date/slot so it's
+      // visible that a booking used to be there (and where it moved to). These ghosts do
+      // NOT occupy the slot — the slot stays bookable.
+      const ghostEvents = [];
+      validLeads.forEach(lead => {
+        let history = lead.booking_history || [];
+        if (!Array.isArray(history)) {
+          try { history = typeof history === 'string' ? JSON.parse(history) : []; }
+          catch (e) { history = []; }
+        }
+        const currentDay = lead.date_booked ? new Date(lead.date_booked).toDateString() : null;
+        const seenGhostDays = new Set();
+        history.forEach(entry => {
+          if (entry.action !== 'RESCHEDULE') return;
+          const oldDate = entry.details?.oldDate;
+          if (!oldDate) return;
+          const oldStart = new Date(oldDate);
+          if (isNaN(oldStart.getTime())) return;
+          const oldDay = oldStart.toDateString();
+          // Skip if the original date is the current (active) booking date, or already ghosted
+          if (oldDay === currentDay || seenGhostDays.has(oldDay)) return;
+          seenGhostDays.add(oldDay);
+
+          const movedTo = entry.details?.newDate || lead.date_booked;
+          const oldTime = entry.details?.oldTimeBooked
+            || `${String(oldStart.getHours()).padStart(2, '0')}:${String(oldStart.getMinutes()).padStart(2, '0')}`;
+          const oldSlot = entry.details?.oldBookingSlot || 1;
+
+          ghostEvents.push({
+            id: `ghost-${lead.id}-${oldStart.getTime()}`,
+            title: `${lead.name} — rescheduled`,
+            start: oldStart.toISOString(),
+            end: new Date(oldStart.getTime() + 30 * 60000).toISOString(),
+            allDay: false,
+            backgroundColor: '#d1d5db',
+            borderColor: '#9ca3af',
+            isRescheduledAway: true,
+            movedTo,
+            name: lead.name,
+            phone: lead.phone,
+            email: lead.email,
+            date_booked: oldDate,
+            time_booked: oldTime,
+            booking_slot: oldSlot,
+            booking_status: 'Reschedule',
+            extendedProps: {
+              lead: { ...lead },
+              status: lead.status,
+              displayStatus: 'Rescheduled away',
+              isRescheduledAway: true,
+              movedTo
+            }
+          });
+        });
+      });
+      if (ghostEvents.length > 0) {
+        console.log(`📅 Calendar: Created ${ghostEvents.length} rescheduled-away ghost markers`);
+        finalEvents.push(...ghostEvents);
+      }
+
+      // REVIEW APPOINTMENTS: a "Review" books a SEPARATE follow-up appointment stored in
+      // review_date/review_time/review_slot. The original booking stays on its own date;
+      // here we surface the review as its own visible (purple) appointment on the new date.
+      const reviewEvents = [];
+      validLeads.forEach(lead => {
+        if (!lead.review_date) return;
+        // Only surface a review appointment while the lead is ACTUALLY in Review status.
+        // (Some leads keep a stale review_date after moving to No Show/Complete/etc. —
+        // those must not render phantom review events. This matches the greyed-original rule.)
+        if (lead.booking_status !== 'Review') return;
+        // Parse the review day (stored as YYYY-MM-DD or ISO) and time (HH:MM)
+        const reviewDay = String(lead.review_date).split('T')[0];
+        if (!reviewDay) return;
+        const rTime = lead.review_time || '00:00';
+        const rSlot = lead.review_slot || 1;
+
+        // Skip if the review lands on the exact same day+time+slot as the main booking
+        const mainDay = lead.date_booked ? String(lead.date_booked).split('T')[0] : null;
+        if (mainDay === reviewDay && (lead.time_booked || '') === rTime && (lead.booking_slot || 1) === rSlot) {
+          return;
+        }
+
+        const [rh, rm] = rTime.split(':');
+        const reviewStart = new Date(`${reviewDay}T${String(rh || '0').padStart(2, '0')}:${String(rm || '0').padStart(2, '0')}:00`);
+        if (isNaN(reviewStart.getTime())) return;
+
+        reviewEvents.push({
+          id: `review-${lead.id}`,
+          title: `${lead.name} - Review`,
+          start: reviewStart.toISOString(),
+          end: new Date(reviewStart.getTime() + 30 * 60000).toISOString(),
+          allDay: false,
+          backgroundColor: '#8b5cf6',
+          borderColor: '#7c3aed',
+          isReviewAppointment: true,
+          name: lead.name,
+          phone: lead.phone,
+          email: lead.email,
+          // Position the review event on the review date/slot
+          date_booked: lead.review_date,
+          time_booked: rTime,
+          booking_slot: rSlot,
+          booking_status: 'Review',
+          has_sale: lead.has_sale,
+          is_confirmed: lead.is_confirmed,
+          hasUnreadSms: lead.has_unread_sms || false,
+          hasUnreadEmail: lead.has_unread_email || false,
+          hasReceivedSms: lead.has_received_sms || false,
+          hasReceivedEmail: lead.has_received_email || false,
+          extendedProps: {
+            lead: { ...lead },
+            phone: lead.phone,
+            status: lead.status,
+            displayStatus: 'Review',
+            isReviewAppointment: true,
+            booker: lead.booker?.name || lead.booker_name || 'N/A'
+          }
+        });
+      });
+      if (reviewEvents.length > 0) {
+        console.log(`📅 Calendar: Created ${reviewEvents.length} review appointment events`);
+        finalEvents.push(...reviewEvents);
+      }
+
       // Mark all bookings as loaded - use ref to prevent recreation
       loadedRangesRef.current.add(rangeKey);
       setLoadedRanges(new Set(loadedRangesRef.current)); // Update state for UI if needed
       console.log(`📅 Marked all bookings as loaded (${finalEvents.length} events)`);
 
-      // DIARY-STYLE LOADING: Merge new events with existing ones (no duplicates)
+      // On a FORCE refresh, atomically REPLACE the events with the fresh full set.
+      // This swaps in changes (moved bookings, new ghost/review markers, removals)
+      // in a single render with no blank flash. Non-force fetches merge (add-only).
       setEvents(prevEvents => {
+        if (force) {
+          console.log(`📅 Force refresh: replacing with ${finalEvents.length} fresh events`);
+          return finalEvents;
+        }
         const existingIds = new Set(prevEvents.map(e => e.id));
         const newUniqueEvents = finalEvents.filter(e => !existingIds.has(e.id));
         const mergedEvents = [...prevEvents, ...newUniqueEvents];
@@ -1826,17 +1977,16 @@ const Calendar = () => {
         // Log the action for debugging
         console.log(`📅 Booking action: ${isExistingLead ? 'Updated existing lead' : 'Created new lead'} for ${leadForm.name}`);
         
-        // Force refresh calendar events to ensure consistency with server
+        // Force refresh calendar events to ensure consistency with server.
+        // Must be a FORCE refresh (clears the ALL_BOOKINGS cache) so the refetch
+        // re-reads booking_history and regenerates the "rescheduled away" ghost marker
+        // on the original date. A non-force fetch early-returns and the ghost never shows.
+        // Near-instant: the server has already committed the booking/reschedule before
+        // it responded, so a short delay is enough to feel immediate.
         setTimeout(() => {
-          console.log('📅 Refreshing calendar after booking to ensure consistency');
-          fetchEvents();
-        }, 2000); // Increased delay to 2 seconds
-        
-        // Additional refresh after 5 seconds to catch any delayed updates
-        setTimeout(() => {
-          console.log('📅 Second refresh to catch any delayed updates');
-          fetchEvents();
-        }, 5000);
+          console.log('📅 Force-refreshing calendar after booking to ensure consistency');
+          fetchEvents(true);
+        }, 300);
       }
     } catch (error) {
       console.error('Error creating booking:', error);
@@ -2298,7 +2448,9 @@ const Calendar = () => {
     // Make API call in background (non-blocking)
     (async () => {
       try {
-        const response = await axios.put(`/api/leads/${selectedEvent.id}`, updateData);
+        // Use the real lead id (selectedEvent.id may be a synthetic "review-<id>" event id)
+        const targetLeadId = selectedEvent.extendedProps?.lead?.id || selectedEvent.id;
+        const response = await axios.put(`/api/leads/${targetLeadId}`, updateData);
 
         if (response.data.success || response.data.lead) {
           const updatedLead = response.data.lead || response.data;
@@ -2497,6 +2649,7 @@ const Calendar = () => {
     dayEnd.setDate(dayEnd.getDate() + 1);
     
     return events.filter(event => {
+      if (event.isRescheduledAway) return false; // skip ghost markers in booking navigation
       const eventDate = new Date(event.start);
       return eventDate >= dayStart && eventDate < dayEnd;
     }).sort((a, b) => new Date(a.start) - new Date(b.start));
@@ -2879,13 +3032,13 @@ const Calendar = () => {
                 </span>
               </div>
 
-              {/* Event Count - hide on very small screens */}
+              {/* Event Count - hide on very small screens (excludes rescheduled-away ghosts) */}
               <div className="hidden sm:flex items-center space-x-2 sm:space-x-3 text-xs text-gray-500">
-                <span>📅 {events.length}</span>
+                <span>📅 {events.filter(e => !e.isRescheduledAway).length}</span>
               </div>
             </div>
             <p className="text-xs sm:text-sm text-gray-500 mt-1">
-              {events.length} events • Updated {lastUpdated.toLocaleTimeString()}
+              {events.filter(e => !e.isRescheduledAway).length} events • Updated {lastUpdated.toLocaleTimeString()}
             </p>
           </div>
         </div>
@@ -2939,6 +3092,7 @@ const Calendar = () => {
           {searchTerm && (
             <p className="mt-2 text-xs sm:text-sm text-gray-600">
               Found {events.filter(event => {
+                if (event.isRescheduledAway) return false;
                 const search = searchTerm.toLowerCase();
                 const leadName = event.extendedProps?.lead?.name || event.title || '';
                 const leadPhone = event.extendedProps?.phone || '';
@@ -3126,7 +3280,11 @@ const Calendar = () => {
             onEventClick={(event) => {
               console.log('Event clicked:', event);
               // Find the full event from the events array
-              const fullEvent = events.find(e => e.id === event.id);
+              // A review event is a synthetic appointment (id "review-<leadId>"); resolve it
+              // to the real lead booking so modal actions use the real lead id, not the synthetic one.
+              const fullEvent = event.isReviewAppointment
+                ? (events.find(e => e.id === event.extendedProps?.lead?.id) || events.find(e => e.id === event.id))
+                : events.find(e => e.id === event.id);
               if (fullEvent) {
                 setSelectedEvent(fullEvent);
                 setShowEventModal(true);
@@ -3199,7 +3357,11 @@ const Calendar = () => {
             onEventClick={(event) => {
               console.log('Event clicked:', event);
               // Find the full event from the events array
-              const fullEvent = events.find(e => e.id === event.id);
+              // A review event is a synthetic appointment (id "review-<leadId>"); resolve it
+              // to the real lead booking so modal actions use the real lead id, not the synthetic one.
+              const fullEvent = event.isReviewAppointment
+                ? (events.find(e => e.id === event.extendedProps?.lead?.id) || events.find(e => e.id === event.id))
+                : events.find(e => e.id === event.id);
               if (fullEvent) {
                 setSelectedEvent(fullEvent);
                 setShowEventModal(true);
@@ -3291,7 +3453,11 @@ const Calendar = () => {
             onEventClick={(event) => {
               console.log('Event clicked:', event);
               // Find the full event from the events array
-              const fullEvent = events.find(e => e.id === event.id);
+              // A review event is a synthetic appointment (id "review-<leadId>"); resolve it
+              // to the real lead booking so modal actions use the real lead id, not the synthetic one.
+              const fullEvent = event.isReviewAppointment
+                ? (events.find(e => e.id === event.extendedProps?.lead?.id) || events.find(e => e.id === event.id))
+                : events.find(e => e.id === event.id);
               if (fullEvent) {
                 setSelectedEvent(fullEvent);
                 setShowEventModal(true);
@@ -5315,6 +5481,13 @@ const Calendar = () => {
                     setReviewTime('');
                     setReviewAvailableSlots([]);
                     handleEventStatusChange('Review');
+                    // Force-refresh so the new review appointment becomes visible on its
+                    // own date (a non-force fetch early-returns due to the ALL_BOOKINGS cache).
+                    // The review PUT (which sets review_date + booking_status='Review') has
+                    // already resolved above, so a short delay feels immediate.
+                    setTimeout(() => {
+                      if (fetchEventsRef.current) fetchEventsRef.current(true);
+                    }, 400);
                     alert(`Review scheduled for ${new Date(reviewDate).toLocaleDateString('en-GB')} at ${time} (Slot ${slot})`);
                   } catch (error) {
                     console.error('Error scheduling review:', error);
