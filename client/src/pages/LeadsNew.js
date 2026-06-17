@@ -916,10 +916,10 @@ const LeadsNew = () => {
     }
   };
 
-  // Handle send to Sales Ape queue
+  // Handle send to Alex A.I queue
   const handleSendToSalesApe = async () => {
     if (selectedLeads.length === 0) {
-      alert('Please select leads to send to Sales Ape');
+      alert('Please select leads to send to Alex A.I');
       return;
     }
 
@@ -930,7 +930,7 @@ const LeadsNew = () => {
       let failCount = 0;
       const errors = [];
 
-      // Send each lead to Sales Ape queue using the proper endpoint
+      // Send each lead to Alex A.I queue using the proper endpoint
       for (const leadId of selectedLeads) {
         try {
           await axios.post('/api/salesape-dashboard/queue/add',
@@ -942,7 +942,7 @@ const LeadsNew = () => {
           failCount++;
           const errorMsg = error.response?.data?.message || error.message;
           errors.push(errorMsg);
-          console.error(`Failed to send lead ${leadId} to Sales Ape:`, errorMsg);
+          console.error(`Failed to send lead ${leadId} to Alex A.I:`, errorMsg);
         }
       }
 
@@ -952,13 +952,13 @@ const LeadsNew = () => {
       fetchLeadCounts();
 
       if (failCount === 0) {
-        alert(`Successfully sent ${successCount} leads to Sales Ape queue`);
+        alert(`Successfully sent ${successCount} leads to Alex A.I queue`);
       } else {
-        alert(`Sent ${successCount} leads to Sales Ape queue.\n${failCount} failed: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}`);
+        alert(`Sent ${successCount} leads to Alex A.I queue.\n${failCount} failed: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}`);
       }
     } catch (error) {
-      console.error('Error sending leads to Sales Ape:', error);
-      alert('Failed to send leads to Sales Ape');
+      console.error('Error sending leads to Alex A.I:', error);
+      alert('Failed to send leads to Alex A.I');
     } finally {
       setSendingToSalesApe(false);
     }
@@ -2316,7 +2316,7 @@ const LeadsNew = () => {
         </div>
       )}
 
-      {/* Sales Ape Queue Modal - DISABLED */}
+      {/* Alex A.I Queue Modal - DISABLED */}
 
       {/* Bulk Assign Modal */}
       {showBulkAssignModal && (

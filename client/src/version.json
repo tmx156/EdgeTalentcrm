@@ -1,14 +1,14 @@
 {
-  "version": "1.0.280",
-  "commitHash": "e881ab4",
-  "fullCommitHash": "e881ab4915316d955cc532c09526c8fc91d69284",
-  "commitMessage": "Add 'In Progress' call status and optimize stats counter performance",
-  "commitDate": "2026-04-20 06:44:44 +0100",
+  "version": "1.0.291",
+  "commitHash": "1827245",
+  "fullCommitHash": "1827245f1e9b3456b178a8e7faee2bfcee832104",
+  "commitMessage": "Fix gallery email message ID to use valid UUID",
+  "commitDate": "2026-06-09 21:46:40 +0100",
   "author": "Tin",
   "branch": "main",
-  "commitCount": 280,
-  "buildTimestamp": "2026-04-20T06:58:25.223Z",
-  "buildId": "e881ab4-1776668305224",
-  "releaseName": "Spring Update",
-  "seenKey": "main-e881ab4"
+  "commitCount": 291,
+  "buildTimestamp": "2026-06-17T03:39:33.208Z",
+  "buildId": "1827245-1781667573209",
+  "releaseName": "Summer Update",
+  "seenKey": "main-1827245"
 }

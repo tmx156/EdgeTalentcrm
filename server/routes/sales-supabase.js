@@ -8,6 +8,87 @@ const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
 
+// ---------------------------------------------------------------------------
+// Resolve a named Period (or a custom start/end) into concrete start/end Date
+// boundaries. Shared by the sales list and stats endpoints so the same Period
+// selection always produces an identical window. Uses UK calendar days
+// (Europe/London) and Monday-start weeks.
+// ---------------------------------------------------------------------------
+function resolveDateRange(dateRange, query = {}) {
+  let startDate, endDate;
+  if (!dateRange) return { startDate, endDate };
+
+  // Current UK (Europe/London) calendar-date components, read via Intl so we
+  // never round-trip through an unparseable locale string (en-GB is DD/MM/YYYY).
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const get = (t) => Number(parts.find((p) => p.type === t).value);
+  const y = get('year');
+  const m = get('month') - 1; // 0-indexed month
+  const d = get('day');
+  const startOfDay = (yy, mm, dd) => new Date(yy, mm, dd, 0, 0, 0, 0);
+  const endOfDay = (yy, mm, dd) => new Date(yy, mm, dd, 23, 59, 59, 999);
+
+  // Day-of-week for that UK date, converted to a Monday-start index (Mon=0 … Sun=6)
+  const dow = new Date(Date.UTC(y, m, d)).getUTCDay(); // 0=Sun … 6=Sat
+  const mondayIndex = (dow + 6) % 7;
+
+  switch (dateRange) {
+    case 'today':
+      startDate = startOfDay(y, m, d);
+      endDate = endOfDay(y, m, d);
+      break;
+    case 'this_week':
+      startDate = startOfDay(y, m, d - mondayIndex);
+      endDate = endOfDay(y, m, d - mondayIndex + 6);
+      break;
+    case 'last_week':
+      startDate = startOfDay(y, m, d - mondayIndex - 7);
+      endDate = endOfDay(y, m, d - mondayIndex - 1);
+      break;
+    case 'this_month':
+      startDate = startOfDay(y, m, 1);
+      endDate = endOfDay(y, m + 1, 0);
+      break;
+    case 'last_month':
+      startDate = startOfDay(y, m - 1, 1);
+      endDate = endOfDay(y, m, 0);
+      break;
+    case 'this_quarter': {
+      const qs = Math.floor(m / 3) * 3;
+      startDate = startOfDay(y, qs, 1);
+      endDate = endOfDay(y, qs + 3, 0);
+      break;
+    }
+    case 'this_year':
+      startDate = startOfDay(y, 0, 1);
+      endDate = endOfDay(y, 11, 31);
+      break;
+    case 'custom': {
+      // Custom dates arrive either as a plain YYYY-MM-DD (Sales page picker —
+      // treated as a whole UK calendar day) or as a full ISO timestamp
+      // (Reports page, already has explicit start/end of day) — use as-is.
+      const toStart = (s) => {
+        if (s.includes('T')) return new Date(s);
+        const [yy, mm, dd] = s.split('-').map(Number);
+        return startOfDay(yy, mm - 1, dd);
+      };
+      const toEnd = (s) => {
+        if (s.includes('T')) return new Date(s);
+        const [yy, mm, dd] = s.split('-').map(Number);
+        return endOfDay(yy, mm - 1, dd);
+      };
+      if (query.startDate) startDate = toStart(query.startDate);
+      if (query.endDate) endDate = toEnd(query.endDate);
+      break;
+    }
+    default:
+      break;
+  }
+  return { startDate, endDate };
+}
+
 // Function to send sale receipt via email and SMS
 const sendSaleReceipt = async (sale, lead, customEmail, customPhone, sendEmail = true, sendSMS = true) => {
   try {
@@ -287,6 +368,16 @@ router.get('/', auth, async (req, res) => {
       console.log(`👑 Admin sales access: User ${req.user.name} can see all sales`);
     }
 
+    // Date range filter on the sale's creation date (shared resolver — the same
+    // window the stats cards use, just applied to the sale's own date here)
+    if (dateRange) {
+      const { startDate, endDate } = resolveDateRange(dateRange, req.query);
+      if (startDate && endDate) {
+        filters.gte = { created_at: startDate.toISOString() };
+        filters.lte = { created_at: endDate.toISOString() };
+      }
+    }
+
     // Get sales
     const sales = await dbManager.query('sales', {
       select: `
@@ -349,48 +440,8 @@ router.get('/stats', auth, async (req, res) => {
     const { dateRange, paymentType } = req.query;
     const bookerId = req.query.booker;
 
-    // --- Resolve date range ---
-    let startDate, endDate;
-    if (dateRange) {
-      const now = new Date();
-      switch (dateRange) {
-        case 'today':
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-          break;
-        case 'this_week': {
-          const d = new Date();
-          const day = d.getDay();
-          startDate = new Date(d.getFullYear(), d.getMonth(), d.getDate() - day);
-          endDate = new Date();
-          break;
-        }
-        case 'this_month':
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-          break;
-        case 'last_month':
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          endDate = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
-          break;
-        case 'this_quarter': {
-          const qs = Math.floor(now.getMonth() / 3) * 3;
-          startDate = new Date(now.getFullYear(), qs, 1);
-          endDate = new Date();
-          break;
-        }
-        case 'this_year':
-          startDate = new Date(now.getFullYear(), 0, 1);
-          endDate = new Date();
-          break;
-        case 'custom':
-          if (req.query.startDate) startDate = new Date(req.query.startDate);
-          if (req.query.endDate) endDate = new Date(req.query.endDate);
-          break;
-        default:
-          break;
-      }
-    }
+    // --- Resolve date range (shared resolver — identical window to the sales list) ---
+    const { startDate, endDate } = resolveDateRange(dateRange, req.query);
 
     console.log(`📊 Sales stats request:`, {
       dateRange,

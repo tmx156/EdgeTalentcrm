@@ -246,7 +246,7 @@ router.post('/book', replydeskAuth, async (req, res) => {
         action: 'BOOKING_CREATED',
         timestamp: new Date().toISOString(),
         performedBy: null,
-        performedByName: 'Alex AI (ReplyDesk)',
+        performedByName: 'Alex A.I',
         details: {
           date, time, slotNumber,
           source: 'replydesk_calendar_api',
@@ -384,7 +384,7 @@ router.delete('/book/:bookingId', replydeskAuth, async (req, res) => {
         action: 'BOOKING_CANCELLED',
         timestamp: new Date().toISOString(),
         performedBy: null,
-        performedByName: 'Alex AI (ReplyDesk)',
+        performedByName: 'Alex A.I',
         details: {
           previousDate: lead.date_booked,
           previousTime: lead.time_booked,

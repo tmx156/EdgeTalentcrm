@@ -21,12 +21,12 @@ const ReplyDeskButton = ({ lead, onSuccess }) => {
     }
 
     if (lead.status === 'Booked' || lead.date_booked) {
-      if (!window.confirm('This lead is already booked. Still send to Alex AI?')) {
+      if (!window.confirm('This lead is already booked. Still send to Alex A.I?')) {
         return;
       }
     }
 
-    if (!window.confirm(`Send ${lead.name} to Alex AI (ReplyDesk) for WhatsApp qualification?\n\nAlex will contact them via WhatsApp automatically.`)) {
+    if (!window.confirm(`Send ${lead.name} to Alex A.I (ReplyDesk) for WhatsApp qualification?\n\nAlex will contact them via WhatsApp automatically.`)) {
       return;
     }
 
@@ -43,7 +43,7 @@ const ReplyDeskButton = ({ lead, onSuccess }) => {
       );
 
       setStatus('success');
-      setMessage('Sent to Alex AI successfully!');
+      setMessage('Sent to Alex A.I successfully!');
 
       if (onSuccess) onSuccess(response.data);
 
@@ -54,7 +54,7 @@ const ReplyDeskButton = ({ lead, onSuccess }) => {
     } catch (error) {
       console.error('Error sending to ReplyDesk:', error);
       setStatus('error');
-      setMessage(error.response?.data?.message || 'Failed to send to Alex AI');
+      setMessage(error.response?.data?.message || 'Failed to send to Alex A.I');
 
       setTimeout(() => {
         setStatus(null);
@@ -82,7 +82,7 @@ const ReplyDeskButton = ({ lead, onSuccess }) => {
 
   return (
     <div className="mt-4">
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Alex AI (ReplyDesk)</p>
+      <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Alex A.I (ReplyDesk)</p>
       <button
         onClick={handleSendToReplyDesk}
         disabled={loading || status === 'success'}
@@ -111,7 +111,7 @@ const ReplyDeskButton = ({ lead, onSuccess }) => {
         ) : status === 'success' ? (
           <>
             <FiCheckCircle className="mr-2 h-4 w-4" />
-            Sent to Alex AI
+            Sent to Alex A.I
           </>
         ) : status === 'error' ? (
           <>
@@ -121,12 +121,12 @@ const ReplyDeskButton = ({ lead, onSuccess }) => {
         ) : alreadySent ? (
           <>
             <FiSend className="mr-2 h-4 w-4" />
-            Resend to Alex AI
+            Resend to Alex A.I
           </>
         ) : (
           <>
             <FiSend className="mr-2 h-4 w-4" />
-            Send to Alex AI
+            Send to Alex A.I
           </>
         )}
       </button>

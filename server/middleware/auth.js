@@ -67,7 +67,7 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid token' });
     }
     
-  // Check for null UUID (common issue) - FORCE LOGOUT
+  // Check for null UUID or Alex A.I system account - FORCE LOGOUT
   if (!decoded.userId || decoded.userId === '00000000-0000-0000-0000-000000000001') {
     console.error('🚨 INVALID USER ID IN TOKEN:', decoded.userId);
     console.error('🚨 FORCING IMMEDIATE LOGOUT');

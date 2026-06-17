@@ -9,26 +9,60 @@ const supabase = createClient(
   config.supabase.serviceRoleKey || config.supabase.anonKey
 );
 
+// Fetch ALL leads sent to Alex, paginating past Supabase's 1000-row cap.
+// Without this, dashboard counts silently truncate (we have 600+ sent leads).
+async function fetchAllSentToAlex(selectCols, { order, gte } = {}) {
+  let all = [];
+  let from = 0;
+  const pageSize = 1000;
+  while (true) {
+    let q = supabase
+      .from('leads')
+      .select(selectCols)
+      .not('replydesk_sent_at', 'is', null)
+      .range(from, from + pageSize - 1);
+    if (gte) q = q.gte('replydesk_sent_at', gte);
+    if (order) q = q.order(order.column, { ascending: order.ascending });
+    const { data, error } = await q;
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
+// "Ever booked" / gross booking evidence — MUST match the Reports page (stats.js hadBookingEvidence)
+// so the Alex dashboard "Bookings" matches Reports "Booked" (counts leads booked even if later cancelled).
+function parseHistory(lead) {
+  if (!lead.booking_history) return [];
+  try {
+    const h = typeof lead.booking_history === 'string' ? JSON.parse(lead.booking_history) : lead.booking_history;
+    return Array.isArray(h) ? h : [];
+  } catch { return []; }
+}
+function hadBookingEvidence(lead) {
+  if (lead.date_booked || lead.booked_at || lead.ever_booked) return true;
+  const history = parseHistory(lead);
+  if (history.some(e => e.action === 'BOOKING_CONFIRMATION_SENT')) return true;
+  if (history.some(e => e.action === 'STATUS_CHANGE' && e.details?.newStatus === 'Booked')) return true;
+  if (lead.status === 'Cancelled' && history.some(e => e.action === 'CANCELLATION')) return true;
+  return false;
+}
+
 /**
  * GET /api/replydesk-dashboard/status
  */
 router.get('/status', auth, async (req, res) => {
   try {
-    const { data: queueLeads, error } = await supabase
-      .from('leads')
-      .select('id, name, phone, email, replydesk_status, replydesk_last_updated, replydesk_sent_at, replydesk_lead_id, status')
-      .not('replydesk_sent_at', 'is', null)
-      .limit(500);
+    const allLeads = await fetchAllSentToAlex(
+      'id, name, phone, email, replydesk_status, replydesk_last_updated, replydesk_sent_at, replydesk_lead_id, status, date_booked, booked_at, ever_booked, booking_history'
+    );
 
-    if (error) {
-      console.error('Error fetching ReplyDesk queue:', error);
-      return res.status(500).json({ message: 'Server error' });
-    }
-
-    const allLeads = queueLeads || [];
     const messagesSent = allLeads.length;
     const leadsEngaged = allLeads.filter(l => l.replydesk_status && !['New', 'failed'].includes(l.replydesk_status)).length;
-    const bookingsMade = allLeads.filter(l => l.replydesk_status === 'Booked' || l.status === 'Booked').length;
+    // Gross "ever booked" — matches Reports page (includes leads booked then later cancelled)
+    const bookingsMade = allLeads.filter(hadBookingEvidence).length;
     const humanRequired = allLeads.filter(l => l.replydesk_status === 'Human_Required').length;
 
     const engagementRate = messagesSent > 0 ? Math.round((leadsEngaged / messagesSent) * 100) : 0;
@@ -64,21 +98,17 @@ router.get('/status', auth, async (req, res) => {
  */
 router.get('/queue', auth, async (req, res) => {
   try {
-    const { data: allLeads, error } = await supabase
-      .from('leads')
-      .select('*')
-      .not('replydesk_sent_at', 'is', null)
-      .order('replydesk_sent_at', { ascending: false })
-      .limit(200);
-
-    if (error) {
+    let allLeads;
+    try {
+      allLeads = await fetchAllSentToAlex('*', { order: { column: 'replydesk_sent_at', ascending: false } });
+    } catch (error) {
       if (error.message?.includes('column') && error.message?.includes('does not exist')) {
         return res.status(500).json({
           message: 'Database schema missing ReplyDesk columns',
           error: 'Please run: server/migrations/add_replydesk_tracking_columns.sql'
         });
       }
-      return res.status(500).json({ message: 'Server error' });
+      throw error;
     }
 
     if (!allLeads || allLeads.length === 0) {
@@ -140,15 +170,15 @@ router.get('/conversation/:leadId', auth, async (req, res) => {
 router.get('/analytics', auth, async (req, res) => {
   try {
     const getStatsForPeriod = async (startDate) => {
-      const { data: leads } = await supabase
-        .from('leads')
-        .select('id, replydesk_status, replydesk_sent_at, status')
-        .not('replydesk_sent_at', 'is', null)
-        .gte('replydesk_sent_at', startDate.toISOString());
+      const leads = await fetchAllSentToAlex(
+        'id, replydesk_status, replydesk_sent_at, status, date_booked, booked_at, ever_booked, booking_history',
+        { gte: startDate.toISOString() }
+      );
 
       const leadsSent = leads ? leads.length : 0;
       const leadsEngaged = leads ? leads.filter(l => l.replydesk_status && !['New', 'failed'].includes(l.replydesk_status)).length : 0;
-      const bookingsMade = leads ? leads.filter(l => l.replydesk_status === 'Booked' || l.status === 'Booked').length : 0;
+      // Gross "ever booked" — matches Reports page (includes leads booked then later cancelled)
+      const bookingsMade = leads ? leads.filter(hadBookingEvidence).length : 0;
       const humanRequired = leads ? leads.filter(l => l.replydesk_status === 'Human_Required').length : 0;
 
       return {
@@ -205,7 +235,7 @@ router.post('/queue/add', auth, async (req, res) => {
       });
     }
 
-    res.json({ message: 'Lead added to Alex AI queue', leadId: lead.id });
+    res.json({ message: 'Lead added to Alex A.I queue', leadId: lead.id });
   } catch (error) {
     console.error('Error adding to queue:', error);
     res.status(500).json({ message: 'Server error' });

@@ -84,7 +84,7 @@ function App() {
                 path="/book/:leadId" 
                 element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div></div>}><PublicBooking /></Suspense>}
               />
-              {/* Alex AI public booking page - no authentication required */}
+              {/* Alex A.I public booking page - no authentication required */}
               <Route
                 path="/book-alex/:leadId"
                 element={<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500"></div></div>}><PublicBookingAlex /></Suspense>}

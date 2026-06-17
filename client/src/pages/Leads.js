@@ -914,9 +914,9 @@ const Leads = () => {
     }
   };
 
-  const handleBulkSendToSalesApe = async () => {
+  const handleBulkSendToAlex A.I = async () => {
     if (selectedLeads.length === 0) {
-      alert('Please select leads to send to SalesApe');
+      alert('Please select leads to send to Alex A.I');
       return;
     }
 
@@ -955,7 +955,7 @@ const Leads = () => {
     if (alreadySentLeads.length > 0) {
       const names = alreadySentLeads.map(l => l.name).join(', ');
       if (!window.confirm(
-        `⚠️ ${alreadySentLeads.length} lead(s) were already sent to SalesApe:\n${names}\n\nResend them?`
+        `⚠️ ${alreadySentLeads.length} lead(s) were already sent to Alex A.I:\n${names}\n\nResend them?`
       )) {
         // Remove already sent leads from selection
         leadsToSend = leadsToSend.filter(id => !alreadySentLeads.some(l => l.id === id));
@@ -968,7 +968,7 @@ const Leads = () => {
 
     const validCount = leadsToSend.length;
     const confirmed = window.confirm(
-      `⚠️ Send ${validCount} lead${validCount === 1 ? '' : 's'} to SalesApe AI?\n\nThis will trigger automated SMS/WhatsApp messages.`
+      `⚠️ Send ${validCount} lead${validCount === 1 ? '' : 's'} to Alex A.I?\n\nThis will trigger automated SMS/WhatsApp messages.`
     );
 
     if (!confirmed) {
@@ -991,7 +991,7 @@ const Leads = () => {
         return true;
       });
 
-      // Send each valid lead to SalesApe
+      // Send each valid lead to Alex A.I
       for (const leadId of validLeadIds) {
         try {
           await axios.post(
@@ -1003,22 +1003,22 @@ const Leads = () => {
           );
           successCount++;
         } catch (error) {
-          console.error(`Failed to send lead ${leadId} to SalesApe:`, error);
+          console.error(`Failed to send lead ${leadId} to Alex A.I:`, error);
           errorCount++;
         }
       }
 
       if (successCount > 0) {
-        alert(`✅ Successfully sent ${successCount} lead${successCount === 1 ? '' : 's'} to SalesApe AI!${errorCount > 0 ? `\n⚠️ ${errorCount} failed` : ''}`);
+        alert(`✅ Successfully sent ${successCount} lead${successCount === 1 ? '' : 's'} to Alex A.I!${errorCount > 0 ? `\n⚠️ ${errorCount} failed` : ''}`);
         setSelectedLeads([]);
         // Refresh leads to show updated salesape_sent_at
         triggerRefresh();
       } else {
-        alert('❌ Failed to send leads to SalesApe. Please check server logs.');
+        alert('❌ Failed to send leads to Alex A.I. Please check server logs.');
       }
     } catch (error) {
-      console.error('Error sending to SalesApe:', error);
-      alert('Failed to send leads to SalesApe. Please try again.');
+      console.error('Error sending to Alex A.I:', error);
+      alert('Failed to send leads to Alex A.I. Please try again.');
     }
   };
 
@@ -1864,7 +1864,7 @@ const Leads = () => {
                       <FiUserPlus className="h-4 w-4" />
                       <span className="hidden sm:inline">Assign Selected</span>
                     </button>
-                    {/* SalesApe button - DISABLED */}
+                    {/* Alex A.I button - DISABLED */}
                     <button
                       onClick={(e) => {
                         console.log('🔍 Delete button clicked!', {

@@ -20,8 +20,8 @@ const salesapeService = require('../utils/salesapeService');
 const config = require('../config');
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
 
-// SalesApe AI user ID (fixed UUID)
-const SALESAPE_USER_ID = '00000000-0000-0000-0000-000000000001';
+// Alex A.I user ID (fixed UUID)
+const ALEX_AI_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * @route   GET /api/salesape/leads
@@ -415,9 +415,9 @@ router.post('/webhook', salesapeAuth, async (req, res) => {
       notes: fields['Context'] || '',
       status: 'Assigned', // Auto-assign to SalesApe
       // Assign to SalesApe AI user
-      booker_id: SALESAPE_USER_ID,
-      created_by_user_id: SALESAPE_USER_ID,
-      updated_by_user_id: SALESAPE_USER_ID,
+      booker_id: ALEX_AI_USER_ID,
+      created_by_user_id: ALEX_AI_USER_ID,
+      updated_by_user_id: ALEX_AI_USER_ID,
       // Store SalesApe metadata
       airtable_record_id: fields['CRM ID'] || null,
       salesape_id: fields['CRM ID'] || null

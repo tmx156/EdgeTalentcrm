@@ -207,7 +207,7 @@ const QueueManager = ({ queue, onLeadSelect, selectedLead, onAddToQueue, onRemov
             className="bg-white rounded-xl shadow-2xl w-full max-w-md"
           >
             <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-800">Add Lead to Alex AI Queue</h3>
+              <h3 className="font-semibold text-gray-800">Add Lead to Alex A.I Queue</h3>
               <button onClick={() => { setShowAddModal(false); setSearchResults([]); setAddSearchTerm(''); }} className="p-1 hover:bg-gray-100 rounded-lg">
                 <FiX className="w-5 h-5" />
               </button>

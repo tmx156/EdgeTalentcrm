@@ -759,8 +759,7 @@ const Layout = ({ children }) => {
     { name: 'Diary', href: '/calendar', icon: FiCalendar },
     { name: 'Photos', href: '/photographer', icon: FiImage, photographerOnly: true },
     { name: 'Blocked Slots', href: '/blocked-slots', icon: FiLock, adminOnly: true },
-    // { name: 'SalesApe AI', href: '/salesape', icon: RiRobot2Line, adminOnly: true }, // DISABLED
-    { name: 'Alex AI', href: '/alex', icon: RiRobot2Line, adminOnly: true },
+    { name: 'Alex A.I', href: '/alex', icon: RiRobot2Line, adminOnly: true },
     { name: 'Messages', href: '/messages', icon: FiMessageSquare },
     { name: 'Sales', href: '/sales', icon: FiTrendingUp, adminOnly: true },
     { name: 'Finance', href: '/finance', icon: FiDollarSign, adminOnly: true },

@@ -26,7 +26,7 @@ const LeadStatusCards = ({ leads, onLeadSelect, onRemoveFromQueue, onRemoveAll }
   if (!leads || leads.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-        <p className="text-gray-400 text-lg">No leads in Alex AI queue</p>
+        <p className="text-gray-400 text-lg">No leads in Alex A.I queue</p>
         <p className="text-gray-400 text-sm mt-1">Send leads from the Lead Details page or use the Dashboard view to add</p>
       </div>
     );

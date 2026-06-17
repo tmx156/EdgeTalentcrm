@@ -17,6 +17,8 @@ const Sales = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // 'all', 'full_payment', 'finance'
   const [dateRange, setDateRange] = useState('this_month');
+  const [customStart, setCustomStart] = useState(toLocalDateStr(new Date()));
+  const [customEnd, setCustomEnd] = useState(toLocalDateStr(new Date()));
   const [selectedSale, setSelectedSale] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showCreateFinanceModal, setShowCreateFinanceModal] = useState(false);
@@ -49,9 +51,23 @@ const Sales = () => {
   });
 
   useEffect(() => {
+    // For a custom range, wait until both ends are set (and start <= end) before fetching
+    if (dateRange === 'custom' && (!customStart || !customEnd || customStart > customEnd)) {
+      return;
+    }
     fetchSales();
     fetchStats();
-  }, [dateRange, filter]);
+  }, [dateRange, filter, customStart, customEnd]);
+
+  // Build the date params sent to the API for the current Period selection
+  const buildDateParams = () => {
+    const params = { dateRange, paymentType: filter === 'all' ? undefined : filter };
+    if (dateRange === 'custom') {
+      params.startDate = customStart;
+      params.endDate = customEnd;
+    }
+    return params;
+  };
 
   // Listen for real-time sales updates
   useEffect(() => {
@@ -81,13 +97,9 @@ const Sales = () => {
 
   const fetchSales = async () => {
     try {
-      console.log('🔍 Fetching sales with params:', { dateRange, paymentType: filter === 'all' ? undefined : filter });
-      const response = await axios.get('/api/sales', {
-        params: {
-          dateRange,
-          paymentType: filter === 'all' ? undefined : filter
-        }
-      });
+      const params = buildDateParams();
+      console.log('🔍 Fetching sales with params:', params);
+      const response = await axios.get('/api/sales', { params });
       console.log('📊 Sales data received:', response.data);
 
       // DEBUG: Check user attribution in received data
@@ -107,13 +119,9 @@ const Sales = () => {
 
   const fetchStats = async () => {
     try {
-      console.log('📈 Fetching stats with params:', { dateRange, paymentType: filter === 'all' ? undefined : filter });
-      const response = await axios.get('/api/sales/stats', {
-        params: {
-          dateRange,
-          paymentType: filter === 'all' ? undefined : filter
-        }
-      });
+      const params = buildDateParams();
+      console.log('📈 Fetching stats with params:', params);
+      const response = await axios.get('/api/sales/stats', { params });
       console.log('📊 Stats data received:', response.data);
       setStats(response.data);
     } catch (error) {
@@ -453,18 +461,18 @@ const Sales = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
+        <div className="mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-1 sm:mb-2">
                 Sales Overview
               </h1>
-              <p className="text-gray-600 text-lg">Track completed sales and revenue performance</p>
+              <p className="text-gray-600 text-base sm:text-lg">Track completed sales and revenue performance</p>
             </div>
-            <div className="flex items-center space-x-3">
-              <div className="bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border border-blue-200">
+            <div className="flex items-center sm:justify-end">
+              <div className="bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border border-blue-200 whitespace-nowrap">
                 <span className="text-sm text-gray-600">Last updated: </span>
                 <span className="text-sm font-medium text-blue-600">{new Date().toLocaleTimeString()}</span>
               </div>
@@ -473,59 +481,59 @@ const Sales = () => {
         </div>
 
         {/* Stats Cards */}
-        <div className={`grid gap-6 mb-8 ${user?.role === 'admin' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 md:grid-cols-2'}`}>
-          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-green-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+        <div className={`grid gap-4 sm:gap-6 mb-6 sm:mb-8 ${user?.role === 'admin' ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2'}`}>
+          <div className="bg-white/80 backdrop-blur-sm p-4 sm:p-6 rounded-2xl shadow-lg border border-green-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
             <div className="flex items-center">
-              <div className="p-4 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl shadow-lg">
-                <FiDollarSign className="h-8 w-8 text-white" />
+              <div className="flex-shrink-0 p-3 sm:p-4 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl shadow-lg">
+                <FiDollarSign className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
               </div>
-              <div className="ml-6">
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Total Revenue</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{formatCurrency(stats.totalRevenue || 0)}</p>
+              <div className="ml-4 sm:ml-6 min-w-0">
+                <p className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wide">Total Revenue</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1 break-words">{formatCurrency(stats.totalRevenue || 0)}</p>
                 {user?.role === 'admin' && <p className="text-xs text-green-600 font-medium mt-1">↗ +12% from last month</p>}
               </div>
             </div>
           </div>
 
           {user?.role === 'admin' && (
-            <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-blue-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+            <div className="bg-white/80 backdrop-blur-sm p-4 sm:p-6 rounded-2xl shadow-lg border border-blue-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
               <div className="flex items-center">
-                <div className="p-4 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl shadow-lg">
-                  <FiTrendingUp className="h-8 w-8 text-white" />
+                <div className="flex-shrink-0 p-3 sm:p-4 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl shadow-lg">
+                  <FiTrendingUp className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <div className="ml-6">
-                  <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Total Sales</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">{stats.totalSales || 0}</p>
+                <div className="ml-4 sm:ml-6 min-w-0">
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wide">Total Sales</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1 break-words">{stats.totalSales || 0}</p>
                   <p className="text-xs text-blue-600 font-medium mt-1">↗ +8% from last month</p>
                 </div>
               </div>
             </div>
           )}
 
-          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-purple-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+          <div className="bg-white/80 backdrop-blur-sm p-4 sm:p-6 rounded-2xl shadow-lg border border-purple-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
             <div className="flex items-center">
-              <div className="p-4 bg-gradient-to-br from-purple-400 to-purple-600 rounded-2xl shadow-lg">
-                <FiCreditCard className="h-8 w-8 text-white" />
+              <div className="flex-shrink-0 p-3 sm:p-4 bg-gradient-to-br from-purple-400 to-purple-600 rounded-2xl shadow-lg">
+                <FiCreditCard className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
               </div>
-              <div className="ml-6">
-                <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">
+              <div className="ml-4 sm:ml-6 min-w-0">
+                <p className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wide">
                   {user?.role === 'admin' ? 'Avg Sale Value' : 'Your Avg Sale'}
                 </p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{formatCurrency(stats.averageSaleValue || 0)}</p>
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1 break-words">{formatCurrency(stats.averageSaleValue || 0)}</p>
                 {user?.role === 'admin' && <p className="text-xs text-purple-600 font-medium mt-1">↗ +5% from last month</p>}
               </div>
             </div>
           </div>
 
           {user?.role === 'admin' && (
-            <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-orange-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+            <div className="bg-white/80 backdrop-blur-sm p-4 sm:p-6 rounded-2xl shadow-lg border border-orange-200 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
               <div className="flex items-center">
-                <div className="p-4 bg-gradient-to-br from-orange-400 to-orange-600 rounded-2xl shadow-lg">
-                  <FiCalendar className="h-8 w-8 text-white" />
+                <div className="flex-shrink-0 p-3 sm:p-4 bg-gradient-to-br from-orange-400 to-orange-600 rounded-2xl shadow-lg">
+                  <FiCalendar className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
                 </div>
-                <div className="ml-6">
-                  <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Finance Agreements</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">{stats.financeAgreements || 0}</p>
+                <div className="ml-4 sm:ml-6 min-w-0">
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600 uppercase tracking-wide">Finance Agreements</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-1 break-words">{stats.financeAgreements || 0}</p>
                   <p className="text-xs text-orange-600 font-medium mt-1">↗ +3% from last month</p>
                 </div>
               </div>
@@ -534,10 +542,10 @@ const Sales = () => {
         </div>
 
         {/* Filters */}
-        <div className="mb-8">
-          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-2xl shadow-lg border border-gray-200">
-            <div className="flex flex-wrap gap-6 items-center">
-              <div className="flex gap-3">
+        <div className="mb-6 sm:mb-8">
+          <div className="bg-white/80 backdrop-blur-sm p-4 sm:p-6 rounded-2xl shadow-lg border border-gray-200">
+            <div className="flex flex-col lg:flex-row lg:flex-wrap gap-4 lg:gap-6 lg:items-center">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <label className="text-sm font-semibold text-gray-700 flex items-center">
                   <FiFilter className="mr-2 h-4 w-4" />
                   Payment Type:
@@ -546,7 +554,7 @@ const Sales = () => {
                   <button
                     key={type}
                     onClick={() => setFilter(type)}
-                    className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-all duration-200 ${
+                    className={`px-3 sm:px-4 py-2 rounded-xl text-sm font-semibold capitalize transition-all duration-200 ${
                       filter === type
                         ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg transform scale-105'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200 hover:scale-105'
@@ -557,7 +565,7 @@ const Sales = () => {
                 ))}
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <label className="text-sm font-semibold text-gray-700 flex items-center">
                   <FiCalendar className="mr-2 h-4 w-4" />
                   Period:
@@ -574,7 +582,28 @@ const Sales = () => {
                   <option value="last_month">Last Month</option>
                   <option value="this_quarter">This Quarter</option>
                   <option value="this_year">This Year</option>
+                  <option value="custom">Custom Range</option>
                 </select>
+
+                {dateRange === 'custom' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="date"
+                      value={customStart}
+                      max={customEnd || undefined}
+                      onChange={(e) => setCustomStart(e.target.value)}
+                      className="flex-1 min-w-[8.5rem] px-3 py-2 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
+                    />
+                    <span className="text-gray-500 text-sm">to</span>
+                    <input
+                      type="date"
+                      value={customEnd}
+                      min={customStart || undefined}
+                      onChange={(e) => setCustomEnd(e.target.value)}
+                      className="flex-1 min-w-[8.5rem] px-3 py-2 border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -583,16 +612,16 @@ const Sales = () => {
 
         {/* Sales Table */}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-gray-50 to-blue-50 px-6 py-4 border-b border-gray-200">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900 flex items-center">
-                <FiTrendingUp className="h-6 w-6 text-blue-600 mr-3" />
+          <div className="bg-gradient-to-r from-gray-50 to-blue-50 px-4 sm:px-6 py-4 border-b border-gray-200">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+              <h2 className="text-lg sm:text-xl font-bold text-gray-900 flex items-center">
+                <FiTrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 mr-2 sm:mr-3" />
                 Sales History
               </h2>
-          
+
               {/* Bulk Actions */}
               {selectedSales.size > 0 && (
-                <div className="flex items-center space-x-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <div className="bg-blue-100 px-3 py-1 rounded-full">
                     <span className="text-sm font-medium text-blue-700">
                       {selectedSales.size} selected
@@ -600,136 +629,221 @@ const Sales = () => {
                   </div>
                   <button
                     onClick={() => setShowCommunicationModal(true)}
-                    className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-4 py-2 rounded-xl flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                    className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-3 sm:px-4 py-2 rounded-xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
                   >
-                    <FiSend className="h-4 w-4" />
-                    <span className="font-semibold">Send Communication</span>
+                    <FiSend className="h-4 w-4 flex-shrink-0" />
+                    <span className="font-semibold whitespace-nowrap">Send Communication</span>
                   </button>
                   <button
                     onClick={() => setShowBulkDeleteModal(true)}
-                    className="bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white px-4 py-2 rounded-xl flex items-center space-x-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+                    className="bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white px-3 sm:px-4 py-2 rounded-xl flex items-center gap-2 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
                   >
-                    <FiTrash2 className="h-4 w-4" />
-                    <span className="font-semibold">Delete Selected</span>
+                    <FiTrash2 className="h-4 w-4 flex-shrink-0" />
+                    <span className="font-semibold whitespace-nowrap">Delete Selected</span>
                   </button>
                 </div>
               )}
             </div>
           </div>
         
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gradient-to-r from-gray-50 to-blue-50">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-12">
-                  <input
-                    type="checkbox"
-                    checked={selectedSales.size === filteredSales.length && filteredSales.length > 0}
-                    onChange={handleSelectAll}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded shadow-sm"
-                  />
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Customer
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Sale Date
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Amount
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Payment Method
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Sales Agent
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
+          {/* Empty state */}
+          {filteredSales.length === 0 ? (
+            <div className="px-6 py-16 text-center">
+              <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-gray-100 mb-4">
+                <FiTrendingUp className="h-7 w-7 text-gray-400" />
+              </div>
+              <p className="text-gray-900 font-semibold">No sales found</p>
+              <p className="text-gray-500 text-sm mt-1">Try adjusting the period or payment-type filters above.</p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop / tablet: table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gradient-to-r from-gray-50 to-blue-50">
+                  <tr>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider w-12">
+                      <input
+                        type="checkbox"
+                        checked={selectedSales.size === filteredSales.length && filteredSales.length > 0}
+                        onChange={handleSelectAll}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded shadow-sm"
+                      />
+                    </th>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Customer
+                    </th>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Sale Date
+                    </th>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Amount
+                    </th>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Payment Method
+                    </th>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider hidden lg:table-cell">
+                      Sales Agent
+                    </th>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {filteredSales.map((sale) => (
+                    <tr key={sale.id} className={`hover:bg-blue-50/50 transition-colors duration-200 ${selectedSales.has(sale.id) ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`}>
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedSales.has(sale.id)}
+                          onChange={() => handleSelectSale(sale.id)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      </td>
+                      <td className="px-4 lg:px-6 py-4">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10">
+                            <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
+                              <FiUser className="h-5 w-5 text-gray-600" />
+                            </div>
+                          </div>
+                          <div className="ml-4 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">
+                              {sale.lead_name || 'Unknown'}
+                            </div>
+                            <div className="text-sm text-gray-500 truncate">
+                              {sale.lead_email}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-900">
+                          {formatDate(sale.sale_created_at || sale.created_at)}
+                        </div>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {formatCurrency(sale.amount)}
+                        </div>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentMethodColor(sale.payment_method)}`}>
+                          {getPaymentMethodLabel(sale.payment_method)}
+                        </span>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap hidden lg:table-cell">
+                        <div className="text-sm text-gray-900">
+                          {sale.user_name || (sale.user_id ? `User ${sale.user_id.slice(-4)}` : 'System')}
+                        </div>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleViewDetails(sale)}
+                            className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm hover:shadow-md"
+                            title="View Details"
+                          >
+                            <FiEye className="h-4 w-4" />
+                          </button>
+                          {sale.payment_type === 'full_payment' && (
+                            <button
+                              onClick={() => handleCreateFinance(sale)}
+                              className="p-2 bg-green-100 hover:bg-green-200 text-green-600 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm hover:shadow-md"
+                              title="Convert to Finance"
+                            >
+                              <FiPlus className="h-4 w-4" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteSale(sale.id)}
+                            className="p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm hover:shadow-md"
+                            title="Delete Sale"
+                          >
+                            <FiTrash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile: stacked cards */}
+            <div className="md:hidden divide-y divide-gray-100">
               {filteredSales.map((sale) => (
-                <tr key={sale.id} className={`hover:bg-blue-50/50 transition-colors duration-200 ${selectedSales.has(sale.id) ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`}>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                <div key={sale.id} className={`p-4 ${selectedSales.has(sale.id) ? 'bg-blue-50 border-l-4 border-blue-500' : ''}`}>
+                  <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
                       checked={selectedSales.has(sale.id)}
                       onChange={() => handleSelectSale(sale.id)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded flex-shrink-0"
                     />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="flex-shrink-0 h-10 w-10">
-                        <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                          <FiUser className="h-5 w-5 text-gray-600" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-gray-900 truncate">
+                            {sale.lead_name || 'Unknown'}
+                          </div>
+                          <div className="text-xs text-gray-500 truncate">
+                            {sale.lead_email}
+                          </div>
+                        </div>
+                        <div className="text-base font-bold text-gray-900 whitespace-nowrap">
+                          {formatCurrency(sale.amount)}
                         </div>
                       </div>
-                      <div className="ml-4">
-                        <div className="text-sm font-medium text-gray-900">
-                          {sale.lead_name || 'Unknown'}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {sale.lead_email}
-                        </div>
+
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-gray-600">
+                        <span className="flex items-center">
+                          <FiCalendar className="h-3.5 w-3.5 mr-1 text-gray-400" />
+                          {formatDate(sale.sale_created_at || sale.created_at)}
+                        </span>
+                        <span className={`inline-flex px-2 py-0.5 font-semibold rounded-full ${getPaymentMethodColor(sale.payment_method)}`}>
+                          {getPaymentMethodLabel(sale.payment_method)}
+                        </span>
+                        <span className="flex items-center">
+                          <FiUser className="h-3.5 w-3.5 mr-1 text-gray-400" />
+                          {sale.user_name || (sale.user_id ? `User ${sale.user_id.slice(-4)}` : 'System')}
+                        </span>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {formatDate(sale.sale_created_at || sale.created_at)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm font-medium text-gray-900">
-                      {formatCurrency(sale.amount)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getPaymentMethodColor(sale.payment_method)}`}>
-                      {getPaymentMethodLabel(sale.payment_method)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-900">
-                      {sale.user_name || (sale.user_id ? `User ${sale.user_id.slice(-4)}` : 'System')}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleViewDetails(sale)}
-                        className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm hover:shadow-md"
-                        title="View Details"
-                      >
-                        <FiEye className="h-4 w-4" />
-                      </button>
-                      {sale.payment_type === 'full_payment' && (
+
+                      <div className="flex items-center gap-2 mt-3">
                         <button
-                          onClick={() => handleCreateFinance(sale)}
-                          className="p-2 bg-green-100 hover:bg-green-200 text-green-600 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm hover:shadow-md"
-                          title="Convert to Finance"
+                          onClick={() => handleViewDetails(sale)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-lg text-xs font-medium transition-colors"
+                          title="View Details"
                         >
-                          <FiPlus className="h-4 w-4" />
+                          <FiEye className="h-4 w-4" /> View
                         </button>
-                      )}
-                      <button
-                        onClick={() => handleDeleteSale(sale.id)}
-                        className="p-2 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg transition-all duration-200 hover:scale-110 shadow-sm hover:shadow-md"
-                        title="Delete Sale"
-                      >
-                        <FiTrash2 className="h-4 w-4" />
-                      </button>
+                        {sale.payment_type === 'full_payment' && (
+                          <button
+                            onClick={() => handleCreateFinance(sale)}
+                            className="flex items-center gap-1 px-3 py-1.5 bg-green-100 hover:bg-green-200 text-green-600 rounded-lg text-xs font-medium transition-colors"
+                            title="Convert to Finance"
+                          >
+                            <FiPlus className="h-4 w-4" /> Finance
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteSale(sale.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-600 rounded-lg text-xs font-medium transition-colors ml-auto"
+                          title="Delete Sale"
+                        >
+                          <FiTrash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </>
+          )}
         </div>
-      </div>
 
         {/* View Details Modal */}
         {showModal && selectedSale && (

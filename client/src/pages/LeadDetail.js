@@ -2984,7 +2984,7 @@ const LeadDetail = () => {
                 </div>
               )}
 
-              {/* ReplyDesk (Alex AI) Integration */}
+              {/* Alex A.I Integration */}
               {!editing && (
                 <ReplyDeskButton lead={lead} onSuccess={() => fetchLead()} />
               )}

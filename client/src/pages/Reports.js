@@ -221,8 +221,13 @@ const Reports = () => {
     { name: 'Not Interested', value: stats.assigned > 0 ? Math.round(stats.assigned * 0.3) : 0, color: COLORS.cancelled },
   ].filter(d => d.value > 0);
 
+  // Alex A.I report: "Assigned" means "Sent to Alex". Other bookers stay "Assigned".
+  const ALEX_AI_USER_ID = '00000000-0000-0000-0000-000000000001';
+  const isAlexSelected = filters.userId === ALEX_AI_USER_ID;
+  const assignedLabel = isAlexSelected ? 'Sent to Alex' : 'Assigned';
+
   const conversionData = [
-    { name: 'Assigned', value: stats.assigned, fill: COLORS.assigned },
+    { name: assignedLabel, value: stats.assigned, fill: COLORS.assigned },
     { name: 'Booked', value: stats.booked, fill: COLORS.booked },
     { name: 'Attended', value: stats.attended, fill: COLORS.arrived },
     { name: 'Sales', value: stats.sales, fill: COLORS.sales },
@@ -246,7 +251,7 @@ Generated: ${new Date().toLocaleString()}
 Period: ${filters.startDate} to ${filters.endDate}
 
 SUMMARY:
-- Leads Assigned: ${stats.assigned}
+- ${isAlexSelected ? 'Leads Sent to Alex' : 'Leads Assigned'}: ${stats.assigned}
 - Total Booked: ${stats.booked}
 - Attended: ${stats.attended}
 - Sales: ${stats.sales}
@@ -412,7 +417,7 @@ RATES:
         <div className="card bg-gradient-to-br from-blue-500 to-blue-600 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-blue-100 text-sm">Assigned</p>
+              <p className="text-blue-100 text-sm">{assignedLabel}</p>
               <p className="text-3xl font-bold">{stats.assigned}</p>
             </div>
             <FiUser className="h-10 w-10 text-blue-200" />
@@ -613,7 +618,7 @@ RATES:
           <div className="space-y-4">
             <div className="p-4 bg-gray-50 rounded-lg">
               <div className="flex justify-between items-center">
-                <span className="text-gray-600">Assigned to Booked</span>
+                <span className="text-gray-600">{isAlexSelected ? 'Sent to Booked' : 'Assigned to Booked'}</span>
                 <span className="text-2xl font-bold text-green-600">
                   {stats.assigned > 0 ? Math.round((stats.booked / stats.assigned) * 100) : 0}%
                 </span>
@@ -675,7 +680,7 @@ RATES:
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <div className="text-center p-4 bg-blue-50 rounded-lg">
             <p className="text-2xl font-bold text-blue-900">{stats.assigned}</p>
-            <p className="text-xs text-blue-700">Assigned</p>
+            <p className="text-xs text-blue-700">{assignedLabel}</p>
           </div>
           <div className="text-center p-4 bg-green-50 rounded-lg">
             <p className="text-2xl font-bold text-green-900">{stats.booked}</p>

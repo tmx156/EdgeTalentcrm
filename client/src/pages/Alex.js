@@ -155,7 +155,7 @@ const Alex = () => {
   };
 
   const handleRemoveFromQueue = async (leadId) => {
-    if (!window.confirm('Remove this lead from Alex AI queue?')) return;
+    if (!window.confirm('Remove this lead from Alex A.I queue?')) return;
     try {
       const token = localStorage.getItem('token');
       await axios.post('/api/replydesk-dashboard/queue/remove',
@@ -198,7 +198,7 @@ const Alex = () => {
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-teal-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading Alex AI Dashboard...</p>
+          <p className="text-gray-600">Loading Alex A.I Dashboard...</p>
         </div>
       </div>
     );
@@ -213,7 +213,7 @@ const Alex = () => {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Alex AI Dashboard</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Alex A.I Dashboard</h1>
               <div className="flex items-center gap-2">
                 <div className={`w-3 h-3 rounded-full ${realtimeStatus === 'connected' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                 {lastUpdate && (

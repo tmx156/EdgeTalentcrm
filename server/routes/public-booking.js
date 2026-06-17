@@ -23,17 +23,14 @@ const supabase = createClient(
   config.supabase.serviceRoleKey || config.supabase.anonKey
 );
 
-// DISABLED - no longer using SalesApe
-// const SALESAPE_CONFIG = { ... };
-// Default booker for public bookings (SalesApe AI user)
-let DEFAULT_SALESAPE_BOOKER_ID = '00000000-0000-0000-0000-000000000001';
+// Default booker for public bookings (Alex A.I user)
+let DEFAULT_BOOKER_ID = '00000000-0000-0000-0000-000000000001';
 async function initDefaultBooker() {
-  // Verify the default booker exists
   try {
-    const { data } = await supabase.from('users').select('id').eq('id', DEFAULT_SALESAPE_BOOKER_ID).single();
+    const { data } = await supabase.from('users').select('id').eq('id', DEFAULT_BOOKER_ID).single();
     if (!data) {
       console.warn('⚠️ Default public booking booker not found, bookings will have no booker assigned');
-      DEFAULT_SALESAPE_BOOKER_ID = null;
+      DEFAULT_BOOKER_ID = null;
     }
   } catch (err) {
     console.warn('⚠️ Could not verify default booker:', err.message);
@@ -344,7 +341,7 @@ router.post('/book/:identifier', async (req, res) => {
       is_confirmed: true,
       updated_at: new Date().toISOString(),
       // Assign to Sally for SalesApe/public bookings
-      booker_id: DEFAULT_SALESAPE_BOOKER_ID
+      booker_id: DEFAULT_BOOKER_ID
     };
 
     // Add Stripe payment info if provided
@@ -357,7 +354,7 @@ router.post('/book/:identifier', async (req, res) => {
       console.log(`💳 Stripe customer ID saved: ${stripeCustomerId}`);
     }
 
-    if (DEFAULT_SALESAPE_BOOKER_ID) {
+    if (DEFAULT_BOOKER_ID) {
       console.log('📋 Booking assigned to SalesApe AI (SalesApe default booker)');
     }
 
@@ -445,7 +442,7 @@ router.post('/book/:identifier', async (req, res) => {
       const bookingDate = new Date(bookingDateTime);
       await MessagingService.sendBookingConfirmation(
         leadId,
-        DEFAULT_SALESAPE_BOOKER_ID, // Use Sally for SalesApe bookings
+        DEFAULT_BOOKER_ID,
         bookingDate.toISOString(),
         {
           sendEmail: true,

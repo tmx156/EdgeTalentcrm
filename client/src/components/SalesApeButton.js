@@ -3,15 +3,15 @@ import axios from 'axios';
 import { FiSend, FiCheckCircle, FiAlertCircle } from 'react-icons/fi';
 
 /**
- * SalesApe Trigger Button Component
- * Allows users to send a lead to SalesApe AI for automated contact
+ * Alex A.I Trigger Button Component
+ * Allows users to send a lead to Alex A.I for automated contact
  */
-const SalesApeButton = ({ lead, onSuccess }) => {
+const Alex A.IButton = ({ lead, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState(null); // 'success' | 'error' | null
   const [message, setMessage] = useState('');
 
-  const handleTriggerSalesApe = async () => {
+  const handleTriggerAlex A.I = async () => {
     if (!lead || !lead.id) {
       setStatus('error');
       setMessage('Invalid lead data');
@@ -21,18 +21,18 @@ const SalesApeButton = ({ lead, onSuccess }) => {
     // Validate lead before sending
     if (!lead.phone || lead.phone.trim() === '') {
       setStatus('error');
-      setMessage('Lead must have a phone number to send to SalesApe');
+      setMessage('Lead must have a phone number to send to Alex A.I');
       return;
     }
 
     if (lead.status === 'Booked' || lead.date_booked) {
-      if (!window.confirm(`⚠️ This lead is already booked. Still send to SalesApe?`)) {
+      if (!window.confirm(`⚠️ This lead is already booked. Still send to Alex A.I?`)) {
         return;
       }
     }
 
     // Confirm before sending
-    if (!window.confirm(`Send ${lead.name} to SalesApe AI for automated contact?\n\nThis will trigger automated SMS/WhatsApp messages.`)) {
+    if (!window.confirm(`Send ${lead.name} to Alex A.I for automated contact?\n\nThis will trigger automated SMS/WhatsApp messages.`)) {
       return;
     }
 
@@ -53,7 +53,7 @@ const SalesApeButton = ({ lead, onSuccess }) => {
       );
 
       setStatus('success');
-      setMessage('Lead sent to SalesApe successfully!');
+      setMessage('Lead sent to Alex A.I successfully!');
       
       if (onSuccess) {
         onSuccess(response.data);
@@ -66,12 +66,12 @@ const SalesApeButton = ({ lead, onSuccess }) => {
       }, 5000);
 
     } catch (error) {
-      console.error('Error triggering SalesApe:', error);
+      console.error('Error triggering Alex A.I:', error);
       setStatus('error');
       setMessage(
         error.response?.data?.message || 
         error.response?.data?.error || 
-        'Failed to send lead to SalesApe'
+        'Failed to send lead to Alex A.I'
       );
 
       // Clear error message after 10 seconds
@@ -84,13 +84,13 @@ const SalesApeButton = ({ lead, onSuccess }) => {
     }
   };
 
-  // Check if lead was already sent to SalesApe
+  // Check if lead was already sent to Alex A.I
   const alreadySent = lead?.salesape_record_id || lead?.salesape_sent_at;
 
   return (
     <div className="salesape-button-container">
       <button
-        onClick={handleTriggerSalesApe}
+        onClick={handleTriggerAlex A.I}
         disabled={loading || status === 'success'}
         className={`
           inline-flex items-center px-4 py-2 border rounded-md shadow-sm text-sm font-medium
@@ -105,7 +105,7 @@ const SalesApeButton = ({ lead, onSuccess }) => {
             : 'border-indigo-300 text-indigo-700 bg-indigo-50 hover:bg-indigo-100'
           }
         `}
-        title={alreadySent ? 'Lead already sent to SalesApe' : 'Send lead to SalesApe AI'}
+        title={alreadySent ? 'Lead already sent to Alex A.I' : 'Send lead to Alex A.I'}
       >
         {loading ? (
           <>
@@ -118,7 +118,7 @@ const SalesApeButton = ({ lead, onSuccess }) => {
         ) : status === 'success' ? (
           <>
             <FiCheckCircle className="mr-2 h-4 w-4" />
-            Sent to SalesApe
+            Sent to Alex A.I
           </>
         ) : status === 'error' ? (
           <>
@@ -128,12 +128,12 @@ const SalesApeButton = ({ lead, onSuccess }) => {
         ) : alreadySent ? (
           <>
             <FiCheckCircle className="mr-2 h-4 w-4" />
-            Resend to SalesApe
+            Resend to Alex A.I
           </>
         ) : (
           <>
             <FiSend className="mr-2 h-4 w-4" />
-            Send to SalesApe AI
+            Send to Alex A.I
           </>
         )}
       </button>
@@ -148,7 +148,7 @@ const SalesApeButton = ({ lead, onSuccess }) => {
         </div>
       )}
 
-      {/* SalesApe status info */}
+      {/* Alex A.I status info */}
       {alreadySent && (
         <div className="mt-2 text-xs text-gray-500">
           {lead.salesape_sent_at && (
@@ -163,4 +163,4 @@ const SalesApeButton = ({ lead, onSuccess }) => {
   );
 };
 
-export default SalesApeButton;
+export default Alex A.IButton;
