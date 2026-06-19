@@ -16,10 +16,13 @@ const config = {
   JWT_EXPIRE: process.env.JWT_EXPIRE || '30d',
 
   // Supabase Configuration
+  // NOTE: fallbacks point to the NEW project (tpqyfuejslvpgrkczbao) after the
+  // 2026-06 migration. Env vars should still be set explicitly in production.
   supabase: {
-    url: process.env.SUPABASE_URL || 'https://ziqsvwoyafespvaychlg.supabase.co',
-    anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjI1MjYsImV4cCI6MjA3ODk5ODUyNn0.KvfjYdS-Nv4i33p4X-IqMvwDVqbj5XbIe5-KR6ZL0WM',
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzQyMjUyNiwiZXhwIjoyMDc4OTk4NTI2fQ.VT-JI3OAZ_ecZO28mW7YUmVXKltk3ENXwSe_yvnK2kQ'
+    url: process.env.SUPABASE_URL || 'https://tpqyfuejslvpgrkczbao.supabase.co',
+    anonKey: process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwcXlmdWVqc2x2cGdya2N6YmFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MTY1MjUsImV4cCI6MjA5NzM5MjUyNX0.e03OOftrM7oTlCWKMAtewISWejIysmSmeJPioaCYSso',
+    // service_role key must come from the env var (never hardcode it — push protection + security)
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || null
   },
 
   // SMS Configuration (The SMS Works) - Check credentials

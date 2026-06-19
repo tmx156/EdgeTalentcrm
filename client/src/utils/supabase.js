@@ -4,10 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 // Note: In production, these should be environment variables
 // For now, using the same secure approach with fallback
 // Get config from .env (React requires REACT_APP_ prefix)
-// Fallback to new database (ziqsvwoyafespvaychlg) instead of old one
+// Fallback to NEW database (tpqyfuejslvpgrkczbao) after the 2026-06 migration
 const supabaseConfig = {
-  url: process.env.REACT_APP_SUPABASE_URL || 'https://ziqsvwoyafespvaychlg.supabase.co',
-  anonKey: process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InppcXN2d295YWZlc3B2YXljaGxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjI1MjYsImV4cCI6MjA3ODk5ODUyNn0.KvfjYdS-Nv4i33p4X-IqMvwDVqbj5XbIe5-KR6ZL0WM'
+  url: process.env.REACT_APP_SUPABASE_URL || 'https://tpqyfuejslvpgrkczbao.supabase.co',
+  anonKey: process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwcXlmdWVqc2x2cGdya2N6YmFvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE4MTY1MjUsImV4cCI6MjA5NzM5MjUyNX0.e03OOftrM7oTlCWKMAtewISWejIysmSmeJPioaCYSso'
 };
 
 // Create Supabase client with centralized configuration

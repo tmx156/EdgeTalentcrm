@@ -950,6 +950,14 @@ testDatabaseConnection().then(() => {
     }
 
     // One-time cleanup: remove orphaned messages and booking_history from previously deleted leads
+    //
+    // ⚠️ DISABLED 2026-06-19: This block is DANGEROUS and caused data loss.
+    // supabase.from('leads').select('id') and .from('messages').select(...) are capped at
+    // 1000 rows by PostgREST, so on any DB with >1000 leads/messages this builds an
+    // INCOMPLETE leadIdSet and then deletes valid messages whose lead simply wasn't in the
+    // truncated window. It wrongly deleted 490 real messages during the Supabase migration.
+    // Do NOT re-enable without paginating BOTH selects (1000-row pages) first.
+    if (process.env.ENABLE_ORPHAN_CLEANUP === 'true') {
     try {
       console.log('🧹 Running one-time orphaned data cleanup...');
       const { data: allLeads } = await supabase.from('leads').select('id');
@@ -990,6 +998,9 @@ testDatabaseConnection().then(() => {
       console.log('✅ Orphaned data cleanup complete');
     } catch (cleanupErr) {
       console.error('⚠️ Orphaned data cleanup failed (non-critical):', cleanupErr.message);
+    }
+    } else {
+      console.log('⏭️  Orphaned data cleanup skipped (disabled — see note; set ENABLE_ORPHAN_CLEANUP=true only after fixing pagination)');
     }
 
     // DISABLED: Start the message scheduler
