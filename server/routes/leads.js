@@ -6470,9 +6470,22 @@ router.post('/:id/send-sms', auth, async (req, res) => {
 
     let smsResult;
     switch (type) {
-      case 'booking_confirmation':
-        smsResult = await MessagingService.sendBookingConfirmation(lead.id, req.user.id, message, { sendEmail: false, sendSms: true });
+      case 'booking_confirmation': {
+        // Note: `message` is not used here - sendBookingConfirmation sends the lead's
+        // active booking_confirmation template, not custom text. Pass bookingDate as
+        // null (not `message`) so it falls back to lead.date_booked instead of trying
+        // to parse the SMS text as a date.
+        const bookingConfirmationResult = await MessagingService.sendBookingConfirmation(
+          lead.id, req.user.id, null, { sendEmail: false, sendSms: true }
+        );
+        // sendBookingConfirmation returns { smsSent, emailSent, ... }, not { success },
+        // so normalize the shape to match the other cases below.
+        smsResult = {
+          success: !!bookingConfirmationResult?.smsSent,
+          error: bookingConfirmationResult?.smsSent ? null : 'Failed to send booking confirmation SMS'
+        };
         break;
+      }
       case 'appointment_reminder':
         smsResult = await sendAppointmentReminder(lead, message);
         break;
@@ -6494,6 +6507,7 @@ router.post('/:id/send-sms', auth, async (req, res) => {
           lead_id: req.params.id,
           type: 'sms',
           status: 'sent',
+          content: message,
           sms_body: message,
           recipient_phone: lead.phone,
           sent_by: req.user.id,
@@ -7012,6 +7026,7 @@ router.post('/:id/send-booking-link', auth, async (req, res) => {
           template_id: template?.id || null,
           type: 'email',
           subject: emailSubject,
+          content: emailBodyHtml,
           email_body: emailBodyHtml,
           recipient_email: lead.email,
           recipient_phone: lead.phone || null,
@@ -7323,6 +7338,7 @@ router.post('/:id/send-email', auth, async (req, res) => {
       template_id: templateId || null,
       type: 'email',
       subject: subject,
+      content: body,
       email_body: body,
       recipient_email: lead.email,
       recipient_phone: lead.phone,
@@ -7370,23 +7386,9 @@ router.post('/:id/send-email', auth, async (req, res) => {
     }
 
     // Send email using MessagingService
+    // Note: sendEmail already logs EMAIL_SENT/EMAIL_FAILED to booking history internally
+    // (with the correct action name on failure) - do not log a duplicate entry here.
     const result = await MessagingService.sendEmail(message, resolvedEmailAccount);
-    
-    // Add EMAIL_SENT to booking history
-    await addBookingHistoryEntry(
-      lead.id,
-      'EMAIL_SENT',
-      req.user.id,
-      req.user.name,
-      {
-        subject: subject,
-        body: body,
-        direction: 'sent',
-        channel: 'email',
-        status: result ? 'sent' : 'failed',
-        recipient: lead.email
-      }
-    );
     
     if (result) {
       return res.json({ success: true, message: 'Email sent successfully' });
@@ -7857,6 +7859,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
               template_id: template.id,
               type: 'email',
               subject: processedTemplate.subject || 'We\'ve been trying to contact you',
+              content: processedTemplate.email_body,
               email_body: processedTemplate.email_body,
               recipient_email: lead.email,
               recipient_phone: lead.phone,
@@ -7923,6 +7926,7 @@ router.patch('/:id/call-status', auth, async (req, res) => {
                 lead_id: lead.id,
                 template_id: template.id,
                 type: 'sms',
+                content: smsBody,
                 sms_body: smsBody,
                 recipient_phone: lead.phone,
                 sent_by: req.user.id,
@@ -7930,6 +7934,21 @@ router.patch('/:id/call-status', auth, async (req, res) => {
                 created_at: new Date().toISOString()
               };
               await dbManager.insert('messages', smsMessageData);
+
+              await addBookingHistoryEntry(
+                lead.id,
+                smsResult.success ? 'SMS_SENT' : 'SMS_FAILED',
+                req.user.id,
+                req.user.name,
+                {
+                  body: smsBody,
+                  direction: 'sent',
+                  channel: 'sms',
+                  status: smsResult.success ? 'sent' : 'failed',
+                  error: smsResult.success ? null : (smsResult.error || 'Unknown error'),
+                  recipient: lead.phone
+                }
+              );
             } catch (smsError) {
               console.error('Error sending automatic SMS:', smsError);
               workflowResult.smsSent = false;

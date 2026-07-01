@@ -218,12 +218,19 @@ router.post('/send', auth, async (req, res) => {
         emailAccount: template.email_account || 'primary'
       };
 
-      processedTemplate = MessagingService.processTemplate(
+      const result = MessagingService.processTemplate(
         adaptedTemplate,
         lead,
         req.user,
         lead.date_booked
       );
+      // processTemplate returns snake_case email_body/sms_body - normalize to
+      // camelCase to match the customSubject/customEmailBody/customSmsBody branch above.
+      processedTemplate = {
+        subject: result.subject,
+        emailBody: result.email_body,
+        smsBody: result.sms_body
+      };
     }
 
     // Create message record
@@ -235,6 +242,8 @@ router.post('/send', auth, async (req, res) => {
       email_body: processedTemplate.emailBody,
       sms_body: processedTemplate.smsBody,
       content: processedTemplate.emailBody || processedTemplate.smsBody || processedTemplate.subject,
+      recipient_email: lead.email,
+      recipient_phone: lead.phone,
       status: 'pending',
       sent_by: req.user.id,
       sent_by_name: req.user.name,
@@ -286,25 +295,22 @@ router.post('/send', auth, async (req, res) => {
     console.log(`📧 Message send settings: sendEmail=${sendTemplate.sendEmail}, sendSMS=${sendTemplate.sendSMS}`);
 
     try {
+      let emailSent = true;
+      let smsSent = true;
+
       if (sendTemplate.sendEmail && lead.email) {
-        await MessagingService.sendEmail({
-          ...newMessage,
-          to: lead.email,
-          leadName: lead.name
-        }, resolvedEmailAccount);
+        emailSent = await MessagingService.sendEmail(newMessage, resolvedEmailAccount);
       }
       if (sendTemplate.sendSMS && lead.phone) {
-        await MessagingService.sendSMS({
-          ...newMessage,
-          to: lead.phone,
-          leadName: lead.name
-        });
+        smsSent = await MessagingService.sendSMS(newMessage);
       }
 
-      // Update message status
+      // Update message status based on what actually happened - sendEmail/sendSMS
+      // already log EMAIL_FAILED/SMS_FAILED history internally when they fail, so
+      // marking this row 'sent' unconditionally would contradict the history entry.
       await supabase
         .from('messages')
-        .update({ status: 'sent', updated_at: new Date().toISOString() })
+        .update({ status: (emailSent && smsSent) ? 'sent' : 'failed', updated_at: new Date().toISOString() })
         .eq('id', newMessage.id);
     } catch (sendError) {
       console.error('Error sending message:', sendError);
@@ -408,30 +414,40 @@ router.post('/:id/resend', auth, async (req, res) => {
 
         console.log(`📧 Resend settings: sendEmail=${adaptedTemplate.sendEmail}, sendSMS=${adaptedTemplate.sendSMS}`);
 
+        let emailSent = true;
+        let smsSent = true;
+
         if (adaptedTemplate.sendEmail && message.leads?.email) {
-          await MessagingService.sendEmail({
+          emailSent = await MessagingService.sendEmail({
             ...message,
-            to: message.leads.email,
-            leadName: message.leads.name
+            recipient_email: message.leads.email
           }, resolvedEmailAccount);
         }
         if (adaptedTemplate.sendSMS && message.leads?.phone) {
-          await MessagingService.sendSMS({
+          smsSent = await MessagingService.sendSMS({
             ...message,
-            to: message.leads.phone,
-            leadName: message.leads.name
+            recipient_phone: message.leads.phone
           });
         }
-      }
 
-      // Update status to sent
-      await supabase
-        .from('messages')
-        .update({ 
-          status: 'sent',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', req.params.id);
+        // Update status based on what actually happened
+        await supabase
+          .from('messages')
+          .update({
+            status: (emailSent && smsSent) ? 'sent' : 'failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', req.params.id);
+      } else {
+        // No template found - nothing was actually resent
+        await supabase
+          .from('messages')
+          .update({
+            status: 'failed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', req.params.id);
+      }
     } catch (sendError) {
       console.error('Error resending message:', sendError);
       // Update status to failed

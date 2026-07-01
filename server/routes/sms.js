@@ -267,6 +267,7 @@ async function findLeadByPhone(phone) {
       lead_id: null, // NULL = orphaned message
       type: 'sms',
       status: 'received',
+      content: `ORPHANED: ${phone}`,
       sms_body: `ORPHANED: ${phone}`, // Mark as orphaned for admin review
       recipient_phone: phone,
       sent_at: new Date().toISOString(),

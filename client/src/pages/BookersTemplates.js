@@ -192,12 +192,15 @@ const BookersTemplates = () => {
   };
 
   const insertVariable = (variable) => {
+    // variable already arrives pre-bracketed (e.g. "{leadName}") from the
+    // /api/templates/variables/list endpoint - do not wrap it again, or the
+    // backend's single-brace substitution leaves literal braces in the sent message.
     const textarea = document.activeElement;
     if (textarea && textarea.tagName === 'TEXTAREA') {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
       const text = textarea.value;
-      const newText = text.substring(0, start) + `{{${variable}}}` + text.substring(end);
+      const newText = text.substring(0, start) + variable + text.substring(end);
 
       // Update form data first
       const fieldName = textarea.name;
@@ -209,7 +212,7 @@ const BookersTemplates = () => {
       // Update the textarea value and cursor position after state update
       setTimeout(() => {
         textarea.value = newText;
-        textarea.setSelectionRange(start + variable.length + 4, start + variable.length + 4); // +4 for {{}}
+        textarea.setSelectionRange(start + variable.length, start + variable.length);
         textarea.focus();
 
         // Trigger input event to ensure React knows about the change
@@ -220,8 +223,8 @@ const BookersTemplates = () => {
       // Fallback: append to both fields if no active textarea
       setFormData(prev => ({
         ...prev,
-        smsBody: prev.smsBody + `{{${variable}}}`,
-        emailBody: prev.emailBody + `{{${variable}}}`
+        smsBody: prev.smsBody + variable,
+        emailBody: prev.emailBody + variable
       }));
     }
   };

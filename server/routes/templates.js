@@ -809,10 +809,10 @@ router.post('/:id/test/:leadId', auth, async (req, res) => {
       lead_id: lead.id,
       type: adaptedTemplate.sendEmail && adaptedTemplate.sendSMS ? 'both' :
             adaptedTemplate.sendEmail ? 'email' : 'sms',
-      content: processedTemplate.emailBody || processedTemplate.smsBody,
+      content: processedTemplate.email_body || processedTemplate.sms_body,
       subject: processedTemplate.subject,
-      email_body: processedTemplate.emailBody,
-      sms_body: processedTemplate.smsBody,
+      email_body: processedTemplate.email_body,
+      sms_body: processedTemplate.sms_body,
       recipient_email: lead.email,
       recipient_phone: lead.phone,
       status: 'pending'
