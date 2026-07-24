@@ -1290,35 +1290,38 @@ router.get('/calendar', auth, async (req, res) => {
     const startTime = Date.now();
 
     // Get paginated booked leads using Supabase with date filtering for performance
-    let leads, error, totalCount;
-    
+    let leads = [], error, totalCount;
+
     // PERFORMANCE: Optimize the query structure - REMOVED heavy fields
-    let query = supabase
-      .from('leads')
-      .select(`
-        id, name, phone, email, age, status, date_booked, booked_at, booker_id,
-        is_confirmed, is_double_confirmed, booking_status, has_sale, time_booked, booking_slot,
-        created_at, postcode, notes, image_url, review_date, review_time, review_slot, booking_history,
-        date_of_birth, height_inches, chest_inches, waist_inches, hips_inches, eye_color, hair_color, hair_length
-      `)
-      .or('date_booked.not.is.null,status.eq.Booked')
-      .is('deleted_at', null) // Ensure we don't fetch deleted leads
-      .neq('postcode', 'ZZGHOST') // Exclude ghost bookings (stats correction entries)
-      .not('status', 'in', '(Cancelled,Rejected)'); // ✅ Exclude cancelled/rejected bookings from calendar
-    
-    // Apply date range filter if provided
-    // NOTE: Calendar now uses a wide range (5 years back to 5 years forward) to get ALL bookings
-    if (start && end) {
-      // Use date strings directly - date_booked is stored as YYYY-MM-DD in the database
-      // Do NOT convert to ISO/UTC as this shifts dates during BST
-      const startStr = start.split('T')[0];
-      const endStr = end.split('T')[0];
-      query = query
-        .gte('date_booked', startStr)
-        .lte('date_booked', endStr + 'T23:59:59');
-    }
-    // If no date range provided, fetch ALL bookings (no date filter)
-    
+    const buildLeadsQuery = () => {
+      let q = supabase
+        .from('leads')
+        .select(`
+          id, name, phone, email, age, status, date_booked, booked_at, booker_id,
+          is_confirmed, is_double_confirmed, booking_status, has_sale, time_booked, booking_slot,
+          created_at, postcode, notes, image_url, review_date, review_time, review_slot, booking_history,
+          date_of_birth, height_inches, chest_inches, waist_inches, hips_inches, eye_color, hair_color, hair_length
+        `)
+        .or('date_booked.not.is.null,status.eq.Booked')
+        .is('deleted_at', null) // Ensure we don't fetch deleted leads
+        .neq('postcode', 'ZZGHOST') // Exclude ghost bookings (stats correction entries)
+        .not('status', 'in', '(Cancelled,Rejected)'); // ✅ Exclude cancelled/rejected bookings from calendar
+
+      // Apply date range filter if provided
+      // NOTE: Calendar now uses a wide range (5 years back to 5 years forward) to get ALL bookings
+      if (start && end) {
+        // Use date strings directly - date_booked is stored as YYYY-MM-DD in the database
+        // Do NOT convert to ISO/UTC as this shifts dates during BST
+        const startStr = start.split('T')[0];
+        const endStr = end.split('T')[0];
+        q = q
+          .gte('date_booked', startStr)
+          .lte('date_booked', endStr + 'T23:59:59');
+      }
+      // If no date range provided, fetch ALL bookings (no date filter)
+      return q;
+    };
+
     // First get total count for pagination
     const countQuery = supabase
       .from('leads')
@@ -1337,38 +1340,66 @@ router.get('/calendar', auth, async (req, res) => {
     }
     // If no date range provided, count ALL bookings (no date filter)
 
-    // Apply pagination, limit and ordering
-    query = query
-      .order('date_booked', { ascending: true, nullsLast: true })
-      .range(offsetInt, offsetInt + validatedLimit - 1);
-    
-    // Retry logic with improved error handling and timeouts
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        // Add timeout to prevent hanging
-        const queryPromise = query;
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Database query timeout after 10 seconds')), 10000);
-        });
-        
-        const result = await Promise.race([queryPromise, timeoutPromise]);
-        
-        leads = result.data;
-        error = result.error;
-        
-        if (!error && leads) {
-          break;
-        } else if (attempt < 3) {
-          await new Promise(resolve => setTimeout(resolve, Math.min(1000 * attempt, 3000))); // Exponential backoff
-        }
-      } catch (timeoutError) {
-        error = timeoutError;
-        if (attempt < 3) {
-          await new Promise(resolve => setTimeout(resolve, Math.min(1000 * attempt, 3000)));
-        } else {
-          console.error(`❌ Calendar API: Query failed after 3 attempts:`, timeoutError.message);
+    // BUG FIX: Supabase/PostgREST silently caps any single request at its
+    // configured max-rows (commonly 1000), regardless of the `.range()`/limit
+    // requested. Since results are ordered by date_booked ascending, a single
+    // query used to silently truncate the newest (furthest-future) bookings
+    // off the end of the list — e.g. requesting limit=10000 would come back
+    // with only the oldest 1000 rows, making any booking past that cutoff
+    // invisible on the calendar. Page through in PAGE_SIZE-row chunks so the
+    // full requested range is actually retrieved.
+    const PAGE_SIZE = 1000;
+    const upperBound = offsetInt + validatedLimit;
+    let pageOffset = offsetInt;
+
+    while (pageOffset < upperBound) {
+      const pageEnd = Math.min(pageOffset + PAGE_SIZE, upperBound) - 1;
+      const pageSizeRequested = pageEnd - pageOffset + 1;
+      const pageQuery = buildLeadsQuery()
+        .order('date_booked', { ascending: true, nullsLast: true })
+        .range(pageOffset, pageEnd);
+
+      let pageData, pageError;
+
+      // Retry logic with improved error handling and timeouts
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Database query timeout after 10 seconds')), 10000);
+          });
+
+          const result = await Promise.race([pageQuery, timeoutPromise]);
+
+          pageData = result.data;
+          pageError = result.error;
+
+          if (!pageError && pageData) {
+            break;
+          } else if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, Math.min(1000 * attempt, 3000))); // Exponential backoff
+          }
+        } catch (timeoutError) {
+          pageError = timeoutError;
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, Math.min(1000 * attempt, 3000)));
+          } else {
+            console.error(`❌ Calendar API: Query failed after 3 attempts:`, timeoutError.message);
+          }
         }
       }
+
+      if (pageError) {
+        error = pageError;
+        break;
+      }
+
+      leads = leads.concat(pageData || []);
+
+      // Fewer rows than requested means we've reached the end of the data
+      if (!pageData || pageData.length < pageSizeRequested) {
+        break;
+      }
+      pageOffset += PAGE_SIZE;
     }
 
     // PERFORMANCE: Sorting is now done in the database query for better performance
@@ -2277,12 +2308,13 @@ router.post('/', auth, async (req, res) => {
     if (finalBody.name && finalBody.phone) {
       const normalizedPhoneVal = normalizePhone(finalBody.phone);
       const normalizedName = finalBody.name.trim().toLowerCase();
+      const normalizedEmail = finalBody.email ? finalBody.email.trim().toLowerCase() : '';
 
       console.log(`📊 Duplicate check: Looking for "${normalizedName}" with phone "${normalizedPhoneVal}"`);
 
       // Use Supabase to check for duplicates
       const existingLeads = await dbManager.query('leads', {
-        select: 'id, name, phone, status, date_booked, time_booked, booking_slot, booker_id',
+        select: 'id, name, phone, email, status, date_booked, time_booked, booking_slot, booker_id, created_at',
         is: { deleted_at: null },
       });
 
@@ -2290,7 +2322,27 @@ router.post('/', auth, async (req, res) => {
       const duplicateLeads = existingLeads.filter(lead => {
         const leadName = lead.name ? lead.name.trim().toLowerCase() : '';
         const leadPhone = normalizePhone(lead.phone);
-        return leadName === normalizedName && leadPhone === normalizedPhoneVal;
+        if (leadName !== normalizedName || leadPhone !== normalizedPhoneVal) return false;
+
+        // Name+phone alone can collide for two different people sharing a
+        // phone number (e.g. household/landline). If both records have an
+        // email on file, require it to match too before treating them as
+        // the same lead.
+        const leadEmail = lead.email ? lead.email.trim().toLowerCase() : '';
+        if (normalizedEmail && leadEmail && normalizedEmail !== leadEmail) return false;
+
+        return true;
+      });
+
+      // When multiple historical duplicates exist (e.g. repeat leads with old
+      // Rejected/Cancelled records), prefer the currently-active one and break
+      // ties by most recent, so we always update the lead the user is actually
+      // looking at rather than an arbitrary stale duplicate.
+      duplicateLeads.sort((a, b) => {
+        const aInactive = ['Rejected', 'Cancelled'].includes(a.status) ? 1 : 0;
+        const bInactive = ['Rejected', 'Cancelled'].includes(b.status) ? 1 : 0;
+        if (aInactive !== bInactive) return aInactive - bInactive;
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
       });
       
       if (duplicateLeads.length > 0) {
@@ -2298,7 +2350,7 @@ router.post('/', auth, async (req, res) => {
         
         // If there's an existing lead and we're trying to book it, update the existing lead instead
         if (finalBody.status === 'Booked' && finalBody.date_booked) {
-          const existingLead = existingLeads[0];
+          const existingLead = duplicateLeads[0];
           console.log(`📊 Updating existing lead ${existingLead.id} instead of creating duplicate`);
           
           // Update the existing lead with booking information
