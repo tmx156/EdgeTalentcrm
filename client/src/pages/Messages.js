@@ -1,1398 +1,603 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
-import MessageModal from '../components/MessageModal';
-import EmailThread from '../components/EmailThread';
-import { getEmailContentPreview } from '../utils/emailContentDecoder';
-import {
-  FiMessageSquare,
-  FiMail,
-  FiFilter,
-  FiSearch,
-  FiEye,
-  FiRefreshCw,
-  FiInbox
-} from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
+import GmailEmailRenderer from '../components/GmailEmailRenderer';
 import axios from 'axios';
+import {
+  FiMail,
+  FiSearch,
+  FiInbox,
+  FiSend,
+  FiRefreshCw,
+  FiX,
+  FiChevronLeft,
+  FiCornerUpLeft,
+  FiTrash2,
+  FiPaperclip,
+  FiCalendar,
+  FiXCircle,
+  FiUser,
+  FiChevronUp,
+  FiChevronDown
+} from 'react-icons/fi';
+
+const BOOKED_STATUSES = ['Booked', 'Confirmed', 'Unconfirmed'];
 
 const Messages = () => {
   const { user } = useAuth();
-  const { socket } = useSocket();
   const navigate = useNavigate();
-  const location = useLocation();
+  const { socket } = useSocket();
   const [messages, setMessages] = useState([]);
-  const [filteredMessages, setFilteredMessages] = useState([]);
-  const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('sms');
-  const [selectedDirection, setSelectedDirection] = useState('all');
+  const [activeFolder, setActiveFolder] = useState('inbox');
+  const [selectedEmail, setSelectedEmail] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
+  const [showReplyBox, setShowReplyBox] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
-  const [selectAll, setSelectAll] = useState(false);
-  const [selectedMessageModal, setSelectedMessageModal] = useState(null);
-  const [messageModalOpen, setMessageModalOpen] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncStatus, setSyncStatus] = useState(null);
-  const [readMessageIds, setReadMessageIds] = useState(new Set());
-  const [localStorageLoaded, setLocalStorageLoaded] = useState(false);
 
-  // Load read message IDs from localStorage on mount
-  useEffect(() => {
-    console.log('🔄 Messages: Loading read message IDs from localStorage...');
-    try {
-      const stored = localStorage.getItem('readMessageIds');
-      if (stored) {
-        const parsedIds = JSON.parse(stored);
-        if (Array.isArray(parsedIds) && parsedIds.length > 0) {
-          setReadMessageIds(new Set(parsedIds));
-          console.log('✅ Loaded read message IDs from localStorage:', parsedIds.length, 'messages');
-          console.log('📋 Read message IDs:', parsedIds.slice(0, 5), parsedIds.length > 5 ? `...and ${parsedIds.length - 5} more` : '');
-        } else {
-          console.log('ℹ️ No read message IDs found in localStorage or empty array');
-        }
-      } else {
-        console.log('ℹ️ No readMessageIds key found in localStorage');
-      }
-    } catch (error) {
-      console.warn('❌ Error loading read message IDs from localStorage:', error);
-    } finally {
-      setLocalStorageLoaded(true);
-      console.log('🚀 Messages: localStorage loading completed');
-    }
-  }, []);
-
-  // Save read message IDs to localStorage when they change
-  useEffect(() => {
-    if (!localStorageLoaded) return; // Don't save until we've loaded the initial data
-
-    try {
-      const idsArray = Array.from(readMessageIds);
-      localStorage.setItem('readMessageIds', JSON.stringify(idsArray));
-      console.log('💾 Saved read message IDs to localStorage:', idsArray.length);
-    } catch (error) {
-      console.warn('Error saving read message IDs to localStorage:', error);
-    }
-  }, [readMessageIds, localStorageLoaded]);
-
-
-  // Group messages into Gmail-like conversation threads
-  const groupMessagesIntoThreads = (messages) => {
-    const threads = new Map();
-    const orphanedMessages = [];
-
-    messages.forEach(message => {
-      // Only group SMS and email messages that have a leadId
-      if ((message.type === 'sms' || message.type === 'email') && message.leadId) {
-        // For emails: group by lead + subject (normalized)
-        // For SMS: group by lead only
-        let threadKey;
-        const subject = message.subject || message.details?.subject || '';
-        if (message.type === 'email' && subject) {
-          // Normalize subject (remove Re:, Fwd:, etc. and trim)
-          const normalizedSubject = subject
-            .replace(/^(re|fwd?|fw):\s*/i, '')
-            .trim()
-            .toLowerCase();
-          threadKey = `email_${message.leadId}_${normalizedSubject}`;
-        } else {
-          // SMS threads: one per lead
-          threadKey = `sms_${message.leadId}`;
-        }
-
-        if (!threads.has(threadKey)) {
-          // Create new thread
-          threads.set(threadKey, {
-            id: threadKey,
-            leadId: message.leadId,
-            leadName: message.leadName,
-            leadEmail: message.leadEmail,
-            leadPhone: message.leadPhone,
-            leadStatus: message.leadStatus,
-            assignedTo: message.assignedTo,
-            lastMessage: message,
-            messageCount: 1,
-            unreadCount: message.isRead === false ? 1 : 0,
-            hasSMS: message.type === 'sms',
-            hasEmail: message.type === 'email',
-            type: message.type, // Primary type
-            messages: [message],
-            timestamp: new Date(message.timestamp || message.created_at),
-            isThread: true,
-            subject: subject || null, // For email threads
-            hasFailedDeliveries: message.delivery_status === 'failed' || message.email_status === 'failed',
-            hasPendingDeliveries: message.delivery_status === 'pending' || message.delivery_status === 'sending'
-          });
-        } else {
-          const thread = threads.get(threadKey);
-
-          // Add message to thread
-          thread.messages.push(message);
-          thread.messageCount++;
-
-          // Update unread count
-          if (message.isRead === false) {
-            thread.unreadCount++;
-          }
-
-          // Update message type flags
-          if (message.type === 'sms') thread.hasSMS = true;
-          if (message.type === 'email') thread.hasEmail = true;
-
-          // Update delivery status flags
-          if (message.delivery_status === 'failed' || message.email_status === 'failed') {
-            thread.hasFailedDeliveries = true;
-          }
-          if (message.delivery_status === 'pending' || message.delivery_status === 'sending') {
-            thread.hasPendingDeliveries = true;
-          }
-
-          // Update last message if this is newer
-          const messageTime = new Date(message.timestamp || message.created_at);
-          if (messageTime > thread.timestamp) {
-            thread.lastMessage = message;
-            thread.timestamp = messageTime;
-          }
-        }
-      } else {
-        // Messages without leadId or other types stay as individual items
-        orphanedMessages.push(message);
-      }
-    });
-
-    // Convert threads to array and sort by most recent
-    const threadArray = Array.from(threads.values())
-      .sort((a, b) => b.timestamp - a.timestamp);
-
-    // Combine threads and orphaned messages
-    return [...threadArray, ...orphanedMessages];
-  };
-
-  // Fetch messages - wrapped in useCallback to prevent infinite loops
   const fetchMessages = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/messages-list');
-
-      let fetchedMessages = response.data.messages || [];
-
-      // Preserve read status - once a message is marked as read, it stays read permanently
-      // Also check localStorage directly as a fallback
-      const fallbackReadIds = new Set();
-      try {
-        const stored = localStorage.getItem('readMessageIds');
-        if (stored) {
-          const parsedIds = JSON.parse(stored);
-          if (Array.isArray(parsedIds)) {
-            parsedIds.forEach(id => fallbackReadIds.add(id));
-          }
-        }
-      } catch (error) {
-        console.warn('Error reading fallback read IDs from localStorage:', error);
-      }
-
-      fetchedMessages = fetchedMessages.map(message => {
-        const isMarkedAsRead = readMessageIds.has(message.id) ||
-                              fallbackReadIds.has(message.id) ||
-                              message.read_status === true ||
-                              message.isRead === true;
-
-        if (isMarkedAsRead) {
-          console.log(`📖 Message ${message.id} marked as read from ${readMessageIds.has(message.id) ? 'state' : fallbackReadIds.has(message.id) ? 'localStorage' : 'backend'}`);
-        }
-
-        return {
-          ...message,
-          isRead: isMarkedAsRead
-        };
+      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const response = await axios.get('/api/messages-list', {
+        params: { limit: 500, since, type: 'email' }
       });
-
-      // Group messages into Gmail-like threads
-      const groupedMessages = groupMessagesIntoThreads(fetchedMessages);
-
-      // Recalculate unread counts for threads based on actual message read status
-      const updatedGroupedMessages = groupedMessages.map(item => {
-        if (item.isThread && item.messages) {
-          const unreadCount = item.messages.filter(m => !m.isRead).length;
-          return {
-            ...item,
-            unreadCount,
-            hasUnread: unreadCount > 0
-          };
-        }
-        return item;
-      });
-
-      // Calculate stats based on threads
-      const threadStats = {
-        totalMessages: updatedGroupedMessages.filter(m => m.isThread).length,
-        smsCount: updatedGroupedMessages.filter(m => m.isThread && m.hasSMS).length,
-        emailCount: updatedGroupedMessages.filter(m => m.isThread && m.hasEmail).length,
-        unreadCount: updatedGroupedMessages.filter(m => m.isThread && m.unreadCount > 0).length
-      };
-
-      setMessages(updatedGroupedMessages);
-      setFilteredMessages(updatedGroupedMessages);
-      setStats(threadStats);
+      const fetched = (response.data.messages || []).filter(m => m.type === 'email');
+      setMessages(fetched);
     } catch (error) {
       console.error('Error fetching messages:', error);
-      // Set empty state on error
       setMessages([]);
-      setFilteredMessages([]);
-      setStats({});
     } finally {
       setLoading(false);
     }
-  }, [readMessageIds]); // Only re-create fetchMessages when readMessageIds changes
+  }, []);
 
-  // Initial load - wait for localStorage to be loaded
+  useEffect(() => { fetchMessages(); }, [fetchMessages]);
+
   useEffect(() => {
-    if (!localStorageLoaded) return;
+    // Background refresh as a fallback — new emails arrive live via socket
+    const interval = setInterval(fetchMessages, 300000);
+    return () => clearInterval(interval);
+  }, [fetchMessages]);
 
-    console.log('🚀 Messages: localStorage loaded, fetching initial messages...');
-    fetchMessages();
-  }, [localStorageLoaded, fetchMessages]);
-
-  // Re-fetch messages when readMessageIds changes (after localStorage is loaded)
-  // This ensures the UI reflects the latest read status
   useEffect(() => {
-    if (!localStorageLoaded || readMessageIds.size === 0) return;
+    if (!socket) return;
 
-    console.log('🔄 Messages: Read status changed, updating message display...');
-    // Re-apply read status to current messages without fetching new data
-    setMessages(prevMessages =>
-      prevMessages.map(message => {
-        const isMarkedAsRead = readMessageIds.has(message.id) ||
-                              message.read_status === true ||
-                              message.isRead === true;
-
-        return {
-          ...message,
-          isRead: isMarkedAsRead
+    const handleNewEmail = (data) => {
+      if (data) {
+        const newMsg = {
+          id: data.messageId || `email_${Date.now()}`,
+          messageId: data.messageId,
+          leadId: data.leadId,
+          leadName: data.leadName || 'Unknown',
+          leadEmail: data.leadEmail || '',
+          leadPhone: data.leadPhone || '',
+          leadStatus: data.leadStatus || null,
+          content: data.content || data.body || '',
+          subject: data.subject || '(No Subject)',
+          email_body: data.email_body || null,
+          embedded_images: data.embedded_images || [],
+          type: 'email',
+          direction: 'received',
+          timestamp: data.timestamp || new Date().toISOString(),
+          isRead: false,
+          attachments: data.attachments || []
         };
-      })
-    );
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === newMsg.id);
+          return exists ? prev : [newMsg, ...prev];
+        });
+      }
+    };
 
-    setFilteredMessages(prevMessages =>
-      prevMessages.map(message => {
-        const isMarkedAsRead = readMessageIds.has(message.id) ||
-                              message.read_status === true ||
-                              message.isRead === true;
+    const handleMessageRead = (data) => {
+      setMessages(prev => prev.map(m =>
+        m.id === data.messageId || m.messageId === data.messageId
+          ? { ...m, isRead: true } : m
+      ));
+      if (selectedEmail && (selectedEmail.id === data.messageId || selectedEmail.messageId === data.messageId)) {
+        setSelectedEmail(prev => prev ? { ...prev, isRead: true } : prev);
+      }
+    };
 
-        return {
-          ...message,
-          isRead: isMarkedAsRead
-        };
-      })
-    );
-  }, [readMessageIds, localStorageLoaded]);
+    const handleMessageReceived = (data) => {
+      if (data?.channel === 'email' || data?.type === 'email') handleNewEmail(data);
+    };
 
-  // Polling effect - only start after localStorage is loaded
-  useEffect(() => {
-    if (!localStorageLoaded) return;
-
-    // REDUCED polling frequency - poll every 5 minutes to prevent flashing and reduce server load
-    const pollingInterval = setInterval(() => {
-      console.log('📱 Messages: Polling for new messages...');
-      fetchMessages();
-    }, 300000); // Poll every 5 minutes (300000ms)
+    socket.on('email_received', handleNewEmail);
+    socket.on('message_received', handleMessageReceived);
+    socket.on('message_read', handleMessageRead);
 
     return () => {
-      clearInterval(pollingInterval);
-      console.log('✅ Messages: Cleaned up polling');
+      socket.off('email_received', handleNewEmail);
+      socket.off('message_received', handleMessageReceived);
+      socket.off('message_read', handleMessageRead);
     };
-  }, [localStorageLoaded, fetchMessages]);
+  }, [socket, selectedEmail]);
 
-  // Sync selectedFilter with ?type=sms|email in URL
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const type = params.get('type');
-    if (type === 'sms' || type === 'email') {
-      setSelectedFilter(type);
+  const markAsRead = async (message) => {
+    if (message.isRead) return;
+    try {
+      await axios.put(`/api/messages-list/${message.messageId || message.id}/read`);
+      setMessages(prev => prev.map(m => m.id === message.id ? { ...m, isRead: true } : m));
+    } catch (e) {
+      console.error('Error marking as read:', e);
     }
-  }, [location.search]);
-
-  // When user changes filter, update URL query
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get('type') !== selectedFilter) {
-      params.set('type', selectedFilter);
-      navigate({ pathname: '/messages', search: params.toString() }, { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFilter]);
-
-  // Listen for real-time message updates and read status changes
-  useEffect(() => {
-    if (socket) {
-      const handleLeadUpdate = (update) => {
-        if (update.type === 'LEAD_UPDATED' && update.data.lead) {
-          const lead = update.data.lead;
-          
-          // Check if this update contains a new SMS or EMAIL
-          if (lead.booking_history) {
-            const history = typeof lead.booking_history === 'string' 
-              ? JSON.parse(lead.booking_history) 
-              : lead.booking_history;
-            
-            // Find the most recent inbound SMS entry
-            const recentSms = history.find(entry => 
-              entry.action === 'SMS_RECEIVED' && 
-              new Date(entry.timestamp) > new Date(Date.now() - 30000) // Within last 30 seconds
-            );
-            
-            // Find the most recent inbound EMAIL entry
-            const recentEmail = history.find(entry => 
-              entry.action === 'EMAIL_RECEIVED' && 
-              new Date(entry.timestamp) > new Date(Date.now() - 30000) // Within last 30 seconds
-            );
-            
-            if (recentSms) {
-              // Add the new SMS message optimistically (client-side dedup window)
-              const newMessage = {
-                id: `${lead.id}_${recentSms.timestamp}`,
-                leadId: lead.id,
-                leadName: lead.name,
-                leadPhone: lead.phone,
-                content: recentSms.details?.body || recentSms.details?.message || 'No content',
-                type: 'sms',
-                direction: recentSms.action === 'SMS_SENT' ? 'sent' : 'received',
-                action: recentSms.action,
-                timestamp: recentSms.timestamp,
-                performedBy: recentSms.performed_by,
-                performedByName: recentSms.performed_by_name,
-                isRead: recentSms.action === 'SMS_SENT' ? true : false,  // New received messages are unread
-                details: recentSms.details
-              };
-
-              // Check if message already exists to avoid duplicates
-              setMessages(prev => {
-                const within2min = (a, b) => {
-                  try { return Math.abs(new Date(a).getTime() - new Date(b).getTime()) < 120000; } catch { return false; }
-                };
-                const normalizedNew = (newMessage.content || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0,160);
-                const exists = prev.some(msg => 
-                  msg.leadId === newMessage.leadId &&
-                  msg.type === 'sms' &&
-                  msg.direction === 'received' &&
-                  ((msg.id === newMessage.id) ||
-                   (within2min(msg.timestamp, newMessage.timestamp) &&
-                    (String(msg.content || '').replace(/\s+/g,' ').trim().toLowerCase().slice(0,160) === normalizedNew)))
-                );
-                if (exists) return prev;
-                return [newMessage, ...prev];
-              });
-              
-              // Also update filtered messages
-               setFilteredMessages(prev => {
-                 const within2min = (a, b) => {
-                   try { return Math.abs(new Date(a).getTime() - new Date(b).getTime()) < 120000; } catch { return false; }
-                 };
-                 const normalizedNew = (newMessage.content || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0,160);
-                 const exists = prev.some(msg => 
-                   msg.leadId === newMessage.leadId &&
-                   msg.type === 'sms' &&
-                   msg.direction === 'received' &&
-                   ((msg.id === newMessage.id) ||
-                    (within2min(msg.timestamp, newMessage.timestamp) &&
-                     (String(msg.content || '').replace(/\s+/g,' ').trim().toLowerCase().slice(0,160) === normalizedNew)))
-                 );
-                 if (exists) return prev;
-                 return [newMessage, ...prev];
-               });
-              
-              // Update stats
-              setStats(prev => ({
-                ...prev,
-                totalMessages: prev.totalMessages + 1,
-                smsCount: prev.smsCount + 1,
-                sentCount: recentSms.action === 'SMS_SENT' ? prev.sentCount + 1 : prev.sentCount,
-                receivedCount: recentSms.action === 'SMS_RECEIVED' ? prev.receivedCount + 1 : prev.receivedCount
-              }));
-            }
-            
-            // Handle new EMAIL messages
-            if (recentEmail) {
-              const newEmailMessage = {
-                id: `${lead.id}_${recentEmail.timestamp}`,
-                leadId: lead.id,
-                leadName: lead.name,
-                leadPhone: lead.phone,
-                leadEmail: lead.email,
-                content: recentEmail.details?.body || recentEmail.details?.subject || 'No content',
-                type: 'email',
-                direction: 'received',
-                action: 'EMAIL_RECEIVED',
-                timestamp: recentEmail.timestamp,
-                performedBy: recentEmail.performed_by,
-                performedByName: recentEmail.performed_by_name,
-                isRead: recentEmail.details?.read || false,
-                details: recentEmail.details
-              };
-
-              // Add email to messages state
-              setMessages(prev => {
-                const within2min = (a, b) => {
-                  try { return Math.abs(new Date(a).getTime() - new Date(b).getTime()) < 120000; } catch { return false; }
-                };
-                const normalizedNew = (newEmailMessage.content || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0,160);
-                const exists = prev.some(msg => 
-                  msg.leadId === newEmailMessage.leadId &&
-                  msg.type === 'email' &&
-                  msg.direction === 'received' &&
-                  ((msg.id === newEmailMessage.id) ||
-                   (within2min(msg.timestamp, newEmailMessage.timestamp) &&
-                    (String(msg.content || '').replace(/\s+/g,' ').trim().toLowerCase().slice(0,160) === normalizedNew)))
-                );
-                if (exists) return prev;
-                return [newEmailMessage, ...prev];
-              });
-              
-              // Update filtered messages
-              setFilteredMessages(prev => {
-                const within2min = (a, b) => {
-                  try { return Math.abs(new Date(a).getTime() - new Date(b).getTime()) < 120000; } catch { return false; }
-                };
-                const normalizedNew = (newEmailMessage.content || '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0,160);
-                const exists = prev.some(msg => 
-                  msg.leadId === newEmailMessage.leadId &&
-                  msg.type === 'email' &&
-                  msg.direction === 'received' &&
-                  ((msg.id === newEmailMessage.id) ||
-                   (within2min(msg.timestamp, newEmailMessage.timestamp) &&
-                    (String(msg.content || '').replace(/\s+/g,' ').trim().toLowerCase().slice(0,160) === normalizedNew)))
-                );
-                if (exists) return prev;
-                return [newEmailMessage, ...prev];
-              });
-              
-              // Update stats for email
-              setStats(prev => ({
-                ...prev,
-                totalMessages: prev.totalMessages + 1,
-                emailCount: prev.emailCount + 1,
-                receivedCount: prev.receivedCount + 1
-              }));
-            }
-          }
-        }
-      };
-
-      // Handle incoming message events from SMS webhook - listen for both events
-      const handleMessageReceived = (data) => {
-        console.log('📱 Messages: Received message_received event:', data);
-        
-        // Create new message object immediately
-        if (data && (data.leadId || data.phone)) {
-          const newMessage = {
-            id: `sms_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            leadId: data.leadId || data.phone,
-            leadName: data.leadName || data.name || 'Unknown',
-            leadPhone: data.phone || data.leadPhone || '',
-            content: data.content || data.message || data.body || 'No content',
-            type: 'sms',
-            direction: 'received',
-            action: 'SMS_RECEIVED',
-            timestamp: data.timestamp || new Date().toISOString(),
-            isRead: false,
-            details: data.details || {}
-          };
-          
-          // Add to messages immediately for instant visibility
-          setMessages(prev => {
-            // Simple duplicate check
-            const exists = prev.some(msg => 
-              msg.content === newMessage.content && 
-              msg.leadPhone === newMessage.leadPhone &&
-              Math.abs(new Date(msg.timestamp) - new Date(newMessage.timestamp)) < 10000
-            );
-            if (!exists) {
-              console.log('✅ Adding new SMS to messages:', newMessage);
-              return [newMessage, ...prev];
-            }
-            return prev;
-          });
-          
-          // Update stats immediately
-          setStats(prev => ({
-            ...prev,
-            totalMessages: (prev.totalMessages || 0) + 1,
-            smsCount: (prev.smsCount || 0) + 1,
-            receivedCount: (prev.receivedCount || 0) + 1,
-            unreadCount: (prev.unreadCount || 0) + 1
-          }));
-        }
-
-        // ✅ FIX: Don't auto-refresh - SMS messages are already added optimistically via socket
-        // The 5-minute polling interval will handle any missed messages
-        // Removed: setTimeout(() => fetchMessages(), 10000);
-
-        // Show a brief notification
-        console.log(`📱 New SMS received from ${data.phone}: ${data.content}`);
-      };
-
-      // Handle incoming SMS events (alternative event name)
-      const handleSmsReceived = (data) => {
-        console.log('📱 Messages: Received sms_received event:', data);
-        // Process the same way as message_received
-        handleMessageReceived(data);
-      };
-
-      // Handle incoming EMAIL events
-      const handleEmailReceived = (data) => {
-        console.log('📧 Messages: Received email_received event:', data);
-        
-        // Create new email message object immediately
-        if (data && (data.leadId || data.email)) {
-          const newEmailMessage = {
-            id: `email_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            leadId: data.leadId || data.email,
-            leadName: data.leadName || data.name || 'Unknown',
-            leadPhone: data.phone || data.leadPhone || '',
-            leadEmail: data.email || data.leadEmail || '',
-            content: data.content || data.subject || data.body || 'No content',
-            type: 'email',
-            direction: 'received',
-            action: 'EMAIL_RECEIVED',
-            timestamp: data.timestamp || new Date().toISOString(),
-            isRead: false,
-            details: data.details || {}
-          };
-          
-          // Add to messages immediately for instant visibility
-          setMessages(prev => {
-            // Simple duplicate check
-            const exists = prev.some(msg => 
-              msg.content === newEmailMessage.content && 
-              msg.leadEmail === newEmailMessage.leadEmail &&
-              Math.abs(new Date(msg.timestamp) - new Date(newEmailMessage.timestamp)) < 10000
-            );
-            if (!exists) {
-              console.log('✅ Adding new email to messages:', newEmailMessage);
-              return [newEmailMessage, ...prev];
-            }
-            return prev;
-          });
-          
-          // Update stats immediately
-          setStats(prev => ({
-            ...prev,
-            totalMessages: (prev.totalMessages || 0) + 1,
-            emailCount: (prev.emailCount || 0) + 1,
-            receivedCount: (prev.receivedCount || 0) + 1,
-            unreadCount: (prev.unreadCount || 0) + 1
-          }));
-        }
-        
-        // ✅ FIX: Don't auto-refresh - emails are already added optimistically via socket
-        // The 5-minute polling interval will handle any missed messages
-        // Removed: setTimeout(() => fetchMessages(), 10000);
-
-        // Show a brief notification
-        console.log(`📧 New email received from ${data.leadId}: ${data.content}`);
-      };
-
-      // Handle messages synced event
-      const handleMessagesSynced = (data) => {
-        console.log('🔄 Messages: Received messages_synced event:', data);
-        setSyncStatus(`Synced ${data.totalSynced} messages, skipped ${data.totalSkipped} duplicates`);
-
-        // ✅ FIX: Don't auto-refresh on sync - rely on 5-minute polling instead
-        // This prevents constant flashing when syncing messages
-        // Removed: setTimeout(() => fetchMessages(), 5000);
-
-        // Clear status after 5 seconds
-        setTimeout(() => setSyncStatus(null), 5000);
-      };
-
-      const handleMessagesDeleted = (payload) => {
-        try {
-          const ids = payload?.messageIds || [];
-          if (ids.length === 0) return;
-          setMessages(prev => prev.filter(m => !ids.includes(m.id)));
-          setFilteredMessages(prev => prev.filter(m => !ids.includes(m.id)));
-          setSelectedIds(prev => prev.filter(id => !ids.includes(id)));
-        } catch (e) {
-          console.warn('Messages deleted event handling error:', e);
-        }
-      };
-
-      // Handle message read events from other clients/components
-      const handleMessageRead = (data) => {
-        console.log('📡 Messages: Received message_read event:', data);
-        console.log('📡 Messages: Current messages count:', messages.length);
-        
-        // Update both messages and filteredMessages state
-        setMessages(prev => {
-          const updated = prev.map(msg => {
-            if (msg.id === data.messageId) {
-              console.log('✅ Messages: Found and updating message:', msg.id);
-              return { ...msg, isRead: true };
-            }
-            return msg;
-          });
-          console.log('📡 Messages: Updated messages state');
-          return updated;
-        });
-        
-        setFilteredMessages(prev => {
-          const updated = prev.map(msg => {
-            if (msg.id === data.messageId) {
-              console.log('✅ Messages: Found and updating filtered message:', msg.id);
-              return { ...msg, isRead: true };
-            }
-            return msg;
-          });
-          console.log('📡 Messages: Updated filteredMessages state');
-          return updated;
-        });
-      };
-
-      // Listen for all relevant events
-      socket.on('lead_updated', handleLeadUpdate);
-      socket.on('message_received', handleMessageReceived);
-      socket.on('sms_received', handleSmsReceived); // Add this event listener
-      socket.on('email_received', handleEmailReceived);
-      socket.on('messages_synced', handleMessagesSynced);
-      socket.on('message_read', handleMessageRead);
-      socket.on('messages_deleted', handleMessagesDeleted);
-      socket.on('message_read_direct', handleMessageRead); // Backup listener
-      
-      return () => {
-        socket.off('lead_updated', handleLeadUpdate);
-        socket.off('message_received', handleMessageReceived);
-        socket.off('sms_received', handleSmsReceived); // Clean up this listener too
-        socket.off('email_received', handleEmailReceived);
-        socket.off('messages_synced', handleMessagesSynced);
-        socket.off('message_read', handleMessageRead);
-        socket.off('message_read_direct', handleMessageRead);
-        socket.off('messages_deleted', handleMessagesDeleted);
-      };
-    }
-  }, [socket]);
-
-  // Filter messages based on search and filters
-  useEffect(() => {
-    let filtered = [...messages];
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(msg => {
-        if (msg.isThread) {
-          // For threads, search across all messages in the thread
-          const searchLower = searchTerm.toLowerCase();
-          return (
-            msg.leadName?.toLowerCase().includes(searchLower) ||
-            msg.leadPhone?.includes(searchTerm) ||
-            msg.leadEmail?.toLowerCase().includes(searchLower) ||
-            msg.subject?.toLowerCase().includes(searchLower) ||
-            msg.messages?.some(m => 
-              (m.content || '').toLowerCase().includes(searchLower) ||
-              (m.details?.body || '').toLowerCase().includes(searchLower) ||
-              (m.details?.subject || '').toLowerCase().includes(searchLower)
-            )
-          );
-        } else {
-          // For individual messages
-          return (
-            msg.leadName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (msg.content || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-            msg.leadPhone?.includes(searchTerm) ||
-            msg.leadEmail?.toLowerCase().includes(searchTerm.toLowerCase())
-          );
-        }
-      });
-    }
-
-    // Type filter (sms or email) - for threads, check if they contain the type
-    if (selectedFilter !== 'all') {
-      filtered = filtered.filter(msg => {
-        if (msg.isThread) {
-          return selectedFilter === 'sms' ? msg.hasSMS : msg.hasEmail;
-        } else {
-          return msg.type === selectedFilter;
-        }
-      });
-    }
-
-    // Direction filter - for threads, check last message
-    if (selectedDirection !== 'all') {
-      filtered = filtered.filter(msg => {
-        if (msg.isThread) {
-          return msg.lastMessage?.direction === selectedDirection;
-        } else {
-          return msg.direction === selectedDirection;
-        }
-      });
-    }
-
-    setFilteredMessages(filtered);
-  }, [messages, searchTerm, selectedFilter, selectedDirection]);
-
-  // Keep selection in sync with current filtered view
-  useEffect(() => {
-    if (selectAll) {
-      setSelectedIds(filteredMessages.map(m => m.id));
-    } else {
-      setSelectedIds(prev => prev.filter(id => filteredMessages.some(m => m.id === id)));
-    }
-  }, [filteredMessages, selectAll]);
-
-  const toggleSelectAll = () => {
-    const next = !selectAll;
-    setSelectAll(next);
-    setSelectedIds(next ? filteredMessages.map(m => m.id) : []);
   };
 
-  const toggleSelectOne = (e, id) => {
+  const handleEmailClick = (message) => {
+    setSelectedEmail(message);
+    setShowReplyBox(false);
+    setReplyText('');
+    markAsRead(message);
+  };
+
+  const navigateEmail = (direction) => {
+    if (!selectedEmail || !filteredMessages.length) return;
+    const currentIdx = filteredMessages.findIndex(m => m.id === selectedEmail.id);
+    const nextIdx = currentIdx + direction;
+    if (nextIdx >= 0 && nextIdx < filteredMessages.length) {
+      const next = filteredMessages[nextIdx];
+      setSelectedEmail(next);
+      setShowReplyBox(false);
+      setReplyText('');
+      markAsRead(next);
+    }
+  };
+
+  const handleCloseEmail = () => {
+    setSelectedEmail(null);
+    setShowReplyBox(false);
+    setReplyText('');
+  };
+
+  const isLeadBooked = (message) => {
+    return message && BOOKED_STATUSES.includes(message.leadStatus);
+  };
+
+  const handleCancelBooking = async (message) => {
+    if (!message?.leadId) return;
+    if (!window.confirm(`Cancel booking for ${message.leadName}?`)) return;
+    try {
+      await axios.put(`/api/leads/${message.leadId}`, { status: 'Cancelled' });
+      setSelectedEmail(prev => prev ? { ...prev, leadStatus: 'Cancelled' } : prev);
+      setMessages(prev => prev.map(m => m.leadId === message.leadId ? { ...m, leadStatus: 'Cancelled' } : m));
+      alert(`Booking cancelled for ${message.leadName}`);
+    } catch (e) {
+      console.error('Error cancelling:', e);
+      alert('Failed to cancel booking');
+    }
+  };
+
+  const handleReschedule = (message) => {
+    if (!message?.leadId) return;
+    localStorage.setItem('bookingLead', JSON.stringify({
+      id: message.leadId,
+      name: message.leadName,
+      phone: message.leadPhone,
+      email: message.leadEmail,
+      isReschedule: true,
+      currentStatus: message.leadStatus
+    }));
+    navigate('/calendar');
+  };
+
+  const handleSendReply = async () => {
+    if (!replyText.trim() || !selectedEmail) return;
+    setSendingReply(true);
+    try {
+      await axios.post('/api/messages-list/reply', {
+        messageId: selectedEmail.messageId || selectedEmail.id,
+        reply: replyText,
+        replyType: 'email'
+      });
+      setReplyText('');
+      setShowReplyBox(false);
+      setTimeout(fetchMessages, 1000);
+    } catch (e) {
+      console.error('Error sending reply:', e);
+      alert('Failed to send reply');
+    } finally {
+      setSendingReply(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.length} email(s)?`)) return;
+    try {
+      await axios.post('/api/messages-list/bulk-delete', { messageIds: selectedIds });
+      setMessages(prev => prev.filter(m => !selectedIds.includes(m.id)));
+      setSelectedIds([]);
+    } catch (e) {
+      console.error('Error deleting:', e);
+    }
+  };
+
+  const toggleSelect = (e, id) => {
     e.stopPropagation();
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.length === 0) {
-      console.warn('⚠️ handleBulkDelete called with no selected IDs');
-      return;
-    }
-    
-    console.log('🗑️ Starting bulk delete for', selectedIds.length, 'messages');
-    console.log('📝 Selected message IDs:', selectedIds);
-    
-    // Confirm deletion with user
-    const confirmMsg = `Are you sure you want to delete ${selectedIds.length} message${selectedIds.length > 1 ? 's' : ''}? This action cannot be undone.`;
-    if (!window.confirm(confirmMsg)) {
-      console.log('❌ User cancelled bulk delete');
-      return;
-    }
-    
-    try {
-      const token = localStorage.getItem('token');
-      console.log('📤 Sending delete request to server...');
-      
-      const res = await fetch('/api/messages-list/bulk-delete', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ messageIds: selectedIds })
-      });
-      
-      console.log('📥 Response status:', res.status);
-      
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error('❌ Server returned error:', res.status, errorText);
-        throw new Error(`Server error: ${res.status} - ${errorText}`);
-      }
-      
-      const data = await res.json();
-      console.log('📦 Response data:', data);
-      
-      if (data.success) {
-        const removed = new Set((data.results || []).filter(r => r.success).map(r => r.messageId));
-        console.log('✅ Successfully deleted', removed.size, 'messages');
-        
-        setMessages(prev => prev.filter(m => !removed.has(m.id)));
-        setFilteredMessages(prev => prev.filter(m => !removed.has(m.id)));
-        setSelectedIds([]);
-        setSelectAll(false);
-        
-        // Show success message
-        const successMsg = data.failed > 0 
-          ? `Deleted ${data.deleted} message(s). ${data.failed} failed.`
-          : `Successfully deleted ${data.deleted} message(s).`;
-        alert(successMsg);
-        
-        // Update stats
-        setStats(prev => ({
-          ...prev,
-          totalMessages: Math.max((prev.totalMessages || 0) - removed.size, 0),
-          smsCount: Math.max((prev.smsCount || 0) - [...removed].filter(id => {
-            const msg = messages.find(m => m.id === id);
-            return msg?.type === 'sms';
-          }).length, 0),
-          emailCount: Math.max((prev.emailCount || 0) - [...removed].filter(id => {
-            const msg = messages.find(m => m.id === id);
-            return msg?.type === 'email';
-          }).length, 0)
-        }));
-      } else {
-        console.error('❌ Delete operation failed:', data.message);
-        alert(data.message || 'Delete failed. Please check the console for details.');
-      }
-    } catch (err) {
-      console.error('❌ Bulk delete error:', err);
-      alert(`Delete failed: ${err.message}\n\nPlease check the browser console and server logs for details.`);
-    }
+  const filteredMessages = messages.filter(m => {
+    const matchesFolder = activeFolder === 'inbox' ? m.direction === 'received' : m.direction === 'sent';
+    if (!matchesFolder) return false;
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (m.leadName || '').toLowerCase().includes(term) ||
+           (m.subject || '').toLowerCase().includes(term) ||
+           (m.content || '').toLowerCase().includes(term) ||
+           (m.leadEmail || '').toLowerCase().includes(term);
+  });
+
+  const inboxCount = messages.filter(m => m.direction === 'received').length;
+  const sentCount = messages.filter(m => m.direction === 'sent').length;
+  const unreadCount = messages.filter(m => m.direction === 'received' && !m.isRead).length;
+
+  const formatDate = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+    if (isToday) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (isYesterday) return 'Yesterday';
+    if (now.getFullYear() === date.getFullYear()) return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  // Debug function to clear all read statuses (for testing)
-  const clearAllReadStatuses = () => {
-    console.log('🧹 Clearing all read statuses...');
-    setReadMessageIds(new Set());
-    localStorage.removeItem('readMessageIds');
-    // Refetch messages to reset all to unread
-    fetchMessages();
+  const getInitials = (name) => {
+    if (!name) return '?';
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  // Mark message as read with proper race condition handling
-  const markAsRead = async (message) => {
-    const messageId = message.id || message.messageId;
-
-    // Prevent duplicate requests if already processing
-    if (readMessageIds.has(messageId) || message.processing) {
-      console.log('ℹ️ Messages: Message already read or being processed:', messageId);
-      return;
-    }
-
-    try {
-      console.log('📱 Messages: Marking message as read:', messageId);
-
-      // Mark as processing to prevent race conditions
-      const updateProcessingState = (processing) => {
-        setMessages(prev =>
-          prev.map(msg => {
-            // Update individual messages
-            if (msg.id === messageId) {
-              return { ...msg, processing };
-            }
-            // Update messages within threads
-            if (msg.isThread && msg.messages) {
-              return {
-                ...msg,
-                messages: msg.messages.map(m => 
-                  m.id === messageId ? { ...m, processing } : m
-                )
-              };
-            }
-            return msg;
-          })
-        );
-        setFilteredMessages(prev =>
-          prev.map(msg => {
-            if (msg.id === messageId) {
-              return { ...msg, processing };
-            }
-            if (msg.isThread && msg.messages) {
-              return {
-                ...msg,
-                messages: msg.messages.map(m => 
-                  m.id === messageId ? { ...m, processing } : m
-                )
-              };
-            }
-            return msg;
-          })
-        );
-      };
-
-      updateProcessingState(true);
-
-      // Optimistic UI update - mark as read immediately for better UX
-      setMessages(prev =>
-        prev.map(msg => {
-          // Update individual messages
-          if (msg.id === messageId) {
-            return { ...msg, isRead: true };
-          }
-          // Update messages within threads and recalculate unread count
-          if (msg.isThread && msg.messages) {
-            const updatedMessages = msg.messages.map(m => 
-              m.id === messageId ? { ...m, isRead: true } : m
-            );
-            const unreadCount = updatedMessages.filter(m => !m.isRead).length;
-            return {
-              ...msg,
-              messages: updatedMessages,
-              unreadCount,
-              lastMessage: updatedMessages.find(m => m.id === msg.lastMessage?.id) || msg.lastMessage
-            };
-          }
-          return msg;
-        })
-      );
-      setFilteredMessages(prev =>
-        prev.map(msg => {
-          if (msg.id === messageId) {
-            return { ...msg, isRead: true };
-          }
-          if (msg.isThread && msg.messages) {
-            const updatedMessages = msg.messages.map(m => 
-              m.id === messageId ? { ...m, isRead: true } : m
-            );
-            const unreadCount = updatedMessages.filter(m => !m.isRead).length;
-            return {
-              ...msg,
-              messages: updatedMessages,
-              unreadCount,
-              lastMessage: updatedMessages.find(m => m.id === msg.lastMessage?.id) || msg.lastMessage
-            };
-          }
-          return msg;
-        })
-      );
-
-      // Use messageId directly (now that we're using UUIDs consistently)
-      const response = await axios.put(`/api/messages-list/${messageId}/read`);
-
-      if (response.data.success) {
-        console.log('✅ Messages: Message marked as read successfully:', messageId);
-        console.log('📋 Messages: Update method used:', response.data.method || 'direct');
-
-        // Add to permanent read set - once read, stays read forever
-        setReadMessageIds(prev => new Set([...prev, messageId]));
-
-        // Update stats after marking as read
-        setStats(prev => ({
-          ...prev,
-          unreadCount: Math.max((prev.unreadCount || 0) - 1, 0)
-        }));
-
-        updateProcessingState(false);
-      } else {
-        throw new Error(response.data.message || 'Failed to mark as read');
-      }
-    } catch (error) {
-      console.error('❌ Messages: Error marking message as read:', error);
-
-      // Remove processing state
-      const updateProcessingState = (processing) => {
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === messageId ? { ...msg, processing } : msg
-          )
-        );
-        setFilteredMessages(prev =>
-          prev.map(msg =>
-            msg.id === messageId ? { ...msg, processing } : msg
-          )
-        );
-      };
-
-      updateProcessingState(false);
-
-      // Handle 404 - message doesn't exist, remove from UI
-      if (error.response?.status === 404) {
-        console.log('🗑️ Messages: Message not found (404), removing from UI:', messageId);
-
-        // Remove the non-existent message from the UI
-        setMessages(prev => prev.filter(msg => msg.id !== messageId));
-        setFilteredMessages(prev => prev.filter(msg => msg.id !== messageId));
-      } else {
-        // Revert optimistic UI update on other errors
-        console.log('🔄 Messages: Reverting optimistic update due to error');
-        setMessages(prev =>
-          prev.map(msg =>
-            msg.id === messageId ? { ...msg, isRead: false } : msg
-          )
-        );
-        setFilteredMessages(prev =>
-          prev.map(msg =>
-            msg.id === messageId ? { ...msg, isRead: false } : msg
-          )
-        );
-      }
-    }
+  const getAvatarColor = (name) => {
+    const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-600', 'bg-amber-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
+    let hash = 0;
+    for (let i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
   };
 
-  // Open message modal instead of navigating directly
-  const handleMessageClick = async (message) => {
-    // Mark as read first (await to ensure it completes)
-    // This will update the message state optimistically
-    await markAsRead(message);
-    
-    // Convert message format to notification format for the modal
-    // After markAsRead, the message is marked as read, so use true
-    // But also include messageId for the modal to handle read status properly
-    const notificationFormat = {
-      id: message.id,
-      messageId: message.messageId || message.id, // Include messageId for proper read status handling
-      leadId: message.leadId,
-      leadName: message.leadName,
-      leadPhone: message.leadPhone,
-      leadEmail: message.leadEmail,
-      content: message.content,
-      timestamp: message.timestamp,
-      read: false, // Set to false so modal will mark it as read (handles edge cases)
-      type: message.type,
-      direction: message.direction,
-      subject: message.subject || message.content,  // Add subject for emails
-      isGrouped: message.isGrouped,
-      conversationCount: message.conversationCount,
-      attachments: message.attachments || []  // Include attachments
-    };
-    
-    setSelectedMessageModal(notificationFormat);
-    setMessageModalOpen(true);
+  const getPreview = (message) => {
+    const content = message.content || '';
+    const clean = content.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    return clean.length > 80 ? clean.substring(0, 80) + '...' : clean;
   };
 
-  // Handle modal close
-  const handleMessageModalClose = () => {
-    setMessageModalOpen(false);
-    setSelectedMessageModal(null);
-  };
-
-  // Handle reply sent - add optimistically then refresh
-  const handleReplySent = (sentMessage) => {
-    // Do not inject sent messages into the inbox; refresh to keep only received
-    setTimeout(() => {
-      fetchMessages();
-    }, 800);
-  };
-
-  // Removed unused handleSyncMessages function
-
-  // Format timestamp
-  const formatTime = (timestamp) => {
-    if (!timestamp) return 'Just now';
-    
-    try {
-      const date = new Date(timestamp);
-      if (isNaN(date.getTime())) {
-        return 'Just now';
-      }
-      
-      const now = new Date();
-      const diff = now - date;
-      const hours = diff / (1000 * 60 * 60);
-      
-      if (hours < 24) {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } else if (hours < 48) {
-        return 'Yesterday ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } else {
-        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
-    } catch (error) {
-      console.warn('Invalid timestamp:', timestamp);
-      return 'Just now';
-    }
-  };
-
-  // Get message icon
-  const getMessageIcon = (type, direction) => {
-    if (type === 'sms') {
-      return direction === 'sent' ? 
-        <FiMessageSquare className="h-5 w-5 text-blue-500" /> :
-        <FiMessageSquare className="h-5 w-5 text-green-500" />;
-    } else {
-      return direction === 'sent' ? 
-        <FiMail className="h-5 w-5 text-blue-500" /> :
-        <FiMail className="h-5 w-5 text-green-500" />;
-    }
-  };
-
-  if (loading) {
+  if (loading && messages.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="flex items-center justify-center min-h-screen bg-[#f6f8fc]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0b57d0]"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center space-x-2">
-            <FiMessageSquare className="h-6 w-6" />
-            <span>Messages</span>
-          </h1>
-          <p className="text-gray-600 mt-1">
-            {user.role === 'admin' ? 'All communications' : 'Your allocated leads communications'}
-          </p>
+    <div className="flex h-[calc(100vh-64px)] bg-[#f6f8fc] overflow-hidden">
+      {/* Gmail Sidebar */}
+      <div className="w-60 flex-shrink-0 hidden md:flex flex-col bg-[#f6f8fc]">
+        <div className="px-5 pt-5 pb-3">
+          <h2 className="text-xl text-gray-800 flex items-center gap-3">
+            <FiMail className="text-red-500 h-6 w-6" /> Mail
+          </h2>
         </div>
-        
-        {/* Action Buttons */}
-        <div className="mt-4 md:mt-0 flex items-center space-x-3">
-          {/* Refresh Button */}
+        <nav className="flex-1 pr-3 space-y-0.5">
           <button
-            onClick={() => {
-              console.log('🔄 Manual refresh triggered - clearing cache and reloading');
-              // Clear local read status cache on manual refresh
-              setReadMessageIds(new Set());
-              localStorage.removeItem('readMessageIds');
-              // Force reload from server
-              fetchMessages();
-            }}
-            disabled={loading}
-            className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            onClick={() => { setActiveFolder('inbox'); setSelectedEmail(null); }}
+            className={`w-full flex items-center justify-between pl-6 pr-4 py-2 text-sm rounded-r-full transition-colors ${
+              activeFolder === 'inbox'
+                ? 'bg-[#d3e3fd] text-[#001d35] font-semibold'
+                : 'text-gray-700 hover:bg-gray-200/60'
+            }`}
           >
-            <FiRefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+            <div className="flex items-center gap-4">
+              <FiInbox className="h-4 w-4" />
+              <span>Inbox</span>
+            </div>
+            {unreadCount > 0 && (
+              <span className="text-xs font-bold">{unreadCount}</span>
+            )}
           </button>
-
-          {/* Clear Read Status Button - Debug */}
-          {user.role === 'admin' && (
-            <button
-              onClick={clearAllReadStatuses}
-              className="inline-flex items-center px-3 py-2 border border-red-300 shadow-sm text-sm leading-4 font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-            >
-              <FiEye className="h-4 w-4 mr-2" />
-              Clear Read Status
-            </button>
-          )}
-
-          {/* Sync Status - Admin Only */}
-          {user.role === 'admin' && syncStatus && (
-            <div className="text-sm text-gray-600 bg-gray-100 px-3 py-1 rounded-full">
-              {syncStatus}
+          <button
+            onClick={() => { setActiveFolder('sent'); setSelectedEmail(null); }}
+            className={`w-full flex items-center justify-between pl-6 pr-4 py-2 text-sm rounded-r-full transition-colors ${
+              activeFolder === 'sent'
+                ? 'bg-[#d3e3fd] text-[#001d35] font-semibold'
+                : 'text-gray-700 hover:bg-gray-200/60'
+            }`}
+          >
+            <div className="flex items-center gap-4">
+              <FiSend className="h-4 w-4" />
+              <span>Sent</span>
             </div>
-          )}
+            <span className="text-xs text-gray-500">{sentCount}</span>
+          </button>
+        </nav>
+        <div className="px-6 py-3 text-xs text-gray-500">
+          {inboxCount} emails in inbox
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <FiInbox className="h-5 w-5 text-gray-400" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">Total Messages</p>
-              <p className="text-lg font-semibold text-gray-900">{stats.totalMessages || 0}</p>
-            </div>
-          </div>
+      {/* Mobile folder tabs — hide when viewing an email */}
+      {!selectedEmail && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40 flex">
+          <button
+            onClick={() => { setActiveFolder('inbox'); setSelectedEmail(null); }}
+            className={`flex-1 py-3 text-center text-sm font-medium ${activeFolder === 'inbox' ? 'text-[#0b57d0] border-t-2 border-[#0b57d0]' : 'text-gray-500'}`}
+          >
+            <FiInbox className="h-5 w-5 mx-auto mb-1" />
+            Inbox {unreadCount > 0 && `(${unreadCount})`}
+          </button>
+          <button
+            onClick={() => { setActiveFolder('sent'); setSelectedEmail(null); }}
+            className={`flex-1 py-3 text-center text-sm font-medium ${activeFolder === 'sent' ? 'text-[#0b57d0] border-t-2 border-[#0b57d0]' : 'text-gray-500'}`}
+          >
+            <FiSend className="h-5 w-5 mx-auto mb-1" />
+            Sent
+          </button>
         </div>
+      )}
 
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <FiMessageSquare className="h-5 w-5 text-blue-400" />
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0 md:pr-4 md:pb-4">
+        {/* Top Bar */}
+        <div className="px-4 py-2 flex items-center gap-3">
+          {selectedEmail && (
+            <div className="flex items-center gap-1 mr-1">
+              <button onClick={handleCloseEmail} className="p-2 hover:bg-gray-200/70 rounded-full" title="Back to list">
+                <FiChevronLeft className="h-5 w-5 text-gray-600" />
+              </button>
+              <button onClick={() => navigateEmail(-1)} disabled={filteredMessages.findIndex(m => m.id === selectedEmail.id) <= 0} className="p-1.5 hover:bg-gray-200/70 rounded-full disabled:opacity-30 disabled:cursor-not-allowed" title="Newer">
+                <FiChevronUp className="h-4 w-4 text-gray-600" />
+              </button>
+              <button onClick={() => navigateEmail(1)} disabled={filteredMessages.findIndex(m => m.id === selectedEmail.id) >= filteredMessages.length - 1} className="p-1.5 hover:bg-gray-200/70 rounded-full disabled:opacity-30 disabled:cursor-not-allowed" title="Older">
+                <FiChevronDown className="h-4 w-4 text-gray-600" />
+              </button>
+              <span className="text-xs text-gray-400 ml-1">{filteredMessages.findIndex(m => m.id === selectedEmail.id) + 1}/{filteredMessages.length}</span>
             </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">SMS Messages</p>
-              <p className="text-lg font-semibold text-gray-900">{stats.smsCount || 0}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <FiMail className="h-5 w-5 text-green-400" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">Email Messages</p>
-              <p className="text-lg font-semibold text-gray-900">{stats.emailCount || 0}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0 relative">
-              <FiEye className="h-5 w-5 text-orange-400" />
-              {(stats.unreadCount || 0) > 0 && (
-                <span className="absolute -top-1 -right-1 h-2 w-2 bg-red-500 rounded-full animate-pulse"></span>
-              )}
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">Unread</p>
-              <div className="flex items-center space-x-2">
-                <p className="text-lg font-semibold text-gray-900">{stats.unreadCount || 0}</p>
-                {(stats.unreadCount || 0) > 0 && (
-                  <span className="text-xs text-orange-600 font-medium">New messages!</span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0 sm:space-x-4">
-          {/* Search */}
-          <div className="flex-1 md:max-w-xl">
+          )}
+          <div className="flex-1 max-w-2xl">
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <FiSearch className="h-5 w-5 text-gray-400" />
-              </div>
+              <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
               <input
                 type="text"
-                placeholder="Search messages, leads, phone numbers..."
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Search mail"
+                className="w-full pl-11 pr-4 py-2.5 bg-[#eaf1fb] border-0 rounded-full text-sm focus:outline-none focus:bg-white focus:shadow-md transition-shadow"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
           </div>
-
-          {/* Type Filter */}
-          <div className="flex items-center space-x-2">
-            <FiFilter className="h-4 w-4 text-gray-400" />
-            <select
-              value={selectedFilter}
-              onChange={(e) => setSelectedFilter(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">All</option>
-              <option value="sms">SMS</option>
-              <option value="email">Email</option>
-            </select>
-          </div>
-
-          {/* Direction Filter */}
-          <div>
-            <select
-              value={selectedDirection}
-              onChange={(e) => setSelectedDirection(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">All Messages</option>
-              <option value="received">Received Only</option>
-              <option value="sent">Sent Only</option>
-            </select>
-          </div>
-
-          {/* Selection controls - Admin only */}
-          {user.role === 'admin' && (
-            <div className="flex items-center space-x-3">
-              <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
-                <input type="checkbox" checked={selectAll} onChange={toggleSelectAll} />
-                <span>Select all in view</span>
-              </label>
-              <button
-                onClick={handleBulkDelete}
-                disabled={selectedIds.length === 0}
-                className={`px-3 py-2 text-sm font-medium rounded-md border ${selectedIds.length === 0 ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'bg-red-600 text-white border-red-700 hover:bg-red-700'}`}
-              >
-                Delete Selected
-              </button>
-            </div>
+          <button
+            onClick={fetchMessages}
+            disabled={loading}
+            className="p-2.5 hover:bg-gray-200/70 rounded-full transition-colors"
+            title="Refresh"
+          >
+            <FiRefreshCw className={`h-4 w-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          {selectedIds.length > 0 && user.role === 'admin' && (
+            <button onClick={handleBulkDelete} className="p-2.5 hover:bg-red-50 rounded-full text-red-500" title="Delete selected">
+              <FiTrash2 className="h-4 w-4" />
+            </button>
           )}
         </div>
-      </div>
 
-      {/* Messages List */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        {filteredMessages.length === 0 ? (
-          <div className="text-center py-12">
-            <FiMessageSquare className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No messages found</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              {searchTerm || selectedFilter !== 'all' || selectedDirection !== 'all' 
-                ? 'Try adjusting your filters or search terms.'
-                : 'No communication history available yet.'}
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200">
-            {filteredMessages.map((item) => {
-              // Handle threads
-              if (item.isThread) {
-                return (
-                  <EmailThread
-                    key={item.id}
-                    thread={item}
-                    onThreadClick={async (thread) => {
-                      // Mark all unread messages in thread as read when clicking
-                      if (thread.unreadCount > 0) {
-                        const unreadMessages = thread.messages.filter(m => !m.isRead);
-                        if (unreadMessages.length > 0) {
-                          for (const message of unreadMessages) {
-                            await markAsRead(message);
-                          }
-                        }
-                      }
-                      
-                      // Open the latest message in modal
-                      if (thread.lastMessage) {
-                        handleMessageClick(thread.lastMessage);
-                      }
-                    }}
-                    onMarkThreadAsRead={async (thread) => {
-                      // Mark all unread messages in the thread as read
-                      const unreadMessages = thread.messages.filter(m => !m.isRead);
-                      
-                      if (unreadMessages.length > 0) {
-                        console.log(`📧 Marking ${unreadMessages.length} unread messages in thread as read`);
-                        
-                        // Mark each unread message as read
-                        for (const message of unreadMessages) {
-                          await markAsRead(message);
-                        }
-                        
-                        // Update thread's unread count
-                        setMessages(prev =>
-                          prev.map(msg => {
-                            if (msg.id === thread.id && msg.isThread) {
-                              return {
-                                ...msg,
-                                unreadCount: 0,
-                                messages: msg.messages.map(m => ({ ...m, isRead: true }))
-                              };
-                            }
-                            return msg;
-                          })
-                        );
-                        
-                        setFilteredMessages(prev =>
-                          prev.map(msg => {
-                            if (msg.id === thread.id && msg.isThread) {
-                              return {
-                                ...msg,
-                                unreadCount: 0,
-                                messages: msg.messages.map(m => ({ ...m, isRead: true }))
-                              };
-                            }
-                            return msg;
-                          })
-                        );
-                      }
-                    }}
-                    isSelected={selectedIds.includes(item.id)}
-                    userRole={user.role}
-                  />
-                );
-              }
-              
-              // Handle individual messages (orphaned)
-              return (
-                <div
-                  key={item.id}
-                  className={`px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors ${
-                    !item.isRead ? 'bg-blue-50' : 'bg-white'
-                  }`}
-                  onClick={() => handleMessageClick(item)}
-                >
-                  <div className="flex items-center space-x-3">
+        {/* Email List or Email View */}
+        {!selectedEmail ? (
+          <div className="flex-1 overflow-y-auto bg-white md:rounded-2xl md:shadow-sm">
+            {filteredMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+                <FiMail className="h-16 w-16 mb-4" />
+                <p className="text-lg font-medium text-gray-500">
+                  {searchTerm ? 'No emails match your search' : activeFolder === 'inbox' ? 'Your inbox is empty' : 'No sent emails'}
+                </p>
+              </div>
+            ) : (
+              <div>
+                {filteredMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    onClick={() => handleEmailClick(message)}
+                    className={`relative flex items-center px-4 py-2.5 cursor-pointer border-b border-gray-100 transition-shadow ${
+                      !message.isRead ? 'bg-white' : 'bg-[#f2f6fc]'
+                    } hover:z-10 hover:shadow-[0_1px_2px_0_rgba(60,64,67,0.3),0_1px_3px_1px_rgba(60,64,67,0.15)]`}
+                  >
+                    {/* Checkbox */}
                     {user.role === 'admin' && (
                       <input
                         type="checkbox"
-                        checked={selectedIds.includes(item.id)}
-                        onChange={(e) => toggleSelectOne(e, item.id)}
+                        checked={selectedIds.includes(message.id)}
+                        onChange={(e) => toggleSelect(e, message.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="h-4 w-4"
+                        className="h-4 w-4 mr-3 flex-shrink-0 rounded border-gray-300 text-[#0b57d0] focus:ring-[#0b57d0]"
                       />
                     )}
-                    {getMessageIcon(item.type, item.direction)}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{item.leadName}</p>
-                      <p className="text-sm text-gray-500 truncate">
-                        {getEmailContentPreview(item.content, 100)}
-                      </p>
+
+                    {/* Unread indicator */}
+                    <div className="w-1 mr-3 flex-shrink-0">
+                      {!message.isRead && <div className="w-2 h-2 bg-[#0b57d0] rounded-full"></div>}
                     </div>
-                    <span className="text-xs text-gray-500">{formatTime(item.timestamp)}</span>
+
+                    {/* Avatar */}
+                    <div className={`w-8 h-8 rounded-full ${getAvatarColor(message.leadName)} flex items-center justify-center text-white text-xs font-bold mr-3 flex-shrink-0`}>
+                      {getInitials(message.leadName)}
+                    </div>
+
+                    {/* Sender */}
+                    <div className={`w-24 sm:w-36 md:w-44 flex-shrink-0 truncate text-xs sm:text-sm ${!message.isRead ? 'text-gray-900 font-semibold' : 'text-gray-600'}`}>
+                      {message.direction === 'sent' ? `To: ${message.leadName}` : message.leadName || 'Unknown'}
+                    </div>
+
+                    {/* Subject + Preview */}
+                    <div className="flex-1 min-w-0 flex items-center">
+                      <span className={`text-xs sm:text-sm truncate ${!message.isRead ? 'text-gray-900 font-semibold' : 'text-gray-700'}`}>
+                        {message.subject || message.details?.subject || '(No Subject)'}
+                      </span>
+                      <span className="text-sm text-gray-400 truncate ml-1 hidden md:inline">
+                        — {getPreview(message)}
+                      </span>
+                    </div>
+
+                    {/* Attachment icon */}
+                    {message.attachments && message.attachments.length > 0 && (
+                      <FiPaperclip className="h-4 w-4 text-gray-400 mx-2 flex-shrink-0" />
+                    )}
+
+                    {/* Date */}
+                    <div className={`ml-4 text-xs flex-shrink-0 ${!message.isRead ? 'text-[#0b57d0] font-semibold' : 'text-gray-500'}`}>
+                      {formatDate(message.timestamp)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Email Detail View */
+          <div className="flex-1 overflow-y-auto bg-white md:rounded-2xl md:shadow-sm pb-24">
+            <div className="max-w-4xl mx-auto px-3 sm:px-6 py-4 sm:py-6">
+              {/* Subject */}
+              <h1 className="text-base sm:text-xl font-normal text-gray-900 mb-3 sm:mb-4">
+                {selectedEmail.subject || selectedEmail.details?.subject || '(No Subject)'}
+              </h1>
+
+              {/* Tags row: Status + Assigned User */}
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                {selectedEmail.leadStatus && (
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    selectedEmail.leadStatus === 'Cancelled' ? 'bg-red-100 text-red-700' :
+                    BOOKED_STATUSES.includes(selectedEmail.leadStatus) ? 'bg-green-100 text-green-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {selectedEmail.leadStatus}
+                  </span>
+                )}
+                {selectedEmail.performedByName && selectedEmail.direction === 'sent' && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                    <FiUser className="h-3 w-3" />
+                    {selectedEmail.performedByName}
+                  </span>
+                )}
+              </div>
+
+              {/* Email Header */}
+              <div className="flex items-start mb-4 sm:mb-6">
+                <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full ${getAvatarColor(selectedEmail.leadName)} flex items-center justify-center text-white text-xs sm:text-sm font-bold mr-3 sm:mr-4 flex-shrink-0`}>
+                  {getInitials(selectedEmail.leadName)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                    <div className="truncate">
+                      <span className="text-sm font-semibold text-gray-900">
+                        {selectedEmail.direction === 'sent' ? `To: ${selectedEmail.leadName}` : selectedEmail.leadName}
+                      </span>
+                      <span className="text-xs sm:text-sm text-gray-500 ml-1 sm:ml-2">
+                        &lt;{selectedEmail.leadEmail || 'unknown'}&gt;
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500 flex-shrink-0">
+                      {selectedEmail.timestamp ? new Date(selectedEmail.timestamp).toLocaleString() : ''}
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {selectedEmail.direction === 'sent' ? 'Sent' : 'Received'}
+                    {selectedEmail.performedByName && ` by ${selectedEmail.performedByName}`}
+                  </p>
+                </div>
+              </div>
+
+              {/* Email Body */}
+              <div className="border-t border-gray-100 pt-4 mb-4 sm:mb-6">
+                {selectedEmail.email_body ? (
+                  <GmailEmailRenderer
+                    htmlContent={selectedEmail.email_body}
+                    textContent={selectedEmail.content}
+                    attachments={selectedEmail.attachments || []}
+                    embeddedImages={selectedEmail.embedded_images || []}
+                  />
+                ) : (
+                  <div className="whitespace-pre-wrap text-sm text-gray-800 leading-relaxed">
+                    {selectedEmail.content || 'No content'}
+                  </div>
+                )}
+              </div>
+
+              {/* Reply Box (inline, scrolls with content) */}
+              {showReplyBox && (
+                <div className="border border-gray-200 rounded-2xl shadow-md overflow-hidden mb-6">
+                  <div className="bg-gray-50 px-3 sm:px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <FiCornerUpLeft className="h-4 w-4" />
+                      <span className="truncate">Reply to {selectedEmail.leadName} &lt;{selectedEmail.leadEmail}&gt;</span>
+                    </div>
+                    <button onClick={() => setShowReplyBox(false)} className="p-1 hover:bg-gray-200 rounded-full flex-shrink-0">
+                      <FiX className="h-4 w-4 text-gray-500" />
+                    </button>
+                  </div>
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Write your reply..."
+                    className="w-full p-3 sm:p-4 border-0 focus:ring-0 focus:outline-none resize-none text-sm"
+                    rows="5"
+                    autoFocus
+                  />
+                  <div className="px-3 sm:px-4 py-3 flex items-center justify-between">
+                    <button
+                      onClick={handleSendReply}
+                      disabled={!replyText.trim() || sendingReply}
+                      className="inline-flex items-center gap-2 px-5 sm:px-6 py-2 bg-[#0b57d0] text-white text-sm font-medium rounded-full hover:bg-[#0842a0] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <FiSend className="h-3.5 w-3.5" />
+                      {sendingReply ? 'Sending...' : 'Send'}
+                    </button>
+                    <button onClick={() => { setShowReplyBox(false); setReplyText(''); }} className="p-2 hover:bg-gray-100 rounded-full" title="Discard">
+                      <FiTrash2 className="h-4 w-4 text-gray-500" />
+                    </button>
                   </div>
                 </div>
-              );
-            })}
+              )}
+            </div>
+
+            {/* Floating Action Bar — always visible when viewing email */}
+            <div className="fixed bottom-0 left-0 md:left-60 right-0 md:right-4 bg-white border-t border-gray-200 md:rounded-b-2xl px-3 sm:px-6 py-3 flex flex-wrap items-center gap-2 z-50 shadow-lg">
+              {selectedEmail.direction === 'received' && !showReplyBox && (
+                <button
+                  onClick={() => setShowReplyBox(true)}
+                  className="inline-flex items-center gap-2 px-5 py-2 bg-[#0b57d0] text-white rounded-full text-sm font-medium hover:bg-[#0842a0] transition-colors"
+                >
+                  <FiCornerUpLeft className="h-4 w-4" />
+                  Reply
+                </button>
+              )}
+
+              {isLeadBooked(selectedEmail) && (
+                <>
+                  <button
+                    onClick={() => handleReschedule(selectedEmail)}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-blue-300 bg-white rounded-full text-sm text-blue-700 hover:bg-blue-50 transition-colors"
+                  >
+                    <FiCalendar className="h-4 w-4" />
+                    Reschedule
+                  </button>
+                  <button
+                    onClick={() => handleCancelBooking(selectedEmail)}
+                    className="inline-flex items-center gap-2 px-4 py-2 border border-red-300 bg-white rounded-full text-sm text-red-700 hover:bg-red-50 transition-colors"
+                  >
+                    <FiXCircle className="h-4 w-4" />
+                    Cancel
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
-
-      {/* Message Modal */}
-      <MessageModal
-        notification={selectedMessageModal}
-        isOpen={messageModalOpen}
-        onClose={handleMessageModalClose}
-        onReply={handleReplySent}
-      />
     </div>
   );
 };

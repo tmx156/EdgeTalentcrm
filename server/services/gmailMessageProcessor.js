@@ -112,10 +112,8 @@ async function processGmailMessage(accountKey, messageId) {
       return false;
     }
 
-    // Get Gmail client
-    const gmail = gmailService.getGmailClient(accountKey);
-
     // Extract email content using enhanced extractor (HTML + embedded images)
+    // (reuses the `gmail` client obtained at the top of this function)
     const extractor = new GmailEmailExtractor(gmail, accountKey, supabaseStorage);
     const emailContent = await extractor.extractEmailContent(message, messageId);
     
@@ -445,6 +443,9 @@ function emitEvents(lead, messageId, subject, body, emailReceivedDate, accountKe
     messageId,
     leadId: lead.id,
     leadName: lead.name,
+    leadEmail: lead.email,
+    leadPhone: lead.phone,
+    leadStatus: lead.status,
     content: subject || body.slice(0, 120),
     timestamp: emailReceivedDate,
     direction: 'received',

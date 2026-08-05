@@ -86,8 +86,9 @@ router.get('/', auth, async (req, res) => {
     // Query controls to cap egress
     const rawSince = req.query.since;
     const rawLimit = parseInt(req.query.limit, 10);
-    const MAX_LIMIT = 100; // Reduced from 200 to optimize egress usage
-    const validatedLimit = Math.min(Number.isFinite(rawLimit) ? rawLimit : MAX_LIMIT, MAX_LIMIT);
+    const typeFilter = req.query.type || null; // e.g. 'email' or 'sms'
+    const MAX_LIMIT = 2000; // SMS volume runs ~1500/month; rows are small (no HTML bodies)
+    const validatedLimit = Math.min(Number.isFinite(rawLimit) ? rawLimit : 100, MAX_LIMIT);
     const sinceIso = (() => {
       try { return rawSince ? new Date(rawSince).toISOString() : null; } catch { return null; }
     })();
@@ -105,21 +106,70 @@ router.get('/', auth, async (req, res) => {
     // 2) Pull communications from messages table (primary source)
     try {
       const isAdmin = user.role === 'admin';
-      
-      // First get messages (bounded by time window and limit, trimmed columns)
-      const { data: messageRows, error: messageError } = await supabase
-        .from('messages')
-        .select('id, lead_id, type, content, email_body, sms_body, subject, sent_by, sent_by_name, status, email_status, read_status, delivery_status, provider_message_id, delivery_provider, delivery_attempts, sent_at, created_at, attachments')
-        .gte('created_at', createdAfter)
-        .order('created_at', { ascending: false })
-        .limit(validatedLimit);
+      const msgColumns = 'id, lead_id, type, content, email_body, sms_body, subject, sent_by, sent_by_name, status, email_status, read_status, delivery_status, provider_message_id, delivery_provider, delivery_attempts, sent_at, created_at, attachments';
 
-      if (messageError) {
-        console.error('Error fetching messages:', messageError);
+      let messageData = [];
+
+      if (isAdmin) {
+        // Admins see all messages (bounded by time window and limit)
+        let messagesQuery = supabase
+          .from('messages')
+          .select(msgColumns)
+          .gte('created_at', createdAfter)
+          .order('created_at', { ascending: false })
+          .limit(validatedLimit);
+        if (typeFilter) messagesQuery = messagesQuery.eq('type', typeFilter);
+        const { data: messageRows, error: messageError } = await messagesQuery;
+
+        if (messageError) {
+          console.error('Error fetching messages:', messageError);
+        }
+
+        messageData = messageRows || [];
+      } else {
+        // Bookers: restrict the query to their own leads so the limit applies
+        // to their messages, not the newest N across all bookers
+        const bookerLeadIds = [];
+        let from = 0;
+        const PAGE = 1000;
+        while (true) {
+          const { data: page, error: pageError } = await supabase
+            .from('leads')
+            .select('id')
+            .eq('booker_id', user.id)
+            .range(from, from + PAGE - 1);
+          if (pageError) { console.error('Error fetching booker leads:', pageError); break; }
+          if (!page || page.length === 0) break;
+          bookerLeadIds.push(...page.map(l => l.id));
+          if (page.length < PAGE) break;
+          from += PAGE;
+        }
+
+        if (bookerLeadIds.length > 0) {
+          // Batch .in() queries in chunks of 200 to avoid Supabase URL limit
+          const BATCH = 200;
+          const batches = [];
+          for (let i = 0; i < bookerLeadIds.length; i += BATCH) {
+            batches.push(bookerLeadIds.slice(i, i + BATCH));
+          }
+          const results = await Promise.all(batches.map(batch => {
+            let q = supabase.from('messages').select(msgColumns)
+              .gte('created_at', createdAfter)
+              .order('created_at', { ascending: false })
+              .limit(validatedLimit)
+              .in('lead_id', batch);
+            if (typeFilter) q = q.eq('type', typeFilter);
+            return q;
+          }));
+          for (const { data, error } of results) {
+            if (error) console.error('Error fetching messages batch:', error);
+            if (data) messageData.push(...data);
+          }
+          messageData.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+          messageData = messageData.slice(0, validatedLimit);
+        }
       }
 
-      const messageData = messageRows || [];
-      
       if (messageData.length > 0) {
         // Get lead IDs from messages (filter out null values)
         const leadIds = [...new Set(messageData.map(msg => msg.lead_id).filter(id => id))];
@@ -946,6 +996,11 @@ router.put('/bulk-read', auth, async (req, res) => {
 router.post('/bulk-delete', auth, async (req, res) => {
   console.log('🗑️ Bulk delete endpoint hit by user:', req.user?.name || req.user?.id);
   try {
+    // Only allow admins to delete messages
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. Admin role required.' });
+    }
+
     const { messageIds } = req.body;
     console.log('📋 Received request to delete', messageIds?.length || 0, 'messages');
     console.log('📝 Message IDs:', messageIds);

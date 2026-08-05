@@ -49,7 +49,6 @@ const Layout = ({ children }) => {
   });
   const [leadsDropdownOpen, setLeadsDropdownOpen] = useState(false);
   const [templatesDropdownOpen, setTemplatesDropdownOpen] = useState(false);
-  const [messagesDropdownOpen, setMessagesDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [smsNotifications, setSmsNotifications] = useState([]);
   const [readNotificationIds, setReadNotificationIds] = useState(() => {
@@ -68,7 +67,6 @@ const Layout = ({ children }) => {
   const leadsDropdownRef = useRef(null);
   const templatesDropdownRef = useRef(null);
   const notificationsDropdownRef = useRef(null);
-  const messagesDropdownRef = useRef(null);
 
   const templateCategories = [
     { name: 'Diary Templates', key: 'Diary Templates' },
@@ -89,19 +87,11 @@ const Layout = ({ children }) => {
         setNotificationsOpen(false);
       }
     };
-    const handleClickOutsideMessages = (event) => {
-      if (messagesDropdownRef.current && !messagesDropdownRef.current.contains(event.target)) {
-        setMessagesDropdownOpen(false);
-      }
-    };
-    
     document.addEventListener('mousedown', handleClickOutsideTemplates);
     document.addEventListener('mousedown', handleClickOutsideNotifications);
-    document.addEventListener('mousedown', handleClickOutsideMessages);
     return () => {
       document.removeEventListener('mousedown', handleClickOutsideTemplates);
       document.removeEventListener('mousedown', handleClickOutsideNotifications);
-      document.removeEventListener('mousedown', handleClickOutsideMessages);
     };
   }, []);
 
@@ -689,9 +679,9 @@ const Layout = ({ children }) => {
     }
   }, [notificationsOpen]);
 
-  // When navigating to Messages page, clear badge as user is viewing messages
+  // When navigating to the Messages or SMS page, clear badge as user is viewing messages
   useEffect(() => {
-    if (location.pathname === '/messages') {
+    if (location.pathname === '/messages' || location.pathname === '/sms') {
       markAllNotificationsRead();
     }
   }, [location.pathname]);
@@ -760,7 +750,8 @@ const Layout = ({ children }) => {
     { name: 'Photos', href: '/photographer', icon: FiImage, photographerOnly: true },
     { name: 'Blocked Slots', href: '/blocked-slots', icon: FiLock, adminOnly: true },
     { name: 'Alex A.I', href: '/alex', icon: RiRobot2Line, adminOnly: true },
-    { name: 'Messages', href: '/messages', icon: FiMessageSquare },
+    { name: 'Messages', href: '/messages', icon: FiMail },
+    { name: 'SMS', href: '/sms', icon: FiMessageSquare },
     { name: 'Sales', href: '/sales', icon: FiTrendingUp, adminOnly: true },
     { name: 'Finance', href: '/finance', icon: FiDollarSign, adminOnly: true },
     { name: 'Reports', href: '/reports', icon: FiBarChart2 },
@@ -825,12 +816,6 @@ const Layout = ({ children }) => {
   };
 
   const isLeadsPage = () => location.pathname === '/leads';
-
-  const handleMessagesNavigation = (type = 'sms') => {
-    setSidebarOpen(false);
-    const target = (type === 'email') ? 'email' : 'sms';
-    navigate(`/messages?type=${target}`);
-  };
 
   const getActiveStatusClass = (status) => {
     // This is a basic implementation - in a real app you'd track the active filter state
@@ -908,45 +893,6 @@ const Layout = ({ children }) => {
                               )}
                             </button>
                           ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : item.name === 'Messages' ? (
-                    <div className="relative" ref={messagesDropdownRef}>
-                      <button
-                        onClick={() => setMessagesDropdownOpen(!messagesDropdownOpen)}
-                        className={`group flex items-center justify-between w-full px-2 py-2 text-base font-medium rounded-md ${
-                          isCurrentPath(item.href)
-                            ? 'bg-blue-100 text-blue-900'
-                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                        }`}
-                      >
-                        <div className="flex items-center">
-                          <item.icon className="mr-4 h-6 w-6" />
-                          {item.name}
-                        </div>
-                        {messagesDropdownOpen ? (
-                          <FiChevronUp className="h-4 w-4" />
-                        ) : (
-                          <FiChevronDown className="h-4 w-4" />
-                        )}
-                      </button>
-                      {messagesDropdownOpen && !sidebarCollapsed && (
-                        <div className="mt-1 ml-6 space-y-1">
-                          <button
-                            onClick={() => handleMessagesNavigation('sms')}
-                            className="group flex items-center justify-between w-full px-2 py-2 text-sm rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                          >
-                            <span className="mr-2">📩</span>
-                            <span>SMS</span>
-                          </button>
-                          <button
-                            onClick={() => handleMessagesNavigation('email')}
-                            className="group flex items-center justify-between w-full px-2 py-2 text-sm rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                          >
-                            <span className="mr-2">✉️</span>
-                            <span>Email</span>
-                          </button>
                         </div>
                       )}
                     </div>
@@ -1129,46 +1075,6 @@ const Layout = ({ children }) => {
                               )}
                             </button>
                           ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : item.name === 'Messages' ? (
-                    <div className="relative" ref={messagesDropdownRef}>
-                      <button
-                        onClick={() => sidebarCollapsed ? (toggleSidebar(), setMessagesDropdownOpen(true)) : setMessagesDropdownOpen(!messagesDropdownOpen)}
-                        className={`group flex items-center ${sidebarCollapsed ? 'justify-center px-2' : 'justify-between px-2'} w-full py-2 text-sm font-medium rounded-md ${
-                          isCurrentPath(item.href)
-                            ? 'bg-blue-100 text-blue-900'
-                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                        }`}
-                        title={sidebarCollapsed ? item.name : ''}
-                      >
-                        <div className="flex items-center">
-                          <item.icon className={`h-5 w-5 ${sidebarCollapsed ? '' : 'mr-3'}`} />
-                          {!sidebarCollapsed && item.name}
-                        </div>
-                        {!sidebarCollapsed && (messagesDropdownOpen ? (
-                          <FiChevronUp className="h-4 w-4" />
-                        ) : (
-                          <FiChevronDown className="h-4 w-4" />
-                        ))}
-                      </button>
-                      {messagesDropdownOpen && (
-                        <div className="mt-1 ml-6 space-y-1">
-                          <button
-                            onClick={() => handleMessagesNavigation('sms')}
-                            className="group flex items-center justify-between w-full px-2 py-2 text-sm rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                          >
-                            <span className="mr-2">📩</span>
-                            <span>SMS</span>
-                          </button>
-                          <button
-                            onClick={() => handleMessagesNavigation('email')}
-                            className="group flex items-center justify-between w-full px-2 py-2 text-sm rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                          >
-                            <span className="mr-2">✉️</span>
-                            <span>Email</span>
-                          </button>
                         </div>
                       )}
                     </div>

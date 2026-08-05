@@ -1,14 +1,14 @@
 {
-  "version": "1.0.291",
-  "commitHash": "1827245",
-  "fullCommitHash": "1827245f1e9b3456b178a8e7faee2bfcee832104",
-  "commitMessage": "Fix gallery email message ID to use valid UUID",
-  "commitDate": "2026-06-09 21:46:40 +0100",
-  "author": "Tin",
+  "version": "1.0.295",
+  "commitHash": "08a4917",
+  "fullCommitHash": "08a4917ee38c5b90e4bd405ffc37efe6afcde09b",
+  "commitMessage": "Fix message sending and booking-history bugs",
+  "commitDate": "2026-07-01 19:43:51 +0100",
+  "author": "Tinashe",
   "branch": "main",
-  "commitCount": 291,
-  "buildTimestamp": "2026-06-17T03:39:33.208Z",
-  "buildId": "1827245-1781667573209",
+  "commitCount": 295,
+  "buildTimestamp": "2026-07-24T19:03:20.091Z",
+  "buildId": "08a4917-1784919800092",
   "releaseName": "Summer Update",
-  "seenKey": "main-1827245"
+  "seenKey": "main-08a4917"
 }

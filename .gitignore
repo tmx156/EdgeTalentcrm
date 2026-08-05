@@ -140,3 +140,26 @@ server/config/gmail-token.json
 server/data/processed_*.json
 server.log
 *.logRAILWAY_ENV_VARIABLES.txt
+supabase_backup/
+target.env
+server/.env
+client/.env
+backup_supabase.js
+generate_schema.js
+import_supabase.js
+verify_migration.js
+compare_live.js
+run_schema.js
+swap_local_env.js
+_check_defaults.js
+CUTOVER.md
+target.env.example
+old.env
+health_check_new.js
+apply_sql.js
+fix_rls_policies.sql
+check_constraints.js
+add_indexes.js
+
+# Claude Code local settings (can contain approved commands with credentials)
+.claude/settings.local.json

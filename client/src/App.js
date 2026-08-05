@@ -21,7 +21,8 @@ import Templates from './pages/Templates';
 import BookersTemplates from './pages/BookersTemplates';
 import Finance from './pages/Finance';
 import Sales from './pages/Sales';
-import Messages from './pages/MessagesNew'; // Updated to use premium Gmail-style design
+import Messages from './pages/Messages'; // Gmail-style email inbox
+import SMS from './pages/SMS'; // Google Messages-style SMS conversations
 // import SalesApe from './pages/SalesApe'; // DISABLED - no longer using SalesApe
 import Alex from './pages/Alex';
 import BlockedSlots from './pages/BlockedSlots';
@@ -118,6 +119,7 @@ function App() {
                           <Route path="/finance" element={<Finance />} />
                           <Route path="/sales" element={<Sales />} />
                           <Route path="/messages" element={<Messages />} />
+                          <Route path="/sms" element={<SMS />} />
                           {/* <Route path="/salesape" element={<SalesApe />} /> DISABLED */}
                           <Route path="/alex" element={<Alex />} />
                           <Route path="/blocked-slots" element={<BlockedSlots />} />
