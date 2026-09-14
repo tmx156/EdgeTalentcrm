@@ -90,39 +90,23 @@ function defaultCallbackUri(req) {
 }
 
 /**
- * The redirect URI sent to Google for one account.
+ * The redirect URI sent to Google for every account.
  *
- * Order: GMAIL_OAUTH_REDIRECT_URI, then the account's own recorded
- * redirect_uri, then one derived from the host being browsed.
+ * One value per deployment, derived from the host being browsed, so there is
+ * a single string to register on each OAuth client - the same one Google
+ * names in a redirect_uri_mismatch error.
  *
- * Google rejects the request unless this exactly matches a URI registered on
- * that OAuth client, so preferring the recorded value reuses whatever was
- * registered when the account was set up, instead of requiring a new entry
- * in the Google Cloud Console.
+ * Using each account's recorded redirect_uri instead was tried, to avoid
+ * touching the Google Cloud Console. It was abandoned: those values are
+ * whatever was last written to the database, not a record of what Google has
+ * registered, and there is no way to read the registered list from outside
+ * the console. Sending a different unverified URI per account only made the
+ * failure harder to read.
+ *
+ * GMAIL_OAUTH_REDIRECT_URI overrides this when a specific registered URI is
+ * known and preferred.
  */
-function callbackUri(req, account) {
-  // GMAIL_OAUTH_REDIRECT_URI, when set, wins for every account.
-  const override = (process.env.GMAIL_OAUTH_REDIRECT_URI || '').trim();
-  if (override) return override.replace(/\/+$/, '');
-
-  // Otherwise use the redirect URI already recorded for this account, which
-  // is the one registered on its Google OAuth client. It need not be on the
-  // host being browsed: Google sends the browser there after consent and the
-  // signed state carries the account, so the callback completes wherever it
-  // lands. Only paths this server actually serves are honoured.
-  if (account && account.redirectUri) {
-    let stored;
-    try {
-      stored = new URL(account.redirectUri);
-    } catch (err) {
-      stored = null;
-    }
-
-    if (stored && ACCEPTED_CALLBACK_PATHS.includes(stored.pathname)) {
-      return account.redirectUri.replace(/\/+$/, '');
-    }
-  }
-
+function callbackUri(req) {
   return defaultCallbackUri(req);
 }
 
@@ -162,7 +146,7 @@ async function buildAuthUrl(identifier, req) {
     throw err;
   }
 
-  const redirectUri = callbackUri(req, account);
+  const redirectUri = callbackUri(req);
 
   const oauth2Client = new google.auth.OAuth2(account.clientId, account.clientSecret, redirectUri);
 
