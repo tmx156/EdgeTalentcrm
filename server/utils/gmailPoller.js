@@ -111,9 +111,11 @@ class GmailPoller {
     this.maxProcessedMessages = 10000; // Max messages to track (prevents memory bloat)
     this.messageRetentionDays = 30; // How long to track processed messages
 
-    // Validate account configuration
-    if (!this.accountConfig || !this.accountConfig.clientId || !this.accountConfig.clientSecret || !this.accountConfig.refreshToken) {
-      console.log(`📧 [${this.accountConfig?.displayName || accountKey}] Gmail poller disabled: Account not configured`);
+    // Validate account configuration. The refresh token is deliberately not
+    // required here: it may live in the database instead of env, and is
+    // resolved per poll by resolveCredentials().
+    if (!this.accountConfig || !this.accountConfig.clientId || !this.accountConfig.clientSecret) {
+      console.log(`📧 [${this.accountConfig?.displayName || accountKey}] Gmail poller disabled: no OAuth client configured`);
       this.disabled = true;
       return;
     }
@@ -298,11 +300,47 @@ class GmailPoller {
   }
 
   /**
+   * Current credentials for this account, database first.
+   *
+   * Falls back to the env-var config this poller was constructed with, so an
+   * account that has not been re-authorised through the UI keeps working.
+   */
+  async resolveCredentials() {
+    const fallback = this.accountConfig || {};
+
+    try {
+      const credentials = require('./emailCredentialResolver');
+      const resolved = await credentials.resolveAccount(fallback.email || this.accountKey);
+
+      if (resolved && resolved.clientId && resolved.clientSecret && resolved.refreshToken) {
+        return {
+          clientId: resolved.clientId,
+          clientSecret: resolved.clientSecret,
+          refreshToken: resolved.refreshToken,
+          redirectUri: resolved.redirectUri || fallback.redirectUri
+        };
+      }
+    } catch (err) {
+      this.log(`⚠️ [${fallback.displayName || this.accountKey}] Could not resolve stored credentials, using env: ${err.message}`);
+    }
+
+    return {
+      clientId: fallback.clientId,
+      clientSecret: fallback.clientSecret,
+      refreshToken: fallback.refreshToken,
+      redirectUri: fallback.redirectUri
+    };
+  }
+
+  /**
    * Get authenticated Gmail client for this account
    */
   async getGmailClient() {
     try {
-      const { clientId, clientSecret, refreshToken, redirectUri } = this.accountConfig;
+      // Resolve credentials fresh on every call so a re-authorisation done in
+      // the UI takes effect on the next poll instead of needing a restart.
+      // The database wins; the env-var config stays as the fallback.
+      const { clientId, clientSecret, refreshToken, redirectUri } = await this.resolveCredentials();
 
       if (!clientId || !clientSecret || !refreshToken) {
         throw new Error(`Gmail API credentials not configured for ${this.accountKey} account`);
@@ -315,10 +353,7 @@ class GmailPoller {
       } catch (credError) {
         if (credError.message && credError.message.includes('invalid_grant')) {
           console.error(`❌ [${this.accountConfig.displayName}] OAuth token expired or invalid (invalid_grant)`);
-          console.error(`❌ [${this.accountConfig.displayName}] Please re-authenticate this account:`);
-          console.error(`   1. Go to: http://localhost:5000/api/gmail/oauth2${this.accountKey === 'secondary' ? '2' : ''}`);
-          console.error(`   2. Authorize the application`);
-          console.error(`   3. Update GMAIL_REFRESH_TOKEN${this.accountKey === 'secondary' ? '_2' : ''} in .env file`);
+          console.error(`   Fix: open the Email Accounts page and press "Fix now" on ${this.accountConfig.email}. The new token saves automatically.`);
           throw new Error('OAuth token expired - re-authentication required');
         }
         throw credError;
@@ -332,10 +367,7 @@ class GmailPoller {
       } catch (testError) {
         if (testError.message && (testError.message.includes('invalid_grant') || testError.code === 401)) {
           console.error(`❌ [${this.accountConfig.displayName}] OAuth token expired or invalid`);
-          console.error(`❌ [${this.accountConfig.displayName}] Please re-authenticate this account:`);
-          console.error(`   1. Go to: http://localhost:5000/api/gmail/oauth2${this.accountKey === 'secondary' ? '2' : ''}`);
-          console.error(`   2. Authorize the application`);
-          console.error(`   3. Update GMAIL_REFRESH_TOKEN${this.accountKey === 'secondary' ? '_2' : ''} in .env file`);
+          console.error(`   Fix: open the Email Accounts page and press "Fix now" on ${this.accountConfig.email}. The new token saves automatically.`);
           throw new Error('OAuth token expired - re-authentication required');
         }
         throw testError;
@@ -1310,13 +1342,16 @@ function startGmailPoller(socketIoInstance) {
   console.log('📧 Gmail: Starting pollers...');
   const pollers = [];
 
-  // Start poller for each configured account
+  // An account may hold its refresh token in the database rather than in env
+  // (that is where the re-authorise button writes it), so the startup gate
+  // only requires an OAuth client here. resolveCredentials() supplies the
+  // token per poll, and a genuinely tokenless account simply fails that call.
   for (const accountKey of ['primary', 'secondary', 'tertiary', 'quaternary', 'quinary', 'senary', 'septenary']) {
     const account = ACCOUNTS[accountKey];
-    
-    if (!account || !account.clientId || !account.clientSecret || !account.refreshToken) {
+
+    if (!account || !account.clientId || !account.clientSecret) {
       if (VERBOSE_LOGGING) {
-        console.log(`📧 Skipping ${accountKey} Gmail poller: Account not configured`);
+        console.log(`📧 Skipping ${accountKey} Gmail poller: no OAuth client configured`);
       }
       continue;
     }

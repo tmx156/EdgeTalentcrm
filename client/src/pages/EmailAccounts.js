@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FiSearch, FiEdit, FiTrash2, FiPlus, FiX, FiMail, FiKey, FiCheck, FiStar, FiRefreshCw, FiDownload, FiActivity, FiAlertTriangle, FiCheckCircle, FiXCircle } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
@@ -48,24 +48,126 @@ const EmailAccounts = () => {
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState(null);
 
+  // State for SMS health check
+  const [smsHealth, setSmsHealth] = useState(null);
+  const [smsLoading, setSmsLoading] = useState(false);
+  const [smsError, setSmsError] = useState(null);
+
+  // Account currently being re-authorised, plus the last outcome banner
+  const [reauthingId, setReauthingId] = useState(null);
+  const [reauthNotice, setReauthNotice] = useState(null);
+  // Interval watching the OAuth popup, cleared on unmount.
+  const popupWatcher = useRef(null);
+
   useEffect(() => {
     if (user?.role === 'admin') {
       fetchAccounts();
       fetchHealthCheck();
+      fetchSmsHealth();
     }
   }, [user]);
+
+  // The OAuth popup reports back here when authorisation finishes.
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (!event.data || event.data.source !== 'gmail-reauth') return;
+
+      setReauthingId(null);
+      setReauthNotice({ ok: event.data.ok, message: event.data.message });
+
+      if (event.data.ok) {
+        fetchAccounts();
+        fetchHealthCheck();
+      }
+    };
+
+    window.addEventListener('message', onMessage);
+
+    return () => {
+      window.removeEventListener('message', onMessage);
+      // Stop the popup watcher too, or it keeps polling and calling setState
+      // after the page has been navigated away from.
+      if (popupWatcher.current) {
+        clearInterval(popupWatcher.current);
+        popupWatcher.current = null;
+      }
+    };
+  }, []);
 
   const fetchHealthCheck = async () => {
     setHealthLoading(true);
     setHealthError(null);
     try {
-      const response = await axios.get('/api/gmail/health');
+      const response = await axios.get('/api/email-accounts/health');
       setHealthData(response.data);
     } catch (error) {
       console.error('Error fetching Gmail health:', error);
       setHealthError(error.response?.data?.message || 'Failed to check Gmail health');
     }
     setHealthLoading(false);
+  };
+
+  const fetchSmsHealth = async () => {
+    setSmsLoading(true);
+    setSmsError(null);
+    try {
+      const response = await axios.get('/api/email-accounts/sms-health');
+      setSmsHealth(response.data);
+    } catch (error) {
+      console.error('Error fetching SMS health:', error);
+      setSmsError(error.response?.data?.message || 'Failed to check SMS health');
+    }
+    setSmsLoading(false);
+  };
+
+  /**
+   * Re-authorise one account. Opens Google in a popup so the CRM page stays
+   * put, and the popup posts its result back to the listener above.
+   */
+  const handleReauthorize = async (account) => {
+    const identifier = account.id || account.accountKey || account.email;
+    setReauthNotice(null);
+    setReauthingId(identifier);
+
+    // Open the window synchronously: browsers block popups opened later,
+    // after the await resolves.
+    const popup = window.open('', 'gmail-reauth', 'width=520,height=680');
+
+    try {
+      const response = await axios.get(`/api/email-accounts/${encodeURIComponent(identifier)}/reauth-url`);
+      const { authUrl } = response.data;
+
+      if (!authUrl) throw new Error('No authorisation URL returned');
+
+      if (popup && !popup.closed) {
+        popup.location.href = authUrl;
+
+        // The popup reports back via postMessage, but that only crosses when
+        // the API and the app share an origin - in local dev they do not
+        // (app on :3000, API on :5000). Watching for the window to close is
+        // the reliable signal, so re-check health either way.
+        if (popupWatcher.current) clearInterval(popupWatcher.current);
+        popupWatcher.current = setInterval(() => {
+          if (!popup.closed) return;
+          clearInterval(popupWatcher.current);
+          popupWatcher.current = null;
+          setReauthingId((current) => (current === identifier ? null : current));
+          fetchAccounts();
+          fetchHealthCheck();
+        }, 700);
+      } else {
+        // Popup blocked - fall back to a full-page redirect.
+        window.location.href = authUrl;
+      }
+    } catch (error) {
+      if (popup && !popup.closed) popup.close();
+      setReauthingId(null);
+      setReauthNotice({
+        ok: false,
+        message: error.response?.data?.message || error.message || 'Could not start authorisation'
+      });
+    }
   };
 
   const fetchAccounts = async () => {
@@ -339,24 +441,6 @@ const EmailAccounts = () => {
     setImporting(false);
   };
 
-  // Handle OAuth authorization - gets auth URL from API and redirects
-  const handleAuthorize = async (accountId) => {
-    try {
-      // Get the auth URL from the API (this includes proper authentication)
-      const response = await axios.get(`/api/email-accounts/${accountId}/auth-url`);
-
-      if (response.data.authUrl) {
-        // Redirect to Google OAuth in the same window
-        window.location.href = response.data.authUrl;
-      } else {
-        alert('Failed to get authorization URL');
-      }
-    } catch (error) {
-      console.error('Error starting authorization:', error);
-      alert(error.response?.data?.message || 'Failed to start authorization');
-    }
-  };
-
   const filteredAccounts = accounts.filter(account =>
     account.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     account.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -405,95 +489,292 @@ const EmailAccounts = () => {
         </div>
       </div>
 
-      {/* Gmail Health Check */}
+      {/* Email account health */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
             <FiActivity className="h-5 w-5 text-gray-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Gmail Health Check</h2>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Email account health</h2>
+              {healthData?.checkedAt && (
+                <p className="text-xs text-gray-500">
+                  Checked {new Date(healthData.checkedAt).toLocaleTimeString()} &middot; live check against Google
+                </p>
+              )}
+            </div>
           </div>
           <button
             onClick={fetchHealthCheck}
             disabled={healthLoading}
-            className="px-3 py-1.5 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors flex items-center space-x-1"
+            className="px-3 py-1.5 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors flex items-center space-x-1 disabled:opacity-50"
           >
             <FiRefreshCw className={`h-3.5 w-3.5 ${healthLoading ? 'animate-spin' : ''}`} />
-            <span>{healthLoading ? 'Checking...' : 'Refresh'}</span>
+            <span>{healthLoading ? 'Checking...' : 'Re-check'}</span>
           </button>
         </div>
+
+        {reauthNotice && (
+          <div
+            className={`text-sm p-3 rounded-md mb-3 flex items-start justify-between gap-3 ${
+              reauthNotice.ok ? 'text-green-800 bg-green-50' : 'text-red-800 bg-red-50'
+            }`}
+          >
+            <span>{reauthNotice.message}</span>
+            <button onClick={() => setReauthNotice(null)} className="flex-shrink-0 opacity-60 hover:opacity-100">
+              <FiX className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {healthError && (
           <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md mb-3">{healthError}</div>
         )}
 
+        {healthLoading && !healthData && (
+          <div className="text-sm text-gray-500 text-center py-6">Checking every account against Google...</div>
+        )}
+
         {healthData && (
           <>
-            {/* Summary bar */}
-            <div className="flex items-center space-x-4 mb-4 text-sm">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-4 text-sm">
               <span className="flex items-center space-x-1 text-green-600">
                 <FiCheckCircle className="h-4 w-4" />
-                <span>{healthData.summary.healthy} healthy</span>
+                <span>{healthData.summary.healthy} working</span>
               </span>
-              {healthData.summary.expired > 0 && (
+              {healthData.summary.needsReauth > 0 && (
                 <span className="flex items-center space-x-1 text-red-600 font-semibold">
                   <FiXCircle className="h-4 w-4" />
-                  <span>{healthData.summary.expired} expired</span>
+                  <span>{healthData.summary.needsReauth} need re-authorising</span>
                 </span>
               )}
-              <span className="text-gray-500">
-                {healthData.summary.configured}/{healthData.summary.total} configured
-              </span>
+              {healthData.summary.notConfigured > 0 && (
+                <span className="flex items-center space-x-1 text-yellow-600">
+                  <FiAlertTriangle className="h-4 w-4" />
+                  <span>{healthData.summary.notConfigured} incomplete</span>
+                </span>
+              )}
+              {healthData.summary.errored > 0 && (
+                <span className="flex items-center space-x-1 text-orange-600">
+                  <FiAlertTriangle className="h-4 w-4" />
+                  <span>{healthData.summary.errored} errored</span>
+                </span>
+              )}
+              <span className="text-gray-400">{healthData.summary.total} total</span>
             </div>
 
-            {/* Account status grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {healthData.accounts.filter(a => a.status !== 'not_configured').map((account) => (
-                <div
-                  key={account.key}
-                  className={`flex items-center justify-between p-3 rounded-lg border ${
-                    account.status === 'healthy'
-                      ? 'border-green-200 bg-green-50'
-                      : account.status === 'token_expired'
-                      ? 'border-red-200 bg-red-50'
-                      : 'border-yellow-200 bg-yellow-50'
-                  }`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-gray-900 truncate">{account.email}</div>
-                    <div className="text-xs text-gray-500 capitalize">{account.key}</div>
-                  </div>
-                  <div className="ml-3 flex-shrink-0">
-                    {account.status === 'healthy' ? (
-                      <FiCheckCircle className="h-5 w-5 text-green-500" />
-                    ) : account.status === 'token_expired' ? (
-                      <div className="flex items-center space-x-1">
-                        <FiXCircle className="h-5 w-5 text-red-500" />
-                        {account.authUrl && (
-                          <a
-                            href={account.authUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-red-600 underline hover:text-red-800"
-                          >
-                            Re-auth
-                          </a>
+            <div className="space-y-2">
+              {healthData.accounts.map((account) => {
+                const identifier = account.id || account.accountKey || account.email;
+                const isHealthy = account.status === 'healthy';
+                const isBusy = reauthingId === identifier;
+
+                const tone = isHealthy
+                  ? 'border-green-200 bg-green-50'
+                  : account.status === 'needs_reauth'
+                  ? 'border-red-200 bg-red-50'
+                  : 'border-yellow-200 bg-yellow-50';
+
+                return (
+                  <div key={identifier} className={`p-3 rounded-lg border ${tone}`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          {isHealthy ? (
+                            <FiCheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+                          ) : account.status === 'needs_reauth' ? (
+                            <FiXCircle className="h-4 w-4 text-red-500 flex-shrink-0" />
+                          ) : (
+                            <FiAlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+                          )}
+                          <span className="text-sm font-medium text-gray-900 truncate">{account.email}</span>
+                          <span className="text-xs text-gray-500 flex-shrink-0">
+                            {account.source === 'database' ? 'stored' : 'env var'}
+                          </span>
+                        </div>
+
+                        {isHealthy ? (
+                          <div className="text-xs text-gray-600 mt-1 ml-6">
+                            Connected
+                            {typeof account.messagesTotal === 'number' &&
+                              ` · ${account.messagesTotal.toLocaleString()} messages`}
+                            {typeof account.latencyMs === 'number' && ` · ${account.latencyMs}ms`}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-700 mt-1 ml-6">
+                            <span className="font-medium">{account.error}</span>
+                            {account.detail && <span className="block text-gray-500 mt-0.5">{account.detail}</span>}
+                          </div>
+                        )}
+
+                        {account.mailboxMismatch && (
+                          <div className="text-xs text-orange-700 mt-1 ml-6">
+                            Warning: this token authenticates as {account.mailbox}, not {account.email}.
+                          </div>
                         )}
                       </div>
-                    ) : (
-                      <FiAlertTriangle className="h-5 w-5 text-yellow-500" />
-                    )}
+
+                      {account.canReauth && (
+                        <button
+                          onClick={() => handleReauthorize(account)}
+                          disabled={isBusy}
+                          className={`flex-shrink-0 px-3 py-1.5 text-sm rounded-md flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-60 ${
+                            isHealthy
+                              ? 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                              : 'text-white bg-red-600 hover:bg-red-700'
+                          }`}
+                        >
+                          <FiKey className="h-3.5 w-3.5" />
+                          <span>{isBusy ? 'Waiting for Google...' : isHealthy ? 'Re-authorise' : 'Fix now'}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </>
         )}
-
-        {!healthData && !healthLoading && !healthError && (
-          <div className="text-sm text-gray-500 text-center py-4">Click Refresh to check Gmail account health</div>
-        )}
       </div>
 
+      {/* SMS health */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <FiActivity className="h-5 w-5 text-gray-600" />
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">SMS health</h2>
+              {smsHealth?.checkedAt && (
+                <p className="text-xs text-gray-500">
+                  Checked {new Date(smsHealth.checkedAt).toLocaleTimeString()} &middot;{' '}
+                  {smsHealth.provider} &middot; sender {smsHealth.senderId}
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={fetchSmsHealth}
+            disabled={smsLoading}
+            className="px-3 py-1.5 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors flex items-center space-x-1 disabled:opacity-50"
+          >
+            <FiRefreshCw className={`h-3.5 w-3.5 ${smsLoading ? 'animate-spin' : ''}`} />
+            <span>{smsLoading ? 'Checking...' : 'Re-check'}</span>
+          </button>
+        </div>
+
+        {smsError && <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md mb-3">{smsError}</div>}
+
+        {smsLoading && !smsHealth && (
+          <div className="text-sm text-gray-500 text-center py-6">Checking the SMS provider...</div>
+        )}
+
+        {smsHealth && (
+          <>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4">
+              <div className="flex items-center space-x-2">
+                {smsHealth.status === 'healthy' ? (
+                  <FiCheckCircle className="h-5 w-5 text-green-500" />
+                ) : smsHealth.status === 'degraded' ? (
+                  <FiAlertTriangle className="h-5 w-5 text-yellow-500" />
+                ) : (
+                  <FiXCircle className="h-5 w-5 text-red-500" />
+                )}
+                <span className="text-sm font-semibold text-gray-900">
+                  {smsHealth.status === 'healthy'
+                    ? 'Sending works'
+                    : smsHealth.status === 'degraded'
+                    ? 'Working, with problems'
+                    : smsHealth.status === 'auth_failed'
+                    ? 'Credentials rejected'
+                    : smsHealth.status === 'not_configured'
+                    ? 'Not configured'
+                    : 'Provider unreachable'}
+                </span>
+              </div>
+
+              <div className="text-sm">
+                <span className="text-gray-500">Credit balance: </span>
+                <span
+                  className={`font-medium ${
+                    smsHealth.balance === null
+                      ? 'text-gray-400'
+                      : Number(smsHealth.balance) <= 0
+                      ? 'text-red-600'
+                      : Number(smsHealth.balance) < 50
+                      ? 'text-yellow-600'
+                      : 'text-gray-900'
+                  }`}
+                >
+                  {smsHealth.balance === null ? 'unavailable' : Number(smsHealth.balance).toLocaleString()}
+                </span>
+              </div>
+
+              {smsHealth.delivery && !smsHealth.delivery.unavailable && (
+                <div className="text-sm">
+                  <span className="text-gray-500">Last 24h: </span>
+                  <span className="font-medium text-gray-900">{smsHealth.delivery.sent} sent</span>
+                  {smsHealth.delivery.failed > 0 && (
+                    <span className="font-medium text-red-600">
+                      {' '}&middot; {smsHealth.delivery.failed} failed
+                      {smsHealth.delivery.sampled ? ` of ${smsHealth.delivery.sampled} checked` : ''}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {smsHealth.issues && smsHealth.issues.length > 0 ? (
+              <div className="space-y-2">
+                {smsHealth.issues.map((issue, index) => (
+                  <div
+                    key={index}
+                    className={`p-3 rounded-lg border ${
+                      issue.severity === 'critical'
+                        ? 'border-red-200 bg-red-50'
+                        : issue.severity === 'warning'
+                        ? 'border-yellow-200 bg-yellow-50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      {issue.severity === 'critical' ? (
+                        <FiXCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+                      ) : issue.severity === 'warning' ? (
+                        <FiAlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+                      ) : (
+                        <FiActivity className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-900">{issue.title}</div>
+                        <div className="text-xs text-gray-600 mt-0.5">{issue.detail}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-green-700 bg-green-50 p-3 rounded-lg border border-green-200">
+                No issues detected.
+              </div>
+            )}
+
+            {smsHealth.delivery?.topErrors?.length > 0 && (
+              <div className="mt-4">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Most common send errors (last 24h)
+                </div>
+                <div className="space-y-1">
+                  {smsHealth.delivery.topErrors.map((err, index) => (
+                    <div key={index} className="flex items-start justify-between gap-3 text-xs text-gray-700">
+                      <span className="font-mono break-all">{err.message}</span>
+                      <span className="flex-shrink-0 text-gray-500">{err.count}&times;</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
       {/* Search */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
@@ -604,12 +885,16 @@ const EmailAccounts = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
                       <button
-                        onClick={() => handleAuthorize(account.id)}
+                        onClick={() => handleReauthorize(account)}
                         className={`${account.hasClientId ? 'text-purple-600 hover:text-purple-900' : 'text-gray-300 cursor-not-allowed'}`}
-                        title={account.hasClientId ? "Authorize with Google" : "Add Client ID first"}
-                        disabled={!account.hasClientId}
+                        title={account.hasClientId ? 'Authorize with Google' : 'Add Client ID first'}
+                        disabled={!account.hasClientId || reauthingId === account.id}
                       >
-                        <FiKey className="h-4 w-4" />
+                        {reauthingId === account.id ? (
+                          <FiRefreshCw className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <FiKey className="h-4 w-4" />
+                        )}
                       </button>
                       <button
                         onClick={() => handleTestConnection(account.id)}
@@ -1219,14 +1504,15 @@ const EmailAccounts = () => {
                   </div>
                 )}
 
-                {/* Auth URLs Info */}
+                {/* Re-authentication guidance */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-medium text-blue-900 mb-2">Need to Re-authenticate?</h4>
-                  <p className="text-sm text-blue-800 mb-2">If tokens are expired, visit these URLs to get new refresh tokens:</p>
-                  <div className="text-sm font-mono space-y-1">
-                    <div><span className="text-blue-600">Primary:</span> /api/gmail/auth</div>
-                    <div><span className="text-blue-600">Secondary:</span> /api/gmail/auth2</div>
-                  </div>
+                  <h4 className="font-medium text-blue-900 mb-2">Need to re-authenticate?</h4>
+                  <p className="text-sm text-blue-800">
+                    Close this window and use the <strong>Email account health</strong> panel at the
+                    top of the page. Press <strong>Fix now</strong> on any account showing a problem
+                    and sign in to that mailbox. The new token is saved automatically - there is
+                    nothing to copy or paste.
+                  </p>
                 </div>
               </div>
             )}

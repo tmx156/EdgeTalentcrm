@@ -188,19 +188,7 @@ async function sendEmail(to, subject, text, attachments = [], accountKey = 'prim
       console.log(`❌ Code:  ${emailResult.code || 'N/A'}`);
 
       if (emailResult.isInvalidGrant && !isDbAccount) {
-        const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN
-          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, '')}`
-          : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') ||
-            'https://edgetalentcrm-production.up.railway.app';
-
-        const authEndpointMap = { secondary: 'auth2', tertiary: 'auth3', quaternary: 'auth4', quinary: 'auth5', senary: 'auth6', septenary: 'auth7' };
-        const authEndpoint = `${railwayUrl}/api/gmail/${authEndpointMap[accountKey] || 'auth'}`;
-
-        const tokenVarMap = { secondary: 'GMAIL_REFRESH_TOKEN_2', tertiary: 'GMAIL_REFRESH_TOKEN_3', quaternary: 'GMAIL_REFRESH_TOKEN_4', quinary: 'GMAIL_REFRESH_TOKEN_5', senary: 'GMAIL_REFRESH_TOKEN_6', septenary: 'GMAIL_REFRESH_TOKEN_7' };
-        const tokenVar = tokenVarMap[accountKey] || 'GMAIL_REFRESH_TOKEN';
-
-        console.log(`❌ ACTION REQUIRED: Re-authenticate at ${authEndpoint}`);
-        console.log(`❌ Then update ${tokenVar} in Railway environment variables`);
+        console.log(`❌ Fix it on the Email Accounts page: press "Fix now" on this account. The new token saves automatically.`);
       } else if (emailResult.isInvalidGrant && isDbAccount) {
         console.log(`❌ ACTION REQUIRED: Update refresh token for ${accountEmail} in Email Accounts settings`);
       }

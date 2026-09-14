@@ -7,12 +7,63 @@ const express = require('express');
 const { auth, adminAuth } = require('../middleware/auth');
 const emailAccountService = require('../utils/emailAccountService');
 const gmailService = require('../utils/gmailService');
+const integrationHealth = require('../utils/integrationHealth');
+const gmailReauth = require('../utils/gmailReauth');
 const { google } = require('googleapis');
 
 const router = express.Router();
 
-// Store pending OAuth states (in production, use Redis or database)
-const pendingOAuthStates = new Map();
+/**
+ * @route   GET /api/email-accounts/health
+ * @desc    Live health of every Gmail account - actually calls Google
+ * @access  Private (Admin only)
+ */
+router.get('/health', auth, adminAuth, async (req, res) => {
+  try {
+    const result = await integrationHealth.checkAllGmailAccounts();
+    res.json(Object.assign({ success: true, checkedAt: new Date().toISOString() }, result));
+  } catch (error) {
+    console.error('Email health check failed:', error);
+    res.status(500).json({ success: false, message: 'Health check failed', error: error.message });
+  }
+});
+
+/**
+ * @route   GET /api/email-accounts/sms-health
+ * @desc    Live SMS provider health: auth, credit balance, config problems
+ * @access  Private (Admin only)
+ */
+router.get('/sms-health', auth, adminAuth, async (req, res) => {
+  try {
+    const result = await integrationHealth.checkSmsHealth();
+    res.json(Object.assign({ success: true, checkedAt: new Date().toISOString() }, result));
+  } catch (error) {
+    console.error('SMS health check failed:', error);
+    res.status(500).json({ success: false, message: 'SMS health check failed', error: error.message });
+  }
+});
+
+/**
+ * @route   GET /api/email-accounts/:id/reauth-url
+ * @desc    Google consent URL for one account, for the UI to open in a popup
+ * @access  Private (Admin only)
+ */
+router.get('/:id/reauth-url', auth, adminAuth, async (req, res) => {
+  try {
+    const { authUrl, account, redirectUri } = await gmailReauth.buildAuthUrl(req.params.id, req);
+
+    res.json({
+      success: true,
+      authUrl: authUrl,
+      email: account.email,
+      redirectUri: redirectUri
+    });
+  } catch (error) {
+    const status = error.statusCode || 500;
+    if (status === 500) console.error('Failed to build re-auth URL:', error);
+    res.status(status).json({ success: false, message: error.message });
+  }
+});
 
 /**
  * @route   GET /api/email-accounts
@@ -284,152 +335,10 @@ router.post('/import-from-env', auth, async (req, res) => {
  * @access  Public (Google redirects here)
  * NOTE: This route MUST be defined BEFORE /:id routes to avoid matching "oauth-callback" as an ID
  */
-router.get('/oauth-callback', async (req, res) => {
-  try {
-    const { code, state, error: oauthError } = req.query;
-
-    console.log('🔐 OAuth callback received:', { hasCode: !!code, hasState: !!state, error: oauthError });
-
-    if (oauthError) {
-      console.error('OAuth error from Google:', oauthError);
-      return res.status(400).send(`
-        <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
-            <h1 style="color: #e53e3e;">❌ Authorization Failed</h1>
-            <p>Google returned an error: ${oauthError}</p>
-            <p><a href="/email-accounts">Back to Email Accounts</a></p>
-          </body>
-        </html>
-      `);
-    }
-
-    if (!code || !state) {
-      return res.status(400).send(`
-        <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
-            <h1 style="color: #e53e3e;">❌ Invalid Callback</h1>
-            <p>Missing authorization code or state.</p>
-            <p><a href="/email-accounts">Back to Email Accounts</a></p>
-          </body>
-        </html>
-      `);
-    }
-
-    // Retrieve the pending OAuth state
-    const pendingState = pendingOAuthStates.get(state);
-
-    if (!pendingState) {
-      console.error('OAuth state not found or expired');
-      return res.status(400).send(`
-        <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
-            <h1 style="color: #e53e3e;">❌ Session Expired</h1>
-            <p>The authorization session has expired. Please try again.</p>
-            <p><a href="/email-accounts">Back to Email Accounts</a></p>
-          </body>
-        </html>
-      `);
-    }
-
-    // Check if state has expired
-    if (Date.now() > pendingState.expires) {
-      pendingOAuthStates.delete(state);
-      return res.status(400).send(`
-        <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
-            <h1 style="color: #e53e3e;">❌ Session Expired</h1>
-            <p>The authorization session has expired. Please try again.</p>
-            <p><a href="/email-accounts">Back to Email Accounts</a></p>
-          </body>
-        </html>
-      `);
-    }
-
-    // Clean up the state
-    pendingOAuthStates.delete(state);
-
-    console.log('🔐 Exchanging code for tokens...', {
-      accountId: pendingState.accountId,
-      redirectUri: pendingState.redirectUri
-    });
-
-    // Create OAuth2 client with the stored credentials
-    const oauth2Client = new google.auth.OAuth2(
-      pendingState.clientId,
-      pendingState.clientSecret,
-      pendingState.redirectUri
-    );
-
-    // Exchange the authorization code for tokens
-    const { tokens } = await oauth2Client.getToken(code);
-
-    console.log('🔐 Tokens received:', {
-      hasAccessToken: !!tokens.access_token,
-      hasRefreshToken: !!tokens.refresh_token,
-      expiryDate: tokens.expiry_date
-    });
-
-    if (!tokens.refresh_token) {
-      return res.status(400).send(`
-        <html>
-          <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
-            <h1 style="color: #e53e3e;">❌ No Refresh Token</h1>
-            <p>Google did not return a refresh token. This can happen if you've already authorized this app.</p>
-            <p>Try revoking access at <a href="https://myaccount.google.com/permissions" target="_blank">Google Account Permissions</a>, then try again.</p>
-            <p><a href="/email-accounts">Back to Email Accounts</a></p>
-          </body>
-        </html>
-      `);
-    }
-
-    // Update the email account with the new refresh token
-    await emailAccountService.updateAccount(pendingState.accountId, {
-      refresh_token: tokens.refresh_token
-    });
-
-    console.log('✅ Refresh token saved to database for account:', pendingState.accountId);
-
-    // Get the updated account to show the email
-    const account = await emailAccountService.getAccountById(pendingState.accountId);
-
-    // Success page
-    res.send(`
-      <html>
-        <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
-          <h1 style="color: #38a169;">✅ Authorization Successful!</h1>
-          <p style="font-size: 18px;">The email account <strong>${account?.email || 'Unknown'}</strong> has been authorized.</p>
-          <p>The refresh token has been automatically saved.</p>
-          <p style="margin-top: 30px;">
-            <a href="/email-accounts" style="background: #3182ce; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px;">
-              Back to Email Accounts
-            </a>
-          </p>
-          <script>
-            // Auto-close after 3 seconds if opened as popup
-            setTimeout(() => {
-              if (window.opener) {
-                window.opener.location.reload();
-                window.close();
-              }
-            }, 2000);
-          </script>
-        </body>
-      </html>
-    `);
-  } catch (error) {
-    console.error('Error in OAuth callback:', error);
-    res.status(500).send(`
-      <html>
-        <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
-          <h1 style="color: #e53e3e;">❌ Authorization Failed</h1>
-          <p>Error: ${error.message}</p>
-          <p>Please check that your Client ID and Client Secret are correct.</p>
-          <p><a href="/email-accounts">Back to Email Accounts</a></p>
-        </body>
-      </html>
-    `);
-  }
-});
+// The OAuth callback is shared with the legacy /api/gmail/oauth2callbackN
+// paths (see routes/gmail-auth.js), so whichever redirect URI is registered
+// on a given Google client completes the same flow.
+router.get('/oauth-callback', gmailReauth.handleCallback);
 
 /**
  * @route   GET /api/email-accounts/:id
@@ -670,180 +579,5 @@ router.post('/:id/set-default', auth, async (req, res) => {
   }
 });
 
-/**
- * @route   GET /api/email-accounts/:id/auth-url
- * @desc    Get OAuth authorization URL for an email account (returns URL as JSON)
- * @access  Private (Admin only)
- */
-router.get('/:id/auth-url', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Unauthorized: Admin access required' });
-    }
-
-    const { id } = req.params;
-
-    // Get account from database
-    const account = await emailAccountService.getAccountById(id);
-
-    if (!account) {
-      return res.status(404).json({ message: 'Email account not found' });
-    }
-
-    if (!account.client_id) {
-      return res.status(400).json({ message: 'Client ID not configured for this account. Please add Client ID first.' });
-    }
-
-    if (!account.client_secret) {
-      return res.status(400).json({ message: 'Client Secret not configured for this account. Please add Client Secret first.' });
-    }
-
-    // Use the redirect URI from the account, or construct a default one
-    // Always use https in production (Railway proxy returns http for req.protocol)
-    const protocol = process.env.NODE_ENV === 'production' || req.get('host')?.includes('railway') ? 'https' : req.protocol;
-    const redirectUri = account.redirect_uri ||
-      `${protocol}://${req.get('host')}/api/email-accounts/oauth-callback`;
-
-    console.log('🔐 Generating OAuth URL for account:', {
-      id: account.id,
-      email: account.email,
-      clientId: account.client_id.substring(0, 20) + '...',
-      redirectUri
-    });
-
-    // Create OAuth2 client with database credentials
-    const oauth2Client = new google.auth.OAuth2(
-      account.client_id,
-      account.client_secret,
-      redirectUri
-    );
-
-    // Generate a state token to prevent CSRF and track which account this is for
-    const state = Buffer.from(JSON.stringify({
-      accountId: id,
-      timestamp: Date.now()
-    })).toString('base64');
-
-    // Store state temporarily (expires in 10 minutes)
-    pendingOAuthStates.set(state, {
-      accountId: id,
-      clientId: account.client_id,
-      clientSecret: account.client_secret,
-      redirectUri,
-      expires: Date.now() + 10 * 60 * 1000
-    });
-
-    // Generate the authorization URL
-    const authUrl = oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      prompt: 'consent', // Force consent to always get refresh token
-      scope: [
-        'https://www.googleapis.com/auth/gmail.send',
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/userinfo.email'
-      ],
-      state
-    });
-
-    console.log('🔐 Generated auth URL for frontend');
-
-    // Return the URL as JSON so frontend can redirect
-    res.json({ authUrl });
-  } catch (error) {
-    console.error('Error generating OAuth URL:', error);
-    res.status(500).json({ message: 'Failed to generate authorization URL', error: error.message });
-  }
-});
-
-/**
- * @route   GET /api/email-accounts/:id/auth
- * @desc    Start OAuth flow for an email account using its stored credentials
- * @access  Private (Admin only)
- */
-router.get('/:id/auth', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Unauthorized: Admin access required' });
-    }
-
-    const { id } = req.params;
-
-    // Get account from database
-    const account = await emailAccountService.getAccountById(id);
-
-    if (!account) {
-      return res.status(404).json({ message: 'Email account not found' });
-    }
-
-    if (!account.client_id) {
-      return res.status(400).json({ message: 'Client ID not configured for this account. Please add Client ID first.' });
-    }
-
-    // Use the redirect URI from the account, or construct a default one
-    // Always use https in production (Railway proxy returns http for req.protocol)
-    const protocol = process.env.NODE_ENV === 'production' || req.get('host')?.includes('railway') ? 'https' : req.protocol;
-    const redirectUri = account.redirect_uri ||
-      `${protocol}://${req.get('host')}/api/email-accounts/oauth-callback`;
-
-    console.log('🔐 Starting OAuth flow for account:', {
-      id: account.id,
-      email: account.email,
-      clientId: account.client_id.substring(0, 20) + '...',
-      redirectUri
-    });
-
-    // Create OAuth2 client with database credentials
-    const oauth2Client = new google.auth.OAuth2(
-      account.client_id,
-      account.client_secret,
-      redirectUri
-    );
-
-    // Generate a state token to prevent CSRF and track which account this is for
-    const state = Buffer.from(JSON.stringify({
-      accountId: id,
-      timestamp: Date.now()
-    })).toString('base64');
-
-    // Store state temporarily (expires in 10 minutes)
-    pendingOAuthStates.set(state, {
-      accountId: id,
-      clientId: account.client_id,
-      clientSecret: account.client_secret,
-      redirectUri,
-      expires: Date.now() + 10 * 60 * 1000
-    });
-
-    // Generate the authorization URL
-    const authUrl = oauth2Client.generateAuthUrl({
-      access_type: 'offline',
-      prompt: 'consent', // Force consent to always get refresh token
-      scope: [
-        'https://www.googleapis.com/auth/gmail.send',
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/userinfo.email'
-      ],
-      state
-    });
-
-    console.log('🔐 Generated auth URL, redirecting user...');
-
-    // Redirect user to Google's OAuth page
-    res.redirect(authUrl);
-  } catch (error) {
-    console.error('Error starting OAuth flow:', error);
-    res.status(500).json({ message: 'Failed to start authorization', error: error.message });
-  }
-});
-
-// Clean up expired OAuth states periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [state, data] of pendingOAuthStates.entries()) {
-    if (now > data.expires) {
-      pendingOAuthStates.delete(state);
-    }
-  }
-}, 60000); // Clean up every minute
 
 module.exports = router;

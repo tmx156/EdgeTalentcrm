@@ -39,7 +39,7 @@ async function processGmailMessage(accountKey, messageId) {
     console.log(`📧 [${accountKey}] Processing message: ${messageId}`);
 
     // Get Gmail client for this account
-    const gmail = gmailService.getGmailClient(accountKey);
+    const gmail = await gmailService.getGmailClient(accountKey);
     const accountInfo = gmailService.getAccountInfo(accountKey);
 
     // Fetch full message from Gmail API

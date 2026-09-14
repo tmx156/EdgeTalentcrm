@@ -66,7 +66,7 @@ async function watchAccount(accountKey) {
     console.log(`📧 [${accountKey}] Setting up watch for ${accountInfo.email}...`);
 
     // Get Gmail client
-    const gmail = gmailService.getGmailClient(accountKey);
+    const gmail = await gmailService.getGmailClient(accountKey);
 
     // Get Google Cloud Pub/Sub topic name
     const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
@@ -295,7 +295,7 @@ async function stopWatch(accountKey) {
   try {
     console.log(`📧 [${accountKey}] Stopping watch...`);
 
-    const gmail = gmailService.getGmailClient(accountKey);
+    const gmail = await gmailService.getGmailClient(accountKey);
 
     // Call Gmail API stop() to terminate watch
     await gmail.users.stop({

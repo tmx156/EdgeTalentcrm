@@ -360,8 +360,6 @@ const trackMessageDelivery = async (messageData) => {
   }
 };
 
-// Export the tracking function for use in routes
-module.exports.trackMessageDelivery = trackMessageDelivery;
 
 const sendSMS = async (to, message) => {
   try {
@@ -505,7 +503,7 @@ const sendSMS = async (to, message) => {
 const sendBookingConfirmation = async (lead, appointmentDate) => {
   try {
     // Get booking confirmation template
-    const template = getTemplate('booking_confirmation');
+    const template = await getTemplate('booking_confirmation');
     
     if (!template) {
       console.warn('No booking confirmation template found, using default message');
@@ -538,7 +536,7 @@ Studio: 60 Higher Ardwick, Manchester, M12 6DA
 Bring: 3 outfits, ID, ready hair/makeup. Full details: `;
 
     // Create a short link for full details
-    const url = createShortLinkForContent(template.sms_body || template.content);
+    const url = await createShortLinkForContent(template.sms_body || template.content);
     const finalSmsBody = conciseSmsBody + url;
 
     return sendSMS(lead.phone, finalSmsBody);
@@ -559,7 +557,7 @@ Bring: 3 outfits, ID, ready hair/makeup. Full details: `;
 const sendAppointmentReminder = async (lead, appointmentDate) => {
   try {
     // Get appointment reminder template
-    const template = getTemplate('appointment_reminder');
+    const template = await getTemplate('appointment_reminder');
     
     if (!template) {
       console.warn('No appointment reminder template found, using default message');
@@ -627,6 +625,7 @@ const testSMSService = async (phoneNumber) => {
 
 module.exports = {
   sendSMS,
+  trackMessageDelivery,
   sendBookingConfirmation,
   sendAppointmentReminder,
   sendStatusUpdate,

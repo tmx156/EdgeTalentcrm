@@ -136,7 +136,7 @@ async function processHistoryChanges(accountKey, newHistoryId) {
     }
 
     // Fetch history changes from Gmail API
-    const gmail = gmailService.getGmailClient(accountKey);
+    const gmail = await gmailService.getGmailClient(accountKey);
     const accountInfo = gmailService.getAccountInfo(accountKey);
 
     console.log(`🔍 Fetching history changes from ${startHistoryId} to ${newHistoryId}...`);
@@ -223,7 +223,7 @@ async function processHistoryChanges(accountKey, newHistoryId) {
  */
 async function getCurrentHistoryId(accountKey) {
   try {
-    const gmail = gmailService.getGmailClient(accountKey);
+    const gmail = await gmailService.getGmailClient(accountKey);
 
     const response = await gmail.users.getProfile({
       userId: 'me'

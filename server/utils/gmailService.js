@@ -90,6 +90,43 @@ Object.keys(ACCOUNTS).forEach(key => {
 });
 
 /**
+ * Resolve a named account ('primary', 'secondary', ...) to live credentials.
+ *
+ * The database is checked first, because that is where the re-authorise
+ * button writes new refresh tokens; environment variables remain the
+ * fallback for accounts that have not been re-authorised yet. Returns the
+ * same shape as the ACCOUNTS entries so callers need no changes.
+ *
+ * @param {string} accountKey - Legacy env account key
+ * @returns {Promise<Object|null>} Account credentials, or null if unknown
+ */
+async function resolveAccountByKey(accountKey) {
+  const envAccount = ACCOUNTS[accountKey];
+
+  try {
+    const credentials = require('./emailCredentialResolver');
+    const resolved = await credentials.resolveAccount(
+      (envAccount && envAccount.email) || accountKey
+    );
+
+    if (resolved && resolved.clientId && resolved.clientSecret && resolved.refreshToken) {
+      return {
+        email: resolved.email || (envAccount && envAccount.email),
+        displayName: (envAccount && envAccount.displayName) || resolved.displayName,
+        clientId: resolved.clientId,
+        clientSecret: resolved.clientSecret,
+        refreshToken: resolved.refreshToken,
+        redirectUri: resolved.redirectUri || (envAccount && envAccount.redirectUri)
+      };
+    }
+  } catch (err) {
+    console.error(`📧 Could not resolve stored credentials for ${accountKey}, using env:`, err.message);
+  }
+
+  return envAccount || null;
+}
+
+/**
  * Get authenticated Gmail client from a database account object
  * @param {Object} dbAccount - Database email account with decrypted credentials
  * @returns {Promise<Object>} Gmail API client
@@ -162,9 +199,11 @@ async function getGmailClient(accountKeyOrConfig = 'primary') {
       return getGmailClientFromDbAccount(dbAccount);
     }
 
-    // Legacy: use environment variable account key
+    // Legacy: use environment variable account key.
+    // Credentials still resolve database-first, so an account re-authorised
+    // through the UI sends with its new token instead of the dead env one.
     const accountKey = accountKeyOrConfig;
-    const account = ACCOUNTS[accountKey];
+    const account = await resolveAccountByKey(accountKey);
 
     if (!account) {
       throw new Error(`Invalid account key: ${accountKey}`);
@@ -192,20 +231,7 @@ async function getGmailClient(accountKeyOrConfig = 'primary') {
         testError.response?.data?.error === 'invalid_grant' ||
         testError.message?.includes('Token has been expired or revoked')
       )) {
-        const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN 
-          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, '')}`
-          : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
-            'https://edgetalentcrm-production.up.railway.app';
-        
-        const authEndpointMap = { secondary: 'auth2', tertiary: 'auth3', quaternary: 'auth4', quinary: 'auth5' };
-        const authEndpoint = `${railwayUrl}/api/gmail/${authEndpointMap[accountKey] || 'auth'}`;
-
-        const tokenVarMap = { secondary: 'GMAIL_REFRESH_TOKEN_2', tertiary: 'GMAIL_REFRESH_TOKEN_3', quaternary: 'GMAIL_REFRESH_TOKEN_4', quinary: 'GMAIL_REFRESH_TOKEN_5' };
-        const tokenVar = tokenVarMap[accountKey] || 'GMAIL_REFRESH_TOKEN';
-
-        const errorMsg = `OAuth token expired or revoked for ${account.email}. ` +
-          `Please re-authenticate: ${authEndpoint}. ` +
-          `Then update ${tokenVar} in Railway environment variables.`;
+        const errorMsg = `OAuth token expired or revoked for ${account.email}. Fix it on the Email Accounts page: press "Fix now" on this account. The new token saves automatically.`;
 
         console.error(`❌ [${account.displayName}] ${errorMsg}`);
         throw new Error(errorMsg);
@@ -434,9 +460,10 @@ async function sendEmail(to, subject, text, options = {}) {
     }
   }
 
-  // Fall back to env var accounts if not a database account
+  // Fall back to the named account. Resolves database-first so a re-authorised
+  // account sends with its new token rather than the stale env var.
   if (!account) {
-    account = ACCOUNTS[accountKey];
+    account = await resolveAccountByKey(accountKey);
     if (!account) {
       return { success: false, error: `Invalid account key: ${accountKey}` };
     }
@@ -523,20 +550,8 @@ async function sendEmail(to, subject, text, options = {}) {
 
     if (isInvalidGrant) {
       const account = ACCOUNTS[accountKey];
-      const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN 
-        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, '')}`
-        : process.env.GMAIL_REDIRECT_URI?.replace('/api/gmail/oauth2callback', '') || 
-          'https://edgetalentcrm-production.up.railway.app';
-      
-      const authEndpointMap = { secondary: 'auth2', tertiary: 'auth3', quaternary: 'auth4', quinary: 'auth5', senary: 'auth6', septenary: 'auth7' };
-      const authEndpoint = `${railwayUrl}/api/gmail/${authEndpointMap[accountKey] || 'auth'}`;
-
-      const tokenVarMap = { secondary: 'GMAIL_REFRESH_TOKEN_2', tertiary: 'GMAIL_REFRESH_TOKEN_3', quaternary: 'GMAIL_REFRESH_TOKEN_4', quinary: 'GMAIL_REFRESH_TOKEN_5', senary: 'GMAIL_REFRESH_TOKEN_6', septenary: 'GMAIL_REFRESH_TOKEN_7' };
-      const tokenVar = tokenVarMap[accountKey] || 'GMAIL_REFRESH_TOKEN';
-
       console.error(`❌ [${emailId}] OAuth token expired for ${account?.email || accountKey}`);
-      console.error(`❌ [${emailId}] ACTION REQUIRED: Re-authenticate at ${authEndpoint}`);
-      console.error(`❌ [${emailId}] Then update ${tokenVar} in Railway environment variables`);
+      console.error(`❌ [${emailId}] Fix it on the Email Accounts page: press "Fix now" on this account. The new token saves automatically.`);
 
       // Note: Automatic fallback to primary account is handled in emailService.js
       // to avoid recursive calls and maintain proper error handling

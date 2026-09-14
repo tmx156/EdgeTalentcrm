@@ -63,6 +63,20 @@ function decrypt(encryptedText) {
   }
 }
 
+
+/**
+ * Drop the credential resolver's cache after any change to an account, so the
+ * pollers pick up new credentials on their next cycle instead of serving a
+ * stale copy. Required lazily: the resolver depends on this module.
+ */
+function invalidateCredentialCache() {
+  try {
+    require('./emailCredentialResolver').invalidateCache();
+  } catch (err) {
+    // Resolver not loaded (or mid-cycle) - the short TTL still covers us.
+  }
+}
+
 class EmailAccountService {
   constructor() {
     this.supabase = getSupabaseClient();
@@ -284,6 +298,8 @@ class EmailAccountService {
 
       if (error) throw error;
 
+      invalidateCredentialCache();
+
       return {
         ...newAccount,
         hasClientId: !!client_id,
@@ -366,6 +382,8 @@ class EmailAccountService {
 
       if (error) throw error;
 
+      invalidateCredentialCache();
+
       return {
         ...updatedAccount,
         hasClientId: client_id !== undefined ? !!client_id : undefined,
@@ -424,6 +442,8 @@ class EmailAccountService {
         .eq('id', id);
 
       if (error) throw error;
+
+      invalidateCredentialCache();
 
       return { success: true, message: 'Email account deleted successfully' };
     } catch (error) {
