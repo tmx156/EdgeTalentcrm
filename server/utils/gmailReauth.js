@@ -68,6 +68,16 @@ function requestOrigin(req) {
 
 /** Canonical callback path for this deployment. */
 function defaultCallbackUri(req) {
+  // Explicit override, for when a redirect URI is already registered on the
+  // Google OAuth clients and editing the console is not worth it. Whatever
+  // is set here is sent verbatim for every account, so it must match a
+  // registered URI exactly and must be a path this server serves a callback
+  // on (see ACCEPTED_CALLBACK_PATHS). The redirect target does not have to
+  // be the host the admin is browsing - Google simply sends the browser
+  // there afterwards, and the signed state carries the rest.
+  const override = (process.env.GMAIL_OAUTH_REDIRECT_URI || '').trim();
+  if (override) return override.replace(/\/+$/, '');
+
   const origin = requestOrigin(req);
   if (origin) return origin + '/api/email-accounts/oauth-callback';
 
