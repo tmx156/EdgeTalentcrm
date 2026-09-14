@@ -262,7 +262,7 @@ async function recentSmsDelivery(windowHours) {
 
     const { data, error, count } = await supabase
       .from('messages')
-      .select('delivery_status, error_message, sent_at, recipient_phone', { count: 'exact' })
+      .select('status, delivery_status, error_message, sent_at, recipient_phone', { count: 'exact' })
       .eq('type', 'sms')
       .gte('sent_at', since)
       .order('sent_at', { ascending: false })
@@ -270,8 +270,13 @@ async function recentSmsDelivery(windowHours) {
 
     if (error) throw error;
 
-    const rows = data || [];
-    const failed = rows.filter(r => r.delivery_status && r.delivery_status !== 'delivered');
+    // `status` is the reliable field: 'sent' means the provider accepted it,
+    // 'failed' means it did not, 'received' is inbound. `delivery_status` is
+    // written as 'sent' by most paths and says nothing about the outcome, so
+    // treating anything other than 'delivered' as a failure raises false
+    // alarms on messages that went out perfectly well.
+    const rows = (data || []).filter(r => r.status !== 'received');
+    const failed = rows.filter(r => r.status === 'failed');
 
     // Group identical errors so one broken credential reads as one problem.
     const byError = new Map();
