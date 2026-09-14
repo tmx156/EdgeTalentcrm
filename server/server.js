@@ -1011,16 +1011,7 @@ testDatabaseConnection().then(() => {
     console.log('📡 Incoming SMS handled via webhook at /api/sms/webhook');
     console.log('📡 Configure your webhook URL in The SMS Works dashboard to receive incoming messages');
 
-    // Note: The SMS Works uses webhooks for incoming messages, no polling needed
-    // If you need polling for legacy BulkSMS support, uncomment below:
-    // try {
-    //   const { startBulkSmsPolling } = require('./utils/bulkSmsPoller');
-    //   if (typeof startBulkSmsPolling === 'function') {
-    //     startBulkSmsPolling();
-    //   }
-    // } catch (e) {
-    //   console.error('❌ Failed to start BulkSMS reply poller:', e?.message || e);
-    // }
+    // The SMS Works uses webhooks for incoming messages, so no polling needed.
 
     // GMAIL API: Start Gmail monitoring (Push Notifications or Polling)
     // Wrap in try-catch to prevent server crash if Gmail setup fails
