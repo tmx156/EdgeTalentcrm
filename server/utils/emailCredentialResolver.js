@@ -31,6 +31,18 @@ const DISPLAY_NAME = {
 // gmailPoller and gmailService fall back to these when GMAIL_EMAIL_n is unset.
 // Mirror them exactly, or the health panel would omit an account the pollers
 // are still actively using.
+// The redirect URI each account's original OAuth flow used. These are the
+// URIs registered on the Google clients, so re-authorisation reuses them.
+const DEFAULT_REDIRECT = {
+  primary: 'http://localhost:5000/api/gmail/oauth2callback',
+  secondary: 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback2',
+  tertiary: 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback3',
+  quaternary: 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback4',
+  quinary: 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback5',
+  senary: 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback6',
+  septenary: 'https://edgetalentcrm-production.up.railway.app/api/gmail/oauth2callback7'
+};
+
 const DEFAULT_EMAIL = {
   primary: 'hello@edgetalent.co.uk',
   tertiary: 'bookings@edgetalent.co.uk',
@@ -71,6 +83,7 @@ function readEnvAccount(accountKey) {
     clientSecret: clientSecret || null,
     refreshToken: refreshToken || null,
     redirectUri: process.env[`GMAIL_REDIRECT_URI${s}`] || defaultRedirectUri(),
+    envRedirectUri: process.env[`GMAIL_REDIRECT_URI${s}`] || DEFAULT_REDIRECT[accountKey] || null,
     envVarName: `GMAIL_REFRESH_TOKEN${s}`
   };
 }
@@ -96,6 +109,7 @@ async function readDbAccounts() {
       clientSecret: full.client_secret || null,
       refreshToken: full.refresh_token || null,
       redirectUri: full.redirect_uri || defaultRedirectUri(),
+      envRedirectUri: null,
       isDefault: !!full.is_default,
       envVarName: null
     });
@@ -159,6 +173,7 @@ async function resolveAllAccounts(options) {
     // env linkage, and fall back field-by-field for anything the DB lacks.
     existing.accountKey = envAccount.accountKey;
     existing.envVarName = envAccount.envVarName;
+    existing.envRedirectUri = existing.envRedirectUri || envAccount.envRedirectUri;
     existing.clientId = existing.clientId || envAccount.clientId;
     existing.clientSecret = existing.clientSecret || envAccount.clientSecret;
 
