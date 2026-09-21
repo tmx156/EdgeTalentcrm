@@ -7,6 +7,7 @@
 const puppeteer = require('puppeteer');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
+const { getLabels } = require('./contractLabels');
 
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
 
@@ -56,7 +57,9 @@ async function getActiveFinanceTemplate() {
         key_information_text: template.key_information_text || DEFAULT_FINANCE_TEMPLATE.key_information_text,
         customer_agreement_text: template.customer_agreement_text || DEFAULT_FINANCE_TEMPLATE.customer_agreement_text,
         creditor_acknowledgement_text: template.creditor_acknowledgement_text || DEFAULT_FINANCE_TEMPLATE.creditor_acknowledgement_text,
-        cca_notice: template.cca_notice || DEFAULT_FINANCE_TEMPLATE.cca_notice
+        cca_notice: template.cca_notice || DEFAULT_FINANCE_TEMPLATE.cca_notice,
+        // Static label overrides (headings, row labels) live in one JSONB column
+        labels: template.labels || {}
       };
     }
 
@@ -128,146 +131,149 @@ function generateFinanceContractHTML(contractData, template = DEFAULT_FINANCE_TE
   const t = template && template.company_name ? template : DEFAULT_FINANCE_TEMPLATE;
   const d = contractData;
 
+  // Resolve every static label (defaults + whatever the editor has overridden)
+  const L = getLabels(t);
+
   // Calculate derived fields
   const calc = calculateFinanceFields(d);
 
   const page1HTML = `
     <div class="page" style="padding: 30px; font-family: Arial, sans-serif; font-size: 11px; background: white;">
       <!-- Header -->
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; border-bottom: 2px solid #1a1a2e; padding-bottom: 10px;">
+      <div data-editable="fin_header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; border-bottom: 2px solid #1a1a2e; padding-bottom: 10px;">
         <div>
           <h1 style="font-size: 24px; font-weight: bold; letter-spacing: 2px; margin: 0; color: #1a1a2e;">${t.company_name}</h1>
           <p style="font-size: 9px; margin: 3px 0 0 0; color: #666;">${t.company_address}</p>
         </div>
         <div style="text-align: right;">
-          <h2 style="font-size: 14px; font-weight: bold; margin: 0; color: #1a1a2e;">FINANCE AGREEMENT</h2>
-          <h3 style="font-size: 11px; font-weight: bold; margin: 2px 0 0 0; color: #1a1a2e;">& AFFORDABILITY ASSESSMENT</h3>
-          <p style="font-size: 9px; margin: 5px 0 0 0; color: #666;">Date: ${formatDate(d.date)}</p>
-          <p style="font-size: 8px; margin: 2px 0 0 0; color: #999;">Ref: ${d.agreementNumber || d.invoiceNumber || ''}</p>
+          <h2 style="font-size: 14px; font-weight: bold; margin: 0; color: #1a1a2e;">${L.fin_doc_title}</h2>
+          <h3 style="font-size: 11px; font-weight: bold; margin: 2px 0 0 0; color: #1a1a2e;">${L.fin_doc_subtitle}</h3>
+          <p style="font-size: 9px; margin: 5px 0 0 0; color: #666;">${L.fin_date_label} ${formatDate(d.date)}</p>
+          <p style="font-size: 8px; margin: 2px 0 0 0; color: #999;">${L.fin_ref_label} ${d.agreementNumber || d.invoiceNumber || ''}</p>
         </div>
       </div>
 
       <!-- Section 1: Customer Information -->
-      <div style="margin-bottom: 12px;">
+      <div data-editable="fin_section1" style="margin-bottom: 12px;">
         <div style="background: #1a1a2e; color: white; padding: 5px 10px; font-weight: bold; font-size: 11px; margin-bottom: 0;">
-          SECTION 1: CUSTOMER INFORMATION
+          ${L.fin_section1_heading}
         </div>
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #333; font-size: 10px;">
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; width: 30%; color: #666; border-right: 1px solid #ccc;">Full Name</td>
+            <td style="padding: 6px 10px; width: 30%; color: #666; border-right: 1px solid #ccc;">${L.fin_s1_name}</td>
             <td style="padding: 6px 10px; font-weight: 500;">${d.customerName || ''}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">Address</td>
+            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s1_address}</td>
             <td style="padding: 6px 10px; font-weight: 500;">${d.address || ''}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">Postcode</td>
+            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s1_postcode}</td>
             <td style="padding: 6px 10px; font-weight: 500;">${d.postcode || ''}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">Date of Birth</td>
+            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s1_dob}</td>
             <td style="padding: 6px 10px; font-weight: 500;">${d.dateOfBirth ? formatDate(d.dateOfBirth) : ''}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">Years at Address</td>
+            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s1_years}</td>
             <td style="padding: 6px 10px; font-weight: 500;">${d.yearsAtAddress || ''}</td>
           </tr>
           <tr>
-            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">Mobile Number</td>
+            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s1_mobile}</td>
             <td style="padding: 6px 10px; font-weight: 500;">${d.phone || ''}</td>
           </tr>
         </table>
       </div>
 
       <!-- Section 2: Affordability Assessment -->
-      <div style="margin-bottom: 12px;">
+      <div data-editable="fin_section2" style="margin-bottom: 12px;">
         <div style="background: #1a1a2e; color: white; padding: 5px 10px; font-weight: bold; font-size: 11px; margin-bottom: 0;">
-          SECTION 2: AFFORDABILITY ASSESSMENT
+          ${L.fin_section2_heading}
         </div>
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #333; font-size: 10px;">
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; width: 60%; color: #666; border-right: 1px solid #ccc;">Monthly Household Income</td>
+            <td style="padding: 6px 10px; width: 60%; color: #666; border-right: 1px solid #ccc;">${L.fin_s2_income}</td>
             <td style="padding: 6px 10px; font-weight: 500; text-align: right;">${formatCurrency(d.monthlyIncome)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">Priority Outgoings (Rent/Mortgage, Bills, etc.)</td>
+            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s2_priority}</td>
             <td style="padding: 6px 10px; font-weight: 500; text-align: right;">${formatCurrency(d.priorityOutgoings)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">Other Outgoings (Lifestyle, Subscriptions, etc.)</td>
+            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s2_other}</td>
             <td style="padding: 6px 10px; font-weight: 500; text-align: right;">${formatCurrency(d.otherOutgoings)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc; background: #f0f9ff;">
-            <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #ccc;">Disposable Balance</td>
+            <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #ccc;">${L.fin_s2_disposable}</td>
             <td style="padding: 6px 10px; font-weight: bold; text-align: right;">${formatCurrency(calc.disposableBalance)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc; background: #f0f9ff;">
-            <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #ccc;">Total Expenditure</td>
+            <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #ccc;">${L.fin_s2_expenditure}</td>
             <td style="padding: 6px 10px; font-weight: bold; text-align: right;">${formatCurrency(calc.totalExpenditure)}</td>
           </tr>
           <tr style="background: #fef3c7;">
-            <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #ccc;">Agreed Instalment Value</td>
+            <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #ccc;">${L.fin_s2_instalment}</td>
             <td style="padding: 6px 10px; font-weight: bold; text-align: right; font-size: 12px;">${formatCurrency(d.agreedInstalment)}</td>
           </tr>
         </table>
       </div>
 
       <!-- Section 3: Loan & Repayment Terms -->
-      <div style="margin-bottom: 12px;">
+      <div data-editable="fin_section3" style="margin-bottom: 12px;">
         <div style="background: #1a1a2e; color: white; padding: 5px 10px; font-weight: bold; font-size: 11px; margin-bottom: 0;">
-          SECTION 3: LOAN & REPAYMENT TERMS
+          ${L.fin_section3_heading}
         </div>
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #333; font-size: 10px;">
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 5px 10px; width: 50%; color: #666; border-right: 1px solid #ccc;">Cash Price of Goods</td>
+            <td style="padding: 5px 10px; width: 50%; color: #666; border-right: 1px solid #ccc;">${L.fin_s3_cash_price}</td>
             <td style="padding: 5px 10px; font-weight: 500; text-align: right;">${formatCurrency(d.cashPrice)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">Deposit</td>
+            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s3_deposit}</td>
             <td style="padding: 5px 10px; font-weight: 500; text-align: right;">${formatCurrency(d.deposit)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc; background: #f0f9ff;">
-            <td style="padding: 5px 10px; font-weight: bold; border-right: 1px solid #ccc;">Amount of Credit</td>
+            <td style="padding: 5px 10px; font-weight: bold; border-right: 1px solid #ccc;">${L.fin_s3_credit}</td>
             <td style="padding: 5px 10px; font-weight: bold; text-align: right;">${formatCurrency(calc.amountOfCredit)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">Interest</td>
+            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s3_interest}</td>
             <td style="padding: 5px 10px; font-weight: 500; text-align: right;">${formatCurrency(calc.interest)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">Admin Fee</td>
+            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s3_admin_fee}</td>
             <td style="padding: 5px 10px; font-weight: 500; text-align: right;">${formatCurrency(d.adminFee)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc; background: #f0f9ff;">
-            <td style="padding: 5px 10px; font-weight: bold; border-right: 1px solid #ccc;">Total Charge for Credit</td>
+            <td style="padding: 5px 10px; font-weight: bold; border-right: 1px solid #ccc;">${L.fin_s3_total_charge}</td>
             <td style="padding: 5px 10px; font-weight: bold; text-align: right;">${formatCurrency(calc.totalChargeForCredit)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc; background: #fef3c7;">
-            <td style="padding: 5px 10px; font-weight: bold; border-right: 1px solid #ccc;">Total Amount Payable</td>
+            <td style="padding: 5px 10px; font-weight: bold; border-right: 1px solid #ccc;">${L.fin_s3_total_payable}</td>
             <td style="padding: 5px 10px; font-weight: bold; text-align: right; font-size: 12px;">${formatCurrency(calc.totalAmountPayable)}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">Number of Instalments</td>
+            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s3_instalments}</td>
             <td style="padding: 5px 10px; font-weight: 500; text-align: right;">${d.numberOfInstalments || 12}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">Duration of Agreement (months)</td>
+            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s3_duration}</td>
             <td style="padding: 5px 10px; font-weight: 500; text-align: right;">${d.duration || 12}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">Interest Rate (annual %)</td>
+            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s3_rate}</td>
             <td style="padding: 5px 10px; font-weight: 500; text-align: right;">${parseFloat(d.interestRate || 0).toFixed(1)}%</td>
           </tr>
           <tr>
-            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">APR</td>
+            <td style="padding: 5px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s3_apr}</td>
             <td style="padding: 5px 10px; font-weight: 500; text-align: right;">${calc.apr.toFixed(1)}%</td>
           </tr>
         </table>
       </div>
 
       <!-- Footer -->
-      <div style="text-align: center; font-size: 8px; color: #999; padding-top: 8px;">
+      <div data-editable="footer" style="text-align: center; font-size: 8px; color: #999; padding-top: 8px;">
         <p style="margin: 1px 0;">${t.footer_line1}</p>
         <p style="margin: 1px 0;">${t.footer_line2}</p>
       </div>
@@ -277,34 +283,34 @@ function generateFinanceContractHTML(contractData, template = DEFAULT_FINANCE_TE
   const page2HTML = `
     <div class="page" style="padding: 30px; font-family: Arial, sans-serif; font-size: 11px; background: white; page-break-before: always;">
       <!-- Header -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #1a1a2e; padding-bottom: 8px;">
+      <div data-editable="fin_page2_header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #1a1a2e; padding-bottom: 8px;">
         <h1 style="font-size: 18px; font-weight: bold; letter-spacing: 2px; margin: 0; color: #1a1a2e;">${t.company_name}</h1>
         <div style="text-align: right;">
-          <p style="font-size: 10px; margin: 0; font-weight: bold;">FINANCE AGREEMENT - Page 2</p>
+          <p style="font-size: 10px; margin: 0; font-weight: bold;">${L.fin_page2_title}</p>
           <p style="font-size: 9px; margin: 2px 0 0 0; color: #666;">${d.customerName || ''} - ${formatDate(d.date)}</p>
         </div>
       </div>
 
       <!-- Section 4: Repayment Schedule -->
-      <div style="margin-bottom: 15px;">
+      <div data-editable="fin_section4" style="margin-bottom: 15px;">
         <div style="background: #1a1a2e; color: white; padding: 5px 10px; font-weight: bold; font-size: 11px; margin-bottom: 0;">
-          SECTION 4: REPAYMENT SCHEDULE
+          ${L.fin_section4_heading}
         </div>
         <table style="width: 100%; border-collapse: collapse; border: 1px solid #333; font-size: 10px;">
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; width: 50%; color: #666; border-right: 1px solid #ccc;">Repayment Frequency</td>
+            <td style="padding: 6px 10px; width: 50%; color: #666; border-right: 1px solid #ccc;">${L.fin_s4_frequency}</td>
             <td style="padding: 6px 10px; font-weight: 500; text-transform: capitalize;">${d.repaymentFrequency || 'Monthly'}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc;">
-            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">Commencing From</td>
+            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s4_commencing}</td>
             <td style="padding: 6px 10px; font-weight: 500;">${d.commencingFrom ? formatDate(d.commencingFrom) : ''}</td>
           </tr>
           <tr style="border-bottom: 1px solid #ccc; background: #fef3c7;">
-            <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #ccc;">Monthly Repayment Amount</td>
+            <td style="padding: 6px 10px; font-weight: bold; border-right: 1px solid #ccc;">${L.fin_s4_monthly}</td>
             <td style="padding: 6px 10px; font-weight: bold; font-size: 12px;">${formatCurrency(calc.monthlyRepayment)}</td>
           </tr>
           <tr>
-            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">Daily Rate of Interest</td>
+            <td style="padding: 6px 10px; color: #666; border-right: 1px solid #ccc;">${L.fin_s4_daily_rate}</td>
             <td style="padding: 6px 10px; font-weight: 500;">${calc.dailyRateOfInterest.toFixed(4)}%</td>
           </tr>
         </table>
@@ -313,7 +319,7 @@ function generateFinanceContractHTML(contractData, template = DEFAULT_FINANCE_TE
       <!-- Section 5: Key Information & Acknowledgement -->
       <div data-editable="key_information" style="margin-bottom: 15px;">
         <div style="background: #1a1a2e; color: white; padding: 5px 10px; font-weight: bold; font-size: 11px; margin-bottom: 0;">
-          SECTION 5: KEY INFORMATION & ACKNOWLEDGEMENT
+          ${L.fin_section5_heading}
         </div>
         <div style="border: 1px solid #333; border-top: none; padding: 10px; font-size: 9px; line-height: 1.4; color: #444;">
           ${t.key_information_text}
@@ -321,37 +327,37 @@ function generateFinanceContractHTML(contractData, template = DEFAULT_FINANCE_TE
       </div>
 
       <!-- Section 6: Execution -->
-      <div style="margin-bottom: 15px;">
+      <div data-editable="fin_section6" style="margin-bottom: 15px;">
         <div style="background: #1a1a2e; color: white; padding: 5px 10px; font-weight: bold; font-size: 11px; margin-bottom: 0;">
-          SECTION 6: EXECUTION
+          ${L.fin_section6_heading}
         </div>
         <div style="border: 1px solid #333; border-top: none;">
           <!-- CCA Notice -->
-          <div style="padding: 8px 10px; font-size: 8px; color: #666; border-bottom: 1px solid #ccc; background: #fff8dc; font-style: italic;">
+          <div data-editable="finance_cca" style="padding: 8px 10px; font-size: 8px; color: #666; border-bottom: 1px solid #ccc; background: #fff8dc; font-style: italic;">
             ${t.cca_notice}
           </div>
 
           <!-- Creditor Info -->
-          <div style="padding: 8px 10px; border-bottom: 1px solid #ccc;">
-            <p style="font-size: 9px; color: #666; margin: 0 0 3px 0;">Creditor:</p>
+          <div data-editable="finance_creditor" style="padding: 8px 10px; border-bottom: 1px solid #ccc;">
+            <p style="font-size: 9px; color: #666; margin: 0 0 3px 0;">${L.fin_s6_creditor_label}</p>
             <p style="font-weight: bold; margin: 0; font-size: 11px;">${t.company_name}</p>
-            <p style="font-size: 9px; margin: 2px 0 0 0; color: #555;">Trading as: ${t.creditor_trading_as}</p>
+            <p style="font-size: 9px; margin: 2px 0 0 0; color: #555;">${L.fin_s6_trading_as_label} ${t.creditor_trading_as}</p>
             <p style="font-size: 9px; margin: 2px 0 0 0; color: #555;">${t.company_address}</p>
           </div>
 
           <!-- Customer Signature -->
-          <div style="padding: 10px; border-bottom: 1px solid #ccc;">
-            <p style="font-size: 9px; color: #666; margin: 0 0 3px 0;">Customer Agreement:</p>
+          <div data-editable="finance_agreements" style="padding: 10px; border-bottom: 1px solid #ccc;">
+            <p style="font-size: 9px; color: #666; margin: 0 0 3px 0;">${L.fin_s6_customer_agreement_label}</p>
             <p style="font-size: 8px; color: #555; margin: 0 0 8px 0; line-height: 1.3;">${t.customer_agreement_text}</p>
             <div style="display: flex; gap: 20px; align-items: flex-end;">
               <div style="flex: 1;">
-                <p style="font-size: 9px; font-weight: bold; margin: 0 0 5px 0;">CUSTOMER SIGNATURE:</p>
+                <p style="font-size: 9px; font-weight: bold; margin: 0 0 5px 0;">${L.fin_s6_customer_signature_label}</p>
                 <div data-signature="customer" style="border: 2px solid #333; min-height: 70px; padding: 5px;">
                   ${d.signatures?.customer ? `<img src="${d.signatures.customer}" style="max-height: 60px; max-width: 250px;" />` : ''}
                 </div>
               </div>
               <div style="width: 120px; text-align: center;">
-                <p style="font-size: 9px; font-weight: bold; margin: 0 0 5px 0;">DATE:</p>
+                <p style="font-size: 9px; font-weight: bold; margin: 0 0 5px 0;">${L.fin_s6_date_label}</p>
                 <div style="border: 1px solid #333; padding: 8px; font-weight: 500; font-size: 10px;">
                   ${d.signedAt ? formatDate(d.signedAt) : formatDate(new Date())}
                 </div>
@@ -360,18 +366,18 @@ function generateFinanceContractHTML(contractData, template = DEFAULT_FINANCE_TE
           </div>
 
           <!-- Creditor Signature (auto-populated text, not drawn) -->
-          <div style="padding: 10px;">
-            <p style="font-size: 9px; color: #666; margin: 0 0 3px 0;">Creditor Acknowledgement:</p>
+          <div data-editable="finance_agreements" style="padding: 10px;">
+            <p style="font-size: 9px; color: #666; margin: 0 0 3px 0;">${L.fin_s6_creditor_ack_label}</p>
             <p style="font-size: 8px; color: #555; margin: 0 0 8px 0; line-height: 1.3;">${t.creditor_acknowledgement_text}</p>
             <div style="display: flex; gap: 20px; align-items: flex-end;">
               <div style="flex: 1;">
-                <p style="font-size: 9px; font-weight: bold; margin: 0 0 5px 0;">CREDITOR (Authorised Signatory):</p>
+                <p style="font-size: 9px; font-weight: bold; margin: 0 0 5px 0;">${L.fin_s6_creditor_signatory_label}</p>
                 <div style="border: 1px solid #999; min-height: 40px; padding: 8px; background: #f9f9f9;">
                   <span style="font-size: 14px; font-family: 'Brush Script MT', 'Segoe Script', cursive; color: #1a1a2e;">${d.creditorName || ''}</span>
                 </div>
               </div>
               <div style="width: 120px; text-align: center;">
-                <p style="font-size: 9px; font-weight: bold; margin: 0 0 5px 0;">DATE:</p>
+                <p style="font-size: 9px; font-weight: bold; margin: 0 0 5px 0;">${L.fin_s6_date_label}</p>
                 <div style="border: 1px solid #999; padding: 8px; font-weight: 500; font-size: 10px; background: #f9f9f9;">
                   ${formatDate(d.creditorDate || d.date)}
                 </div>
@@ -382,7 +388,7 @@ function generateFinanceContractHTML(contractData, template = DEFAULT_FINANCE_TE
       </div>
 
       <!-- Footer -->
-      <div style="text-align: center; font-size: 8px; color: #999; padding-top: 5px;">
+      <div data-editable="footer" style="text-align: center; font-size: 8px; color: #999; padding-top: 5px;">
         <p style="margin: 1px 0;">${t.footer_line1}</p>
         <p style="margin: 1px 0;">${t.footer_line2}</p>
       </div>

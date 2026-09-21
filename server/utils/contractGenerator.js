@@ -7,6 +7,7 @@
 const puppeteer = require('puppeteer');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
+const { getLabels } = require('./contractLabels');
 
 // Initialize Supabase client
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
@@ -111,6 +112,11 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
     t = DEFAULT_TEMPLATE;
   }
 
+  // Resolve every static label (defaults + whatever the editor has overridden)
+  const L = getLabels(t);
+  const yes = L.order_yes;
+  const no = L.order_no;
+
   // Generate image permission text based on allowImageUse flag
   const imagePermissionText = contractData.allowImageUse
     ? `I <strong>DO</strong> ${t.image_permission_text || 'give permission for Edge Talent to use my images'}`
@@ -126,7 +132,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
           <p style="font-size: 10px; margin: 3px 0 0 0;">${t.company_address}</p>
         </div>
         <div style="border: 1px solid black; padding: 8px 15px;">
-          <span style="font-size: 10px;">Date: </span>
+          <span style="font-size: 10px;">${L.header_date_label} </span>
           <span style="font-weight: 500;">${formatDate(contractData.date)}</span>
         </div>
       </div>
@@ -139,65 +145,65 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
       </div>
 
       <!-- Info Row -->
-      <table style="width: 100%; border-collapse: collapse; border: 1px solid black; margin-bottom: 12px; font-size: 10px;">
+      <table data-editable="info_row" style="width: 100%; border-collapse: collapse; border: 1px solid black; margin-bottom: 12px; font-size: 10px;">
         <tr>
           <td style="border-right: 1px solid black; padding: 6px; width: 25%;">
-            <span style="color: #666;">Customer Nos.</span><br/>
+            <span style="color: #666;">${L.info_customer_no}</span><br/>
             <span style="font-weight: 500;">${contractData.customerNumber || ''}</span>
           </td>
           <td style="border-right: 1px solid black; padding: 6px; width: 25%;">
-            <span style="color: #666;">Studio no.</span><br/>
+            <span style="color: #666;">${L.info_studio_no}</span><br/>
             <span style="font-weight: 500;">${contractData.studioNumber || ''}</span>
           </td>
           <td style="border-right: 1px solid black; padding: 6px; width: 25%;">
-            <span style="color: #666;">Photographer</span><br/>
+            <span style="color: #666;">${L.info_photographer}</span><br/>
             <span style="font-weight: 500;">${contractData.photographer || ''}</span>
           </td>
           <td style="padding: 6px; width: 25%;">
-            <span style="color: #666;">Invoice no.</span><br/>
+            <span style="color: #666;">${L.info_invoice_no}</span><br/>
             <span style="font-weight: 500;">${contractData.invoiceNumber || ''}</span>
           </td>
         </tr>
       </table>
 
       <!-- Customer Details -->
-      <h3 style="font-weight: bold; margin: 0 0 5px 0; font-size: 12px;">CUSTOMER DETAILS</h3>
-      <table style="width: 100%; border-collapse: collapse; border: 1px solid black; margin-bottom: 12px; font-size: 10px;">
+      <h3 data-editable="customer_details" style="font-weight: bold; margin: 0 0 5px 0; font-size: 12px;">${L.customer_details_heading}</h3>
+      <table data-editable="customer_details" style="width: 100%; border-collapse: collapse; border: 1px solid black; margin-bottom: 12px; font-size: 10px;">
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 6px;" colspan="3">
-            <span style="color: #666;">NAME OF PERSON IN DIARY</span><br/>
+            <span style="color: #666;">${L.customer_name_label}</span><br/>
             <span style="font-weight: 500;">${contractData.customerName || ''}</span>
           </td>
           <td style="border-left: 1px solid black; padding: 6px; text-align: center; width: 80px;">
-            <span style="color: #666;">VIP?</span><br/>
-            <span style="font-weight: 500;">${contractData.isVip ? 'YES' : 'NO'}</span>
+            <span style="color: #666;">${L.customer_vip_label}</span><br/>
+            <span style="font-weight: 500;">${contractData.isVip ? yes : no}</span>
           </td>
         </tr>
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 6px;" colspan="4">
-            <span style="color: #666;">NAME OF CLIENT IF DIFFERENT</span><br/>
+            <span style="color: #666;">${L.customer_alt_name_label}</span><br/>
             <span style="font-weight: 500;">${contractData.clientNameIfDifferent || ''}</span>
           </td>
         </tr>
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 6px;" colspan="4">
-            <span style="color: #666;">ADDRESS</span><br/>
+            <span style="color: #666;">${L.customer_address_label}</span><br/>
             <span style="font-weight: 500;">${contractData.address || ''}</span>
           </td>
         </tr>
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 6px; text-align: right;" colspan="4">
-            <span style="color: #666;">POSTCODE</span>
+            <span style="color: #666;">${L.customer_postcode_label}</span>
             <span style="font-weight: 500; margin-left: 8px;">${contractData.postcode || ''}</span>
           </td>
         </tr>
         <tr>
           <td style="padding: 6px; width: 50%;">
-            <span style="color: #666;">PHONE/MOBILE NO.</span><br/>
+            <span style="color: #666;">${L.customer_phone_label}</span><br/>
             <span style="font-weight: 500;">${contractData.phone || ''}</span>
           </td>
           <td style="border-left: 1px solid black; padding: 6px;" colspan="3">
-            <span style="color: #666;">EMAIL:</span><br/>
+            <span style="color: #666;">${L.customer_email_label}</span><br/>
             <span style="font-weight: 500;">${contractData.email || ''}</span>
           </td>
         </tr>
@@ -205,28 +211,28 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
       <!-- Order Details with Totals -->
       <div style="display: flex; gap: 12px; margin-bottom: 8px;">
-        <div style="flex: 1;">
-          <h3 style="font-weight: bold; margin: 0 0 5px 0; font-size: 12px;">ORDER DETAILS</h3>
+        <div data-editable="order_details" style="flex: 1;">
+          <h3 style="font-weight: bold; margin: 0 0 5px 0; font-size: 12px;">${L.order_details_heading}</h3>
           <table style="width: 100%; border-collapse: collapse; border: 1px solid black; font-size: 10px;">
             <tr style="border-bottom: 1px solid black;">
-              <td style="padding: 5px; width: 120px;">DIGITAL IMAGES?</td>
-              <td style="border-left: 1px solid black; padding: 5px; width: 60px; text-align: center;">${contractData.digitalImages ? 'YES' : 'NO'}</td>
-              <td style="border-left: 1px solid black; padding: 5px;">QTY: <span style="font-weight: 500;">${contractData.digitalImagesQty || ''}</span></td>
+              <td style="padding: 5px; width: 120px;">${L.order_row1_label}</td>
+              <td style="border-left: 1px solid black; padding: 5px; width: 60px; text-align: center;">${contractData.digitalImages ? yes : no}</td>
+              <td style="border-left: 1px solid black; padding: 5px;">${L.order_row1_qty_prefix} <span style="font-weight: 500;">${contractData.digitalImagesQty || ''}</span></td>
             </tr>
             <tr style="border-bottom: 1px solid black;">
-              <td style="padding: 5px;">DIGITAL Z-CARD?</td>
-              <td style="border-left: 1px solid black; padding: 5px; text-align: center;">${contractData.digitalZCard ? 'YES' : 'NO'}</td>
-              <td style="border-left: 1px solid black; padding: 5px; color: #666;">DIGITAL PDF ONLY</td>
+              <td style="padding: 5px;">${L.order_row2_label}</td>
+              <td style="border-left: 1px solid black; padding: 5px; text-align: center;">${contractData.digitalZCard ? yes : no}</td>
+              <td style="border-left: 1px solid black; padding: 5px; color: #666;">${L.order_row2_note}</td>
             </tr>
             <tr style="border-bottom: 1px solid black;">
-              <td style="padding: 5px;">EFOLIO?</td>
-              <td style="border-left: 1px solid black; padding: 5px; text-align: center;">${contractData.efolio ? 'YES' : 'NO'}</td>
-              <td style="border-left: 1px solid black; padding: 5px;">URL: <span style="font-weight: 500;">${contractData.efolioUrl || ''}</span></td>
+              <td style="padding: 5px;">${L.order_row3_label}</td>
+              <td style="border-left: 1px solid black; padding: 5px; text-align: center;">${contractData.efolio ? yes : no}</td>
+              <td style="border-left: 1px solid black; padding: 5px;">${L.order_row3_url_prefix} <span style="font-weight: 500;">${contractData.efolioUrl || ''}</span></td>
             </tr>
             <tr style="border-bottom: 1px solid black;">
-              <td style="padding: 5px;">PROJECT INFLUENCER?</td>
-              <td style="border-left: 1px solid black; padding: 5px; text-align: center;">${contractData.projectInfluencer ? 'YES' : 'NO'}</td>
-              <td style="border-left: 1px solid black; padding: 5px;">LOGIN: <span style="font-weight: 500;">${contractData.influencerLogin || ''}</span></td>
+              <td style="padding: 5px;">${L.order_row4_label}</td>
+              <td style="border-left: 1px solid black; padding: 5px; text-align: center;">${contractData.projectInfluencer ? yes : no}</td>
+              <td style="border-left: 1px solid black; padding: 5px;">${L.order_row4_login_prefix} <span style="font-weight: 500;">${contractData.influencerLogin || ''}</span></td>
             </tr>
             <tr style="border-bottom: 1px solid black;">
               <td data-editable="image_permission" style="padding: 5px;" colspan="3">
@@ -234,22 +240,22 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
               </td>
             </tr>
             <tr>
-              <td style="padding: 5px;" colspan="2">Digital Images checked & received?</td>
-              <td style="border-left: 1px solid black; padding: 5px; text-align: center;">N.A</td>
+              <td style="padding: 5px;" colspan="2">${L.order_checked_label}</td>
+              <td style="border-left: 1px solid black; padding: 5px; text-align: center;">${L.order_checked_value}</td>
             </tr>
           </table>
         </div>
-        <div style="width: 100px;">
+        <div data-editable="totals" style="width: 100px;">
           <table style="width: 100%; border-collapse: collapse; border: 1px solid black; font-size: 10px; height: 100%;">
             <tr style="border-bottom: 1px solid black;">
               <td style="padding: 8px; text-align: center;">
-                <span style="color: #666;">SUB TOTAL</span><br/>
+                <span style="color: #666;">${L.totals_subtotal_label}</span><br/>
                 <span style="font-weight: 500;">${formatCurrency(contractData.subtotal)}</span>
               </td>
             </tr>
             <tr>
               <td style="padding: 8px; text-align: center;">
-                <strong>TOTAL</strong><br/>
+                <strong>${L.totals_total_label}</strong><br/>
                 <span style="font-weight: bold; font-size: 14px;">${formatCurrency(contractData.total)}</span>
               </td>
             </tr>
@@ -258,25 +264,25 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
       </div>
 
       <!-- Notes -->
-      <div style="margin-bottom: 8px;">
-        <span style="font-weight: bold; font-size: 10px;">NOTES:</span>
+      <div data-editable="notes" style="margin-bottom: 8px;">
+        <span style="font-weight: bold; font-size: 10px;">${L.notes_label}</span>
         <div style="border: 1px solid black; padding: 6px; min-height: 35px; font-size: 10px; margin-top: 3px;">${contractData.notes || ''}</div>
       </div>
 
       <!-- Terms -->
       <div data-editable="terms" style="font-size: 8px; color: #444; margin-bottom: 10px; line-height: 1.3;">
-        <strong>Terms and Conditions:</strong> ${t.terms_and_conditions}
+        <strong>${L.terms_heading}</strong> ${t.terms_and_conditions}
       </div>
 
       <!-- Payment Details -->
       <table data-editable="finance" style="width: 100%; border-collapse: collapse; border: 1px solid black; margin-bottom: 10px; font-size: 10px;">
-        <tr style="border-bottom: 1px solid black;">
-          <td style="padding: 5px; border-right: 1px solid black; width: 100px;">PAYMENT DETAILS</td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 100px;">CREDIT/DEBIT CARD</td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 50px;">CASH</td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 60px;">FINANCE</td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 60px;">PAYL8R</td>
-          <td style="padding: 5px; text-align: right;">SUB TOTAL</td>
+        <tr data-editable="payment_headers" style="border-bottom: 1px solid black;">
+          <td style="padding: 5px; border-right: 1px solid black; width: 100px;">${L.payment_details_label}</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 100px;">${L.payment_card_label}</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 50px;">${L.payment_cash_label}</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 60px;">${L.payment_finance_label}</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 60px;">${L.payment_payl8r_label}</td>
+          <td style="padding: 5px; text-align: right;">${L.payment_subtotal_label}</td>
         </tr>
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 5px; border-right: 1px solid black;">${contractData.paymentMethod === 'finance' ? (t.finance_payment_label || 'DEPOSIT TODAY') : (t.non_finance_payment_label || 'PAYMENT TODAY')}</td>
@@ -288,13 +294,13 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         </tr>
         ${contractData.paymentMethod === 'finance' || contractData.paymentMethod === 'payl8r' ? `
         <tr style="border-bottom: 1px solid black;">
-          <td style="padding: 5px; border-right: 1px solid black; background: #fef3c7;">${contractData.paymentMethod === 'payl8r' ? 'DEPOSIT TODAY' : (t.finance_deposit_label || 'DEPOSIT PAID')}</td>
+          <td style="padding: 5px; border-right: 1px solid black; background: #fef3c7;">${contractData.paymentMethod === 'payl8r' ? L.payl8r_deposit_label : (t.finance_deposit_label || 'DEPOSIT PAID')}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; background: #fef3c7;" colspan="4">
             <span style="font-weight: bold; font-size: 12px;">${formatCurrency(contractData.depositAmount || 0)}</span>
           </td>
           <td style="padding: 5px; text-align: right; background: #fef3c7;">
             <div style="text-align: right;">
-              <span style="font-size: 9px; color: #666;">${contractData.paymentMethod === 'payl8r' ? 'PAYL8R AMOUNT' : (t.finance_amount_label || 'FINANCE AMOUNT')}:</span><br/>
+              <span style="font-size: 9px; color: #666;">${contractData.paymentMethod === 'payl8r' ? L.payl8r_amount_label : (t.finance_amount_label || 'FINANCE AMOUNT')}:</span><br/>
               <span style="font-weight: bold; font-size: 12px;">${formatCurrency(contractData.financeAmount || 0)}</span>
             </div>
           </td>
@@ -303,17 +309,17 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         <tr style="border-bottom: 1px solid black;">
           <td style="padding: 5px; border-right: 1px solid black; font-size: 9px; color: #666;" rowspan="2">${t.cash_initial_text || ''}</td>
           <td style="padding: 5px; border-right: 1px solid black;" rowspan="2"></td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="3">VAT@${contractData.vatRate || 20}%</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="3">${L.payment_vat_label}${contractData.vatRate || 20}%</td>
           <td style="padding: 5px; text-align: right; font-weight: 500;">${formatCurrency(contractData.vatAmount)}</td>
         </tr>
         <tr>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="3">
-            <span style="font-size: 9px;">${contractData.paymentMethod === 'payl8r' ? 'PAYL8R' : 'AUTHORISATION CODE'}:</span><br/>
+            <span style="font-size: 9px;">${contractData.paymentMethod === 'payl8r' ? L.payment_payl8r_ref_label : L.payment_auth_code_label}:</span><br/>
             <span style="font-weight: 500;">${contractData.paymentMethod === 'payl8r' ? '' : (contractData.authCode || '')}</span>
           </td>
           <td style="padding: 5px; text-align: right;">
             <div style="text-align: right;">
-              <strong>TOTAL</strong><br/>
+              <strong>${L.payment_total_label}</strong><br/>
               <span style="font-weight: bold; font-size: 16px;">${formatCurrency(contractData.total)}</span>
             </div>
           </td>
@@ -322,16 +328,16 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
 
       <!-- Signature Section -->
       <p data-editable="signature_instruction" style="font-size: 9px; font-weight: bold; margin-bottom: 8px;">${t.signature_instruction}</p>
-      <table style="width: 100%; border-collapse: collapse; border: 1px solid black;">
+      <table data-editable="signature_block" style="width: 100%; border-collapse: collapse; border: 1px solid black;">
         <tr>
           <td style="padding: 8px; border-right: 1px solid black; width: 75%;">
-            <span style="font-size: 10px;">CUSTOMER SIGNATURE:</span>
+            <span style="font-size: 10px;">${L.signature_customer_label}</span>
             <div data-signature="main" style="margin-top: 5px; min-height: 60px;">
               ${contractData.signatures?.main ? `<img src="${contractData.signatures.main}" style="max-height: 55px; max-width: 250px;" />` : ''}
             </div>
           </td>
           <td style="padding: 8px; text-align: center;">
-            <span style="font-size: 10px;">DATE:</span>
+            <span style="font-size: 10px;">${L.signature_date_label}</span>
             <div style="font-weight: 500; margin-top: 10px;">${formatDate(contractData.signedAt || new Date())}</div>
           </td>
         </tr>
@@ -348,9 +354,9 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
   const page2HTML = `
     <div class="page" style="padding: 40px; font-family: Arial, sans-serif; background: white; page-break-before: always;">
       <!-- Header -->
-      <div style="margin-bottom: 25px;">
-        <p style="font-weight: bold; font-size: 14px; margin: 0 0 10px 0;">CUSTOMER NAME: <span style="font-weight: normal;">${contractData.customerName || ''}</span></p>
-        <p style="font-weight: bold; font-size: 14px; margin: 0;">DATE: <span style="font-weight: normal;">${formatDate(contractData.signedAt || new Date())}</span></p>
+      <div data-editable="page2_header" style="margin-bottom: 25px;">
+        <p style="font-weight: bold; font-size: 14px; margin: 0 0 10px 0;">${L.page2_customer_name_label} <span style="font-weight: normal;">${contractData.customerName || ''}</span></p>
+        <p style="font-weight: bold; font-size: 14px; margin: 0;">${L.page2_date_label} <span style="font-weight: normal;">${formatDate(contractData.signedAt || new Date())}</span></p>
       </div>
 
       <!-- 4 Confirmation Boxes -->
@@ -359,7 +365,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         <!-- Box 1 -->
         <div data-editable="confirmation1" style="display: flex; gap: 25px; align-items: flex-start;">
           <div data-signature="notAgency" style="width: 180px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 90px;">
-            ${contractData.signatures?.notAgency ? `<img src="${contractData.signatures.notAgency}" style="max-height: 80px; max-width: 170px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 30px;">Sign Here</div>'}
+            ${contractData.signatures?.notAgency ? `<img src="${contractData.signatures.notAgency}" style="max-height: 80px; max-width: 170px;" />` : `<div style="color: #ccc; text-align: center; padding-top: 30px;">${L.page2_sign_here}</div>`}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
@@ -371,7 +377,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         <!-- Box 2 -->
         <div data-editable="confirmation2" style="display: flex; gap: 25px; align-items: flex-start;">
           <div data-signature="noCancel" style="width: 180px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 90px;">
-            ${contractData.signatures?.noCancel ? `<img src="${contractData.signatures.noCancel}" style="max-height: 80px; max-width: 170px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 30px;">Sign Here</div>'}
+            ${contractData.signatures?.noCancel ? `<img src="${contractData.signatures.noCancel}" style="max-height: 80px; max-width: 170px;" />` : `<div style="color: #ccc; text-align: center; padding-top: 30px;">${L.page2_sign_here}</div>`}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
@@ -383,7 +389,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         <!-- Box 3 -->
         <div data-editable="confirmation3" style="display: flex; gap: 25px; align-items: flex-start;">
           <div data-signature="passDetails" style="width: 180px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 90px;">
-            ${contractData.signatures?.passDetails ? `<img src="${contractData.signatures.passDetails}" style="max-height: 80px; max-width: 170px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 30px;">Sign Here</div>'}
+            ${contractData.signatures?.passDetails ? `<img src="${contractData.signatures.passDetails}" style="max-height: 80px; max-width: 170px;" />` : `<div style="color: #ccc; text-align: center; padding-top: 30px;">${L.page2_sign_here}</div>`}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">
@@ -395,7 +401,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         <!-- Box 4 -->
         <div data-editable="confirmation4" style="display: flex; gap: 25px; align-items: flex-start;">
           <div data-signature="happyPurchase" style="width: 180px; flex-shrink: 0; border: 2px solid black; padding: 5px; min-height: 90px;">
-            ${contractData.signatures?.happyPurchase ? `<img src="${contractData.signatures.happyPurchase}" style="max-height: 80px; max-width: 170px;" />` : '<div style="color: #ccc; text-align: center; padding-top: 30px;">Sign Here</div>'}
+            ${contractData.signatures?.happyPurchase ? `<img src="${contractData.signatures.happyPurchase}" style="max-height: 80px; max-width: 170px;" />` : `<div style="color: #ccc; text-align: center; padding-top: 30px;">${L.page2_sign_here}</div>`}
           </div>
           <div style="flex: 1; padding-top: 10px;">
             <p style="font-size: 14px; line-height: 1.5; margin: 0;">

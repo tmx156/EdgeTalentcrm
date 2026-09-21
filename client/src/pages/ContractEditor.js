@@ -120,6 +120,119 @@ const RichTextEditor = ({ value, onChange, rows = 4, placeholder, showFontSize =
   );
 };
 
+// Friendly names for the plain-label fields stored in the `labels` JSONB column.
+// Keys match server/utils/contractLabels.js.
+const LABEL_FIELD_NAMES = {
+  header_date_label: 'Date label (header box)',
+  info_customer_no: 'Customer number label',
+  info_studio_no: 'Studio number label',
+  info_photographer: 'Photographer label',
+  info_invoice_no: 'Invoice number label',
+
+  customer_details_heading: 'Section heading',
+  customer_name_label: 'Name field label',
+  customer_vip_label: 'VIP field label',
+  customer_alt_name_label: 'Alternative name label',
+  customer_address_label: 'Address label',
+  customer_postcode_label: 'Postcode label',
+  customer_phone_label: 'Phone label',
+  customer_email_label: 'Email label',
+
+  order_details_heading: 'Section heading',
+  order_row1_label: 'Row 1 label',
+  order_row1_qty_prefix: 'Row 1 quantity prefix',
+  order_row2_label: 'Row 2 label',
+  order_row2_note: 'Row 2 note',
+  order_row3_label: 'Row 3 label',
+  order_row3_url_prefix: 'Row 3 URL prefix',
+  order_row4_label: 'Row 4 label',
+  order_row4_login_prefix: 'Row 4 login prefix',
+  order_checked_label: 'Checked & received label',
+  order_checked_value: 'Checked & received value',
+  order_yes: 'Text used for YES',
+  order_no: 'Text used for NO',
+
+  totals_subtotal_label: 'Sub total label',
+  totals_total_label: 'Total label',
+
+  notes_label: 'Notes label',
+
+  terms_heading: 'Terms heading (bold text before the terms)',
+
+  payment_details_label: 'Payment details label',
+  payment_card_label: 'Card column heading',
+  payment_cash_label: 'Cash column heading',
+  payment_finance_label: 'Finance column heading',
+  payment_payl8r_label: 'Payl8r column heading',
+  payment_subtotal_label: 'Sub total heading',
+  payment_vat_label: 'VAT prefix (rate is added after)',
+  payment_auth_code_label: 'Authorisation code label',
+  payment_payl8r_ref_label: 'Payl8r reference label',
+  payment_total_label: 'Total label',
+  payl8r_deposit_label: 'Payl8r deposit row label',
+  payl8r_amount_label: 'Payl8r amount label',
+
+  signature_customer_label: 'Customer signature label',
+  signature_date_label: 'Date label',
+
+  page2_customer_name_label: 'Customer name label',
+  page2_date_label: 'Date label',
+  page2_sign_here: 'Empty signature box placeholder',
+
+  fin_doc_title: 'Document title',
+  fin_doc_subtitle: 'Document subtitle',
+  fin_date_label: 'Date label',
+  fin_ref_label: 'Reference label',
+
+  fin_section1_heading: 'Section 1 heading',
+  fin_s1_name: 'Full name label',
+  fin_s1_address: 'Address label',
+  fin_s1_postcode: 'Postcode label',
+  fin_s1_dob: 'Date of birth label',
+  fin_s1_years: 'Years at address label',
+  fin_s1_mobile: 'Mobile number label',
+
+  fin_section2_heading: 'Section 2 heading',
+  fin_s2_income: 'Monthly income label',
+  fin_s2_priority: 'Priority outgoings label',
+  fin_s2_other: 'Other outgoings label',
+  fin_s2_disposable: 'Disposable balance label',
+  fin_s2_expenditure: 'Total expenditure label',
+  fin_s2_instalment: 'Agreed instalment label',
+
+  fin_section3_heading: 'Section 3 heading',
+  fin_s3_cash_price: 'Cash price label',
+  fin_s3_deposit: 'Deposit label',
+  fin_s3_credit: 'Amount of credit label',
+  fin_s3_interest: 'Interest label',
+  fin_s3_admin_fee: 'Admin fee label',
+  fin_s3_total_charge: 'Total charge for credit label',
+  fin_s3_total_payable: 'Total amount payable label',
+  fin_s3_instalments: 'Number of instalments label',
+  fin_s3_duration: 'Duration label',
+  fin_s3_rate: 'Interest rate label',
+  fin_s3_apr: 'APR label',
+
+  fin_page2_title: 'Page 2 title',
+
+  fin_section4_heading: 'Section 4 heading',
+  fin_s4_frequency: 'Repayment frequency label',
+  fin_s4_commencing: 'Commencing from label',
+  fin_s4_monthly: 'Monthly repayment label',
+  fin_s4_daily_rate: 'Daily interest rate label',
+
+  fin_section5_heading: 'Section 5 heading',
+
+  fin_section6_heading: 'Section 6 heading',
+  fin_s6_creditor_label: 'Creditor label',
+  fin_s6_trading_as_label: 'Trading as label',
+  fin_s6_customer_agreement_label: 'Customer agreement label',
+  fin_s6_customer_signature_label: 'Customer signature label',
+  fin_s6_date_label: 'Date label',
+  fin_s6_creditor_ack_label: 'Creditor acknowledgement label',
+  fin_s6_creditor_signatory_label: 'Creditor signatory label'
+};
+
 const ContractEditor = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -166,7 +279,9 @@ const ContractEditor = () => {
     key_information_text: '',
     customer_agreement_text: '',
     creditor_acknowledgement_text: '',
-    cca_notice: ''
+    cca_notice: '',
+    // Every other static label (headings, table labels, YES/NO...) keyed by name
+    labels: {}
   });
 
   const [originalTemplate, setOriginalTemplate] = useState(null);
@@ -185,7 +300,7 @@ const ContractEditor = () => {
     },
     terms: {
       label: 'Terms and Conditions',
-      fields: ['terms_and_conditions'],
+      fields: ['labels.terms_heading', 'terms_and_conditions'],
       page: 1
     },
     signature_instruction: {
@@ -234,6 +349,189 @@ const ContractEditor = () => {
       fields: ['cash_initial_text'],
       page: 1
     },
+    // --- Sections below are plain labels stored in the `labels` JSONB column ---
+    info_row: {
+      label: 'Reference Row (Customer / Studio / Photographer)',
+      fields: ['labels.info_customer_no', 'labels.info_studio_no', 'labels.info_photographer', 'labels.info_invoice_no', 'labels.header_date_label'],
+      page: 1
+,
+      normalOnly: true
+    },
+    customer_details: {
+      label: 'Customer Details Labels',
+      description: 'The grey field names in the customer details box',
+      fields: [
+        'labels.customer_details_heading',
+        'labels.customer_name_label',
+        'labels.customer_vip_label',
+        'labels.customer_alt_name_label',
+        'labels.customer_address_label',
+        'labels.customer_postcode_label',
+        'labels.customer_phone_label',
+        'labels.customer_email_label'
+      ],
+      page: 1
+,
+      normalOnly: true
+    },
+    order_details: {
+      label: 'Order Details Rows',
+      description: 'Rename or repurpose each line of the order table',
+      fields: [
+        'labels.order_details_heading',
+        'labels.order_row1_label',
+        'labels.order_row1_qty_prefix',
+        'labels.order_row2_label',
+        'labels.order_row2_note',
+        'labels.order_row3_label',
+        'labels.order_row3_url_prefix',
+        'labels.order_row4_label',
+        'labels.order_row4_login_prefix',
+        'labels.order_checked_label',
+        'labels.order_checked_value',
+        'labels.order_yes',
+        'labels.order_no'
+      ],
+      page: 1
+,
+      normalOnly: true
+    },
+    totals: {
+      label: 'Totals Box',
+      fields: ['labels.totals_subtotal_label', 'labels.totals_total_label'],
+      page: 1
+,
+      normalOnly: true
+    },
+    notes: {
+      label: 'Notes Box',
+      fields: ['labels.notes_label'],
+      page: 1
+,
+      normalOnly: true
+    },
+    payment_headers: {
+      label: 'Payment Table Labels',
+      description: 'Column headings and row labels on the payment table',
+      fields: [
+        'labels.payment_details_label',
+        'labels.payment_card_label',
+        'labels.payment_cash_label',
+        'labels.payment_finance_label',
+        'labels.payment_payl8r_label',
+        'labels.payment_subtotal_label',
+        'labels.payment_vat_label',
+        'labels.payment_auth_code_label',
+        'labels.payment_payl8r_ref_label',
+        'labels.payment_total_label',
+        'labels.payl8r_deposit_label',
+        'labels.payl8r_amount_label'
+      ],
+      page: 1
+,
+      normalOnly: true
+    },
+    signature_block: {
+      label: 'Signature Box Labels',
+      fields: ['labels.signature_customer_label', 'labels.signature_date_label'],
+      page: 1
+,
+      normalOnly: true
+    },
+    page2_header: {
+      label: 'Page 2 Header & Sign Boxes',
+      fields: ['labels.page2_customer_name_label', 'labels.page2_date_label', 'labels.page2_sign_here'],
+      page: 2
+,
+      normalOnly: true
+    },
+    // --- Finance agreement labels ---
+    fin_header: {
+      label: 'Finance - Document Title',
+      fields: ['labels.fin_doc_title', 'labels.fin_doc_subtitle', 'labels.fin_date_label', 'labels.fin_ref_label'],
+      page: 1,
+      financeOnly: true
+    },
+    fin_section1: {
+      label: 'Finance - Section 1 (Customer Information)',
+      fields: [
+        'labels.fin_section1_heading',
+        'labels.fin_s1_name',
+        'labels.fin_s1_address',
+        'labels.fin_s1_postcode',
+        'labels.fin_s1_dob',
+        'labels.fin_s1_years',
+        'labels.fin_s1_mobile'
+      ],
+      page: 1,
+      financeOnly: true
+    },
+    fin_section2: {
+      label: 'Finance - Section 2 (Affordability)',
+      fields: [
+        'labels.fin_section2_heading',
+        'labels.fin_s2_income',
+        'labels.fin_s2_priority',
+        'labels.fin_s2_other',
+        'labels.fin_s2_disposable',
+        'labels.fin_s2_expenditure',
+        'labels.fin_s2_instalment'
+      ],
+      page: 1,
+      financeOnly: true
+    },
+    fin_section3: {
+      label: 'Finance - Section 3 (Loan & Repayment)',
+      fields: [
+        'labels.fin_section3_heading',
+        'labels.fin_s3_cash_price',
+        'labels.fin_s3_deposit',
+        'labels.fin_s3_credit',
+        'labels.fin_s3_interest',
+        'labels.fin_s3_admin_fee',
+        'labels.fin_s3_total_charge',
+        'labels.fin_s3_total_payable',
+        'labels.fin_s3_instalments',
+        'labels.fin_s3_duration',
+        'labels.fin_s3_rate',
+        'labels.fin_s3_apr'
+      ],
+      page: 1,
+      financeOnly: true
+    },
+    fin_page2_header: {
+      label: 'Finance - Page 2 Header',
+      fields: ['labels.fin_page2_title'],
+      page: 2,
+      financeOnly: true
+    },
+    fin_section4: {
+      label: 'Finance - Section 4 (Repayment Schedule)',
+      fields: [
+        'labels.fin_section4_heading',
+        'labels.fin_s4_frequency',
+        'labels.fin_s4_commencing',
+        'labels.fin_s4_monthly',
+        'labels.fin_s4_daily_rate'
+      ],
+      page: 2,
+      financeOnly: true
+    },
+    fin_section6: {
+      label: 'Finance - Section 6 (Execution Labels)',
+      fields: [
+        'labels.fin_section6_heading',
+        'labels.fin_s6_creditor_label',
+        'labels.fin_s6_trading_as_label',
+        'labels.fin_s6_customer_agreement_label',
+        'labels.fin_s6_customer_signature_label',
+        'labels.fin_s6_date_label',
+        'labels.fin_s6_creditor_ack_label',
+        'labels.fin_s6_creditor_signatory_label'
+      ],
+      page: 2,
+      financeOnly: true
+    },
     // Finance contract template sections (only shown when finance preview is active)
     finance_creditor: {
       label: 'Finance - Creditor Info',
@@ -245,7 +543,7 @@ const ContractEditor = () => {
     key_information: {
       label: 'Finance - Key Information',
       description: 'CCA 1974 key information text shown on page 2',
-      fields: ['key_information_text'],
+      fields: ['labels.fin_section5_heading', 'key_information_text'],
       page: 2,
       financeOnly: true
     },
@@ -363,8 +661,28 @@ const ContractEditor = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Fields are either a top-level column ("form_title") or a plain label
+  // stored in the JSONB column ("labels.order_yes").
+  const isLabelField = (field) => field.startsWith('labels.');
+  const labelKey = (field) => field.slice('labels.'.length);
+
+  const getFieldValue = (field) => {
+    if (isLabelField(field)) return (template.labels || {})[labelKey(field)] || '';
+    return template[field] || '';
+  };
+
+  const getFieldName = (field) =>
+    isLabelField(field)
+      ? (LABEL_FIELD_NAMES[labelKey(field)] || labelKey(field))
+      : (fieldLabels[field] || field);
+
   const handleChange = (field, value) => {
-    setTemplate(prev => ({ ...prev, [field]: value }));
+    if (isLabelField(field)) {
+      const key = labelKey(field);
+      setTemplate(prev => ({ ...prev, labels: { ...(prev.labels || {}), [key]: value } }));
+    } else {
+      setTemplate(prev => ({ ...prev, [field]: value }));
+    }
     setHasChanges(true);
     setSaveMessage(null);
   };
@@ -534,12 +852,12 @@ const ContractEditor = () => {
           >
             <option value="">Jump to section...</option>
             <optgroup label="Page 1">
-              {Object.entries(sections).filter(([_, s]) => s.page === 1 && (previewMode === 'finance' ? true : !s.financeOnly)).map(([key, section]) => (
+              {Object.entries(sections).filter(([_, s]) => s.page === 1 && (previewMode === 'finance' ? !s.normalOnly : !s.financeOnly)).map(([key, section]) => (
                 <option key={key} value={key}>{section.label}</option>
               ))}
             </optgroup>
             <optgroup label="Page 2">
-              {Object.entries(sections).filter(([_, s]) => s.page === 2 && (previewMode === 'finance' ? true : !s.financeOnly)).map(([key, section]) => (
+              {Object.entries(sections).filter(([_, s]) => s.page === 2 && (previewMode === 'finance' ? !s.normalOnly : !s.financeOnly)).map(([key, section]) => (
                 <option key={key} value={key}>{section.label}</option>
               ))}
             </optgroup>
@@ -657,17 +975,28 @@ const ContractEditor = () => {
 
               {/* Panel Content */}
               <div className="flex-1 overflow-auto p-4 space-y-4">
+                {sections[activeSection].description && (
+                  <p className="text-xs text-gray-500 -mt-1">{sections[activeSection].description}</p>
+                )}
                 {sections[activeSection].fields.map(field => (
                   <div key={field}>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {fieldLabels[field]}
+                      {getFieldName(field)}
                     </label>
-                    {field === 'terms_and_conditions' || field === 'key_information_text' ? (
+                    {isLabelField(field) ? (
+                      <input
+                        type="text"
+                        value={getFieldValue(field)}
+                        onChange={(e) => handleChange(field, e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder={`Enter ${getFieldName(field).toLowerCase()}...`}
+                      />
+                    ) : field === 'terms_and_conditions' || field === 'key_information_text' ? (
                       <RichTextEditor
                         value={template[field] || ''}
                         onChange={(val) => handleChange(field, val)}
                         rows={12}
-                        placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
+                        placeholder={`Enter ${getFieldName(field).toLowerCase()}...`}
                         showFontSize={true}
                       />
                     ) : field.startsWith('confirmation') || field === 'signature_instruction' || field === 'customer_agreement_text' || field === 'creditor_acknowledgement_text' || field === 'cca_notice' ? (
@@ -675,7 +1004,7 @@ const ContractEditor = () => {
                         value={template[field] || ''}
                         onChange={(val) => handleChange(field, val)}
                         rows={4}
-                        placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
+                        placeholder={`Enter ${getFieldName(field).toLowerCase()}...`}
                         showFontSize={true}
                       />
                     ) : field === 'image_permission_text' || field === 'image_no_permission_text' ? (
@@ -683,7 +1012,7 @@ const ContractEditor = () => {
                         value={template[field] || ''}
                         onChange={(val) => handleChange(field, val)}
                         rows={2}
-                        placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
+                        placeholder={`Enter ${getFieldName(field).toLowerCase()}...`}
                         showFontSize={false}
                       />
                     ) : (
@@ -692,7 +1021,7 @@ const ContractEditor = () => {
                         value={template[field] || ''}
                         onChange={(e) => handleChange(field, e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder={`Enter ${fieldLabels[field].toLowerCase()}...`}
+                        placeholder={`Enter ${getFieldName(field).toLowerCase()}...`}
                       />
                     )}
                   </div>

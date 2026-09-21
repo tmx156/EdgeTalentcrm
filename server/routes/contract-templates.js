@@ -4,10 +4,37 @@ const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const { generateContractHTML } = require('../utils/contractGenerator');
 const { generateFinanceContractHTML, DEFAULT_FINANCE_TEMPLATE } = require('../utils/financeContractGenerator');
+const { DEFAULT_LABELS, getLabels } = require('../utils/contractLabels');
 
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey || config.supabase.anonKey);
 
 const router = express.Router();
+
+/**
+ * Keep only known label keys, so a bad payload can't bloat the JSONB column.
+ * A label that matches the default (or is blank) isn't stored at all.
+ */
+function sanitiseLabels(input) {
+  const out = {};
+  if (!input || typeof input !== 'object') return out;
+
+  Object.keys(DEFAULT_LABELS).forEach(key => {
+    const value = input[key];
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (trimmed === '' || trimmed === DEFAULT_LABELS[key]) return;
+    out[key] = trimmed;
+  });
+
+  return out;
+}
+
+/** True when Postgres rejected the write because the labels column isn't there yet. */
+function isMissingLabelsColumn(error) {
+  if (!error) return false;
+  const text = `${error.code || ''} ${error.message || ''}`.toLowerCase();
+  return text.includes('labels') && (text.includes('column') || text.includes('schema cache'));
+}
 
 // Sample contract data for preview - Normal (Card/Cash) mode
 const SAMPLE_CONTRACT_DATA_NORMAL = {
@@ -194,7 +221,9 @@ const DEFAULT_TEMPLATE = {
   finance_provider_text: 'FINANCE VIA PAYL8R',
   finance_info_text: 'Complete docs before receipt',
   // Payment section
-  cash_initial_text: 'Viewer must initial any cash received and sign here'
+  cash_initial_text: 'Viewer must initial any cash received and sign here',
+  // Every other static label on the contract (headings, table labels, YES/NO, etc.)
+  labels: { ...DEFAULT_LABELS }
 };
 
 // @route   GET /api/contract-templates
@@ -231,7 +260,7 @@ router.get('/', auth, async (req, res) => {
       });
     }
 
-    res.json(template);
+    res.json({ ...template, labels: getLabels(template) });
   } catch (error) {
     console.error('Error fetching contract template:', error);
     res.status(500).json({ message: 'Server error' });
@@ -256,8 +285,9 @@ router.get('/active', auth, async (req, res) => {
       return res.status(500).json({ message: 'Server error' });
     }
 
-    // Return template or default
-    res.json(template || DEFAULT_TEMPLATE);
+    // Return template or default (with every static label resolved)
+    const active = template || DEFAULT_TEMPLATE;
+    res.json({ ...active, labels: getLabels(active) });
   } catch (error) {
     console.error('Error fetching contract template:', error);
     res.status(500).json({ message: 'Server error' });
@@ -312,7 +342,8 @@ router.get('/preview', auth, async (req, res) => {
         key_information_text: template.key_information_text || DEFAULT_FINANCE_TEMPLATE.key_information_text,
         customer_agreement_text: template.customer_agreement_text || DEFAULT_FINANCE_TEMPLATE.customer_agreement_text,
         creditor_acknowledgement_text: template.creditor_acknowledgement_text || DEFAULT_FINANCE_TEMPLATE.creditor_acknowledgement_text,
-        cca_notice: template.cca_notice || DEFAULT_FINANCE_TEMPLATE.cca_notice
+        cca_notice: template.cca_notice || DEFAULT_FINANCE_TEMPLATE.cca_notice,
+        labels: template.labels || {}
       };
       html = generateFinanceContractHTML(sampleData, financeTemplate);
     } else if (previewMode === 'payl8r') {
@@ -329,6 +360,9 @@ router.get('/preview', auth, async (req, res) => {
       template: {
         ...DEFAULT_TEMPLATE,
         ...template,
+        // Always send every label resolved, so the editor shows the text
+        // that is actually on the page rather than blank boxes
+        labels: getLabels(template),
         id: template.id || null,
         is_default: !dbTemplate
       }
@@ -382,6 +416,8 @@ router.post('/', auth, async (req, res) => {
       customer_agreement_text: req.body.customer_agreement_text,
       creditor_acknowledgement_text: req.body.creditor_acknowledgement_text,
       cca_notice: req.body.cca_notice,
+      // All remaining static labels live in one JSONB column
+      labels: sanitiseLabels(req.body.labels),
       updated_at: new Date().toISOString()
       // Note: created_by removed due to foreign key constraint with users table
     };
@@ -396,42 +432,43 @@ router.post('/', auth, async (req, res) => {
 
     let result;
 
-    if (existingTemplate) {
-      // Update existing template
-      const { data, error } = await supabase
+    // Write, and if the labels column hasn't been added yet, save everything
+    // else rather than losing the user's edit entirely.
+    const write = async (payload) => {
+      if (existingTemplate) {
+        return supabase
+          .from('contract_templates')
+          .update(payload)
+          .eq('id', existingTemplate.id)
+          .select('*')
+          .single();
+      }
+      return supabase
         .from('contract_templates')
-        .update(templateData)
-        .eq('id', existingTemplate.id)
+        .insert([{ ...payload, created_at: new Date().toISOString() }])
         .select('*')
         .single();
+    };
 
-      if (error) {
-        console.error('Error updating contract template:', error);
-        return res.status(500).json({ message: 'Server error', error: error.message });
-      }
-      result = data;
-      console.log('Contract template updated:', result.id);
-    } else {
-      // Create new template
-      templateData.created_at = new Date().toISOString();
+    let { data, error } = await write(templateData);
 
-      const { data, error } = await supabase
-        .from('contract_templates')
-        .insert([templateData])
-        .select('*')
-        .single();
-
-      if (error) {
-        console.error('Error creating contract template:', error);
-        return res.status(500).json({ message: 'Server error', error: error.message });
-      }
-      result = data;
-      console.log('Contract template created:', result.id);
+    if (error && isMissingLabelsColumn(error)) {
+      console.warn('⚠️ contract_templates.labels column missing - run migrations/add-contract-labels-jsonb.sql');
+      const { labels, ...withoutLabels } = templateData;
+      ({ data, error } = await write(withoutLabels));
     }
+
+    if (error) {
+      console.error('Error saving contract template:', error);
+      return res.status(500).json({ message: 'Server error', error: error.message });
+    }
+
+    result = data;
+    console.log(existingTemplate ? 'Contract template updated:' : 'Contract template created:', result.id);
 
     res.json({
       message: 'Contract template saved successfully',
-      template: result
+      template: { ...result, labels: getLabels(result) }
     });
   } catch (error) {
     console.error('Error saving contract template:', error);
