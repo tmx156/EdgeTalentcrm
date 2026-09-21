@@ -7,6 +7,7 @@ const config = require('../config');
 const supabaseStorage = require('./supabaseStorage');
 const GmailEmailExtractor = require('./gmailEmailExtractor');
 const { getSupabaseClient } = require('../config/supabase-client');
+const { readBookingHistory } = require('./bookingHistory');
 
 /**
  * Gmail API Poller - Multi-Account Support
@@ -1114,14 +1115,15 @@ class GmailPoller {
    * Update lead booking history
    */
   async updateLeadHistory(lead, subject, body, emailReceivedDate) {
-    let history = [];
-    try {
-      history = JSON.parse(lead.booking_history || '[]');
-    } catch (e) {
-      console.warn(`⚠️ [${this.accountConfig.displayName}] Error parsing existing booking history:`, e.message);
+    // Read whichever shape the column holds. If it cannot be read we must NOT
+    // overwrite it - doing so would wipe the lead's entire history.
+    const { history, readable } = readBookingHistory(lead);
+    if (!readable) {
+      console.warn(`⚠️ [${this.accountConfig.displayName}] Booking history for lead ${lead.id} (${lead.name}) is unreadable - skipping update so existing history is not lost`);
+      return;
     }
 
-    history.unshift({
+    const updatedHistory = [{
       action: 'EMAIL_RECEIVED',
       timestamp: emailReceivedDate,
       details: {
@@ -1131,12 +1133,12 @@ class GmailPoller {
         channel: 'email',
         read: false
       }
-    });
+    }, ...history];
 
     const { error: updateError } = await this.supabase
       .from('leads')
       .update({
-        booking_history: JSON.stringify(history),
+        booking_history: updatedHistory,
         updated_at: new Date().toISOString()
       })
       .eq('id', lead.id);

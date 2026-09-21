@@ -5,6 +5,7 @@ const { randomUUID } = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const config = require('../config');
+const { readBookingHistory } = require('./bookingHistory');
 
 // --- Configuration ---
 // Use SERVICE ROLE KEY for backend operations to bypass RLS policies
@@ -958,14 +959,15 @@ class EmailPoller {
     }
     
     async updateLeadHistory(lead, subject, body, emailReceivedDate, processingDate) {
-        let history = [];
-        try {
-            history = JSON.parse(lead.booking_history || '[]');
-        } catch (e) {
-            console.warn('⚠️ Error parsing existing booking history:', e.message);
+        // Read whichever shape the column holds. If it cannot be read we must NOT
+        // overwrite it - doing so would wipe the lead's entire history.
+        const { history, readable } = readBookingHistory(lead);
+        if (!readable) {
+          console.warn(`⚠️ Booking history for lead ${lead.id} (${lead.name}) is unreadable - skipping update so existing history is not lost`);
+          return;
         }
 
-        history.unshift({
+        const updatedHistory = [{
             action: 'EMAIL_RECEIVED',
             timestamp: emailReceivedDate,
             details: {
@@ -975,12 +977,12 @@ class EmailPoller {
                 channel: 'email',
                 read: false
             }
-        });
+        }, ...history];
 
         const { error: updateError } = await this.supabase
             .from('leads')
             .update({
-                booking_history: JSON.stringify(history),
+                booking_history: updatedHistory,
                 updated_at: new Date().toISOString()
             })
             .eq('id', lead.id);

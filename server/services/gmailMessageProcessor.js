@@ -3,6 +3,7 @@ const { randomUUID } = require('crypto');
 const gmailService = require('../utils/gmailService');
 const GmailEmailExtractor = require('../utils/gmailEmailExtractor');
 const supabaseStorage = require('../utils/supabaseStorage');
+const { readBookingHistory } = require('../utils/bookingHistory');
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -383,16 +384,17 @@ async function findLead(email) {
  * @param {string} accountKey - 'primary' or 'secondary'
  */
 async function updateLeadHistory(lead, subject, body, emailReceivedDate, accountKey) {
-  let history = [];
-  try {
-    history = JSON.parse(lead.booking_history || '[]');
-  } catch (e) {
-    console.warn('⚠️ Error parsing existing booking history:', e.message);
+  // Read whichever shape the column holds. If it cannot be read we must NOT
+  // overwrite it - doing so would wipe the lead's entire history.
+  const { history, readable } = readBookingHistory(lead);
+  if (!readable) {
+    console.warn(`⚠️ Booking history for lead ${lead.id} (${lead.name}) is unreadable - skipping update so existing history is not lost`);
+    return;
   }
 
   const accountInfo = gmailService.getAccountInfo(accountKey);
 
-  history.unshift({
+  const updatedHistory = [{
     action: 'EMAIL_RECEIVED',
     timestamp: emailReceivedDate,
     details: {
@@ -403,12 +405,12 @@ async function updateLeadHistory(lead, subject, body, emailReceivedDate, account
       account: accountInfo.email,
       read: false
     }
-  });
+  }, ...history];
 
   const { error: updateError } = await supabase
     .from('leads')
     .update({
-      booking_history: JSON.stringify(history),
+      booking_history: updatedHistory,
       updated_at: new Date().toISOString()
     })
     .eq('id', lead.id);

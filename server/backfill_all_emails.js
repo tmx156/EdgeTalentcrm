@@ -2,6 +2,7 @@ const { ImapFlow } = require('imapflow');
 const { createClient } = require('@supabase/supabase-js');
 const { simpleParser } = require('mailparser');
 const { randomUUID } = require('crypto');
+const { readBookingHistory } = require('./utils/bookingHistory');
 require('dotenv').config();
 
 // Configuration
@@ -149,21 +150,22 @@ async function processMessage(message, lead) {
     }
 
     // Update lead's booking history
-    let history = [];
-    try {
-      history = JSON.parse(lead.booking_history || '[]');
-    } catch (e) {
-      console.warn('⚠️ Error parsing existing booking history:', e.message);
+    // Read whichever shape the column holds. If it cannot be read we must NOT
+    // overwrite it - doing so would wipe the lead's entire history.
+    const { history, readable } = readBookingHistory(lead);
+    if (!readable) {
+      console.warn(`⚠️ Booking history for lead ${lead.id} (${lead.name}) is unreadable - skipping update so existing history is not lost`);
+      return;
     }
 
-    history.unshift({
+    const updatedHistory = [{
       action: 'EMAIL_RECEIVED',
       timestamp: emailReceivedDate,
       details: {
         subject,
         body: body.substring(0, 150) + '...',
       }
-    });
+    }, ...history];
 
     // Keep only last 100 history entries
     if (history.length > 100) history = history.slice(0, 100);
@@ -171,7 +173,7 @@ async function processMessage(message, lead) {
     await supabase
       .from('leads')
       .update({
-        booking_history: JSON.stringify(history),
+        booking_history: updatedHistory,
         updated_at: processingDate
       })
       .eq('id', lead.id);
