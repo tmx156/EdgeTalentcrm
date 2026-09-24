@@ -163,14 +163,14 @@ const LABEL_FIELD_NAMES = {
   payment_card_label: 'Card column heading',
   payment_cash_label: 'Cash column heading',
   payment_finance_label: 'Finance column heading',
-  payment_payl8r_label: 'Payl8r column heading',
+  payment_ideal4finance_label: 'Ideal4Finance column heading',
   payment_subtotal_label: 'Sub total heading',
   payment_vat_label: 'VAT prefix (rate is added after)',
   payment_auth_code_label: 'Authorisation code label',
-  payment_payl8r_ref_label: 'Payl8r reference label',
+  payment_ideal4finance_ref_label: 'Ideal4Finance reference label',
   payment_total_label: 'Total label',
-  payl8r_deposit_label: 'Payl8r deposit row label',
-  payl8r_amount_label: 'Payl8r amount label',
+  ideal4finance_deposit_label: 'Ideal4Finance deposit row label',
+  ideal4finance_amount_label: 'Ideal4Finance amount label',
 
   signature_customer_label: 'Customer signature label',
   signature_date_label: 'Date label',
@@ -418,14 +418,14 @@ const ContractEditor = () => {
         'labels.payment_card_label',
         'labels.payment_cash_label',
         'labels.payment_finance_label',
-        'labels.payment_payl8r_label',
+        'labels.payment_ideal4finance_label',
         'labels.payment_subtotal_label',
         'labels.payment_vat_label',
         'labels.payment_auth_code_label',
-        'labels.payment_payl8r_ref_label',
+        'labels.payment_ideal4finance_ref_label',
         'labels.payment_total_label',
-        'labels.payl8r_deposit_label',
-        'labels.payl8r_amount_label'
+        'labels.ideal4finance_deposit_label',
+        'labels.ideal4finance_amount_label'
       ],
       page: 1
 ,
@@ -585,7 +585,7 @@ const ContractEditor = () => {
     non_finance_payment_label: 'Non-Finance Payment Label (e.g., "PAYMENT TODAY")',
     finance_deposit_label: 'Deposit Row Label (e.g., "DEPOSIT PAID")',
     finance_amount_label: 'Finance Amount Label (e.g., "FINANCE AMOUNT")',
-    finance_provider_text: 'Finance Provider Text (e.g., "FINANCE VIA PAYL8R")',
+    finance_provider_text: 'Finance Provider Text (e.g., "FINANCE VIA IDEAL4FINANCE")',
     finance_info_text: 'Finance Info Text (e.g., "Complete docs before receipt")',
     // Payment section
     cash_initial_text: 'Cash Initial Text (viewer instruction for cash payments)',
@@ -886,14 +886,14 @@ const ContractEditor = () => {
               Finance
             </button>
             <button
-              onClick={() => setPreviewMode('payl8r')}
+              onClick={() => setPreviewMode('ideal4finance')}
               className={`px-3 py-1 text-xs font-medium rounded transition-all ${
-                previewMode === 'payl8r'
+                previewMode === 'ideal4finance'
                   ? 'bg-purple-500 text-white'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              Payl8er
+              Ideal4Finance
             </button>
           </div>
         </div>

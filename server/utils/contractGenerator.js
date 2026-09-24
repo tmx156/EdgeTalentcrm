@@ -20,7 +20,7 @@ const DEFAULT_TEMPLATE = {
   form_title: 'INVOICE & ORDER FORM',
   form_subtitle: 'PLEASE CHECK YOUR ORDER BEFORE LEAVING YOUR VIEWING',
   form_contact_info: 'FOR ALL ENQUIRIES PLEASE EMAIL CUSTOMER SERVICES ON SALES@EDGETALENT.CO.UK',
-  terms_and_conditions: `By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Payl8r documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk`,
+  terms_and_conditions: `By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Ideal4Finance documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk`,
   signature_instruction: 'PLEASE SIGN BELOW TO INDICATE YOUR ACCEPTANCE OF THE ABOVE TERMS, AND ENSURE YOU RECEIVE YOUR OWN SIGNED COPY OF THIS INVOICE FOR YOUR RECORDS',
   footer_line1: 'Edge Talent is a trading name of S&A Advertising Ltd',
   footer_line2: 'Company No 8708429 VAT Reg No 171339904',
@@ -35,7 +35,7 @@ const DEFAULT_TEMPLATE = {
   non_finance_payment_label: 'PAYMENT TODAY',
   finance_deposit_label: 'DEPOSIT PAID',
   finance_amount_label: 'FINANCE AMOUNT',
-  finance_provider_text: 'FINANCE VIA PAYL8R',
+  finance_provider_text: 'FINANCE VIA IDEAL4FINANCE',
   finance_info_text: 'Complete docs before receipt',
   // Payment section
   cash_initial_text: 'Viewer must initial any cash received and sign here'
@@ -116,6 +116,11 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
   const L = getLabels(t);
   const yes = L.order_yes;
   const no = L.order_no;
+
+  // 'payl8r' is the legacy stored value for what is now Ideal4Finance.
+  // Accept both so older contracts keep rendering correctly.
+  const isIdeal4Finance = contractData.paymentMethod === 'ideal4finance' ||
+                          contractData.paymentMethod === 'payl8r';
 
   // Generate image permission text based on allowImageUse flag
   const imagePermissionText = contractData.allowImageUse
@@ -281,7 +286,7 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 100px;">${L.payment_card_label}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 50px;">${L.payment_cash_label}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 60px;">${L.payment_finance_label}</td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 60px;">${L.payment_payl8r_label}</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; width: 60px;">${L.payment_ideal4finance_label}</td>
           <td style="padding: 5px; text-align: right;">${L.payment_subtotal_label}</td>
         </tr>
         <tr style="border-bottom: 1px solid black;">
@@ -289,18 +294,18 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'card' ? '✓' : ''}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'cash' ? '✓' : ''}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'finance' ? '✓' : ''}</td>
-          <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${contractData.paymentMethod === 'payl8r' ? '✓' : ''}</td>
+          <td style="padding: 5px; border-right: 1px solid black; text-align: center; font-weight: bold;">${isIdeal4Finance ? '✓' : ''}</td>
           <td style="padding: 5px; text-align: right; font-weight: 500;">${formatCurrency(contractData.subtotal)}</td>
         </tr>
-        ${contractData.paymentMethod === 'finance' || contractData.paymentMethod === 'payl8r' ? `
+        ${contractData.paymentMethod === 'finance' || isIdeal4Finance ? `
         <tr style="border-bottom: 1px solid black;">
-          <td style="padding: 5px; border-right: 1px solid black; background: #fef3c7;">${contractData.paymentMethod === 'payl8r' ? L.payl8r_deposit_label : (t.finance_deposit_label || 'DEPOSIT PAID')}</td>
+          <td style="padding: 5px; border-right: 1px solid black; background: #fef3c7;">${isIdeal4Finance ? L.ideal4finance_deposit_label : (t.finance_deposit_label || 'DEPOSIT PAID')}</td>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center; background: #fef3c7;" colspan="4">
             <span style="font-weight: bold; font-size: 12px;">${formatCurrency(contractData.depositAmount || 0)}</span>
           </td>
           <td style="padding: 5px; text-align: right; background: #fef3c7;">
             <div style="text-align: right;">
-              <span style="font-size: 9px; color: #666;">${contractData.paymentMethod === 'payl8r' ? L.payl8r_amount_label : (t.finance_amount_label || 'FINANCE AMOUNT')}:</span><br/>
+              <span style="font-size: 9px; color: #666;">${isIdeal4Finance ? L.ideal4finance_amount_label : (t.finance_amount_label || 'FINANCE AMOUNT')}:</span><br/>
               <span style="font-weight: bold; font-size: 12px;">${formatCurrency(contractData.financeAmount || 0)}</span>
             </div>
           </td>
@@ -314,8 +319,8 @@ function generateContractHTML(contractData, template = DEFAULT_TEMPLATE) {
         </tr>
         <tr>
           <td style="padding: 5px; border-right: 1px solid black; text-align: center;" colspan="3">
-            <span style="font-size: 9px;">${contractData.paymentMethod === 'payl8r' ? L.payment_payl8r_ref_label : L.payment_auth_code_label}:</span><br/>
-            <span style="font-weight: 500;">${contractData.paymentMethod === 'payl8r' ? '' : (contractData.authCode || '')}</span>
+            <span style="font-size: 9px;">${isIdeal4Finance ? L.payment_ideal4finance_ref_label : L.payment_auth_code_label}:</span><br/>
+            <span style="font-weight: 500;">${isIdeal4Finance ? '' : (contractData.authCode || '')}</span>
           </td>
           <td style="padding: 5px; text-align: right;">
             <div style="text-align: right;">

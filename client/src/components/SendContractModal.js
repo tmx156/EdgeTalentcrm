@@ -323,17 +323,17 @@ const SendContractModal = ({
         total: total,
         paymentMethod: initPaymentMethod,
         authCode: invoiceData?.authCode || '',
-        // Finance agreement configuration (default if payl8r selected - old flow)
-        financeFrequency: initPaymentMethod === 'payl8r'
+        // Finance agreement configuration (default if Ideal4Finance selected - old flow)
+        financeFrequency: initPaymentMethod === 'ideal4finance'
           ? (invoiceData?.financeFrequency || 'monthly')
           : 'monthly',
-        financeStartDate: initPaymentMethod === 'payl8r'
+        financeStartDate: initPaymentMethod === 'ideal4finance'
           ? (invoiceData?.financeStartDate || toLocalDateStr(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)))
           : '',
-        financeDueDay: initPaymentMethod === 'payl8r'
+        financeDueDay: initPaymentMethod === 'ideal4finance'
           ? (invoiceData?.financeDueDay || 1)
           : 1,
-        financeDuration: initPaymentMethod === 'payl8r'
+        financeDuration: initPaymentMethod === 'ideal4finance'
           ? (invoiceData?.financeDuration || 12)
           : 12,
 
@@ -1272,8 +1272,8 @@ const SendContractModal = ({
                             }));
                           }
 
-                          // When switching TO payl8r, set old payl8r flow defaults
-                          if (newMethod === 'payl8r' && contractDetails.paymentMethod !== 'payl8r') {
+                          // When switching TO Ideal4Finance, set its flow defaults
+                          if (newMethod === 'ideal4finance' && contractDetails.paymentMethod !== 'ideal4finance') {
                             const defaultStartDate = new Date();
                             defaultStartDate.setDate(defaultStartDate.getDate() + 30);
                             updateField('financeStartDate', toLocalDateStr(defaultStartDate));
@@ -1282,8 +1282,8 @@ const SendContractModal = ({
                             updateField('financeDuration', 12);
                           }
 
-                          // Reset finance fields when switching away from finance/payl8r
-                          if (newMethod !== 'finance' && newMethod !== 'payl8r') {
+                          // Reset finance fields when switching away from finance/Ideal4Finance
+                          if (newMethod !== 'finance' && newMethod !== 'ideal4finance') {
                             updateField('depositAmount', 0);
                             updateField('financeAmount', 0);
                             updateField('financeStartDate', '');
@@ -1297,11 +1297,11 @@ const SendContractModal = ({
                         <option value="card">Card</option>
                         <option value="cash">Cash</option>
                         <option value="finance">Finance</option>
-                        <option value="payl8r">Payl8er</option>
+                        <option value="ideal4finance">Ideal4Finance</option>
                       </select>
                     </div>
-                    {/* Show Auth Code for card/cash, hide for finance/payl8r */}
-                    {contractDetails.paymentMethod !== 'finance' && contractDetails.paymentMethod !== 'payl8r' && (
+                    {/* Show Auth Code for card/cash, hide for finance/Ideal4Finance */}
+                    {contractDetails.paymentMethod !== 'finance' && contractDetails.paymentMethod !== 'ideal4finance' && (
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Auth Code (if applicable)</label>
                         <input
@@ -1578,12 +1578,12 @@ const SendContractModal = ({
                     </div>
                   )}
 
-                  {/* PAYL8R Fields - Only shown when Payl8r is selected (old invoice flow) */}
-                  {contractDetails.paymentMethod === 'payl8r' && (
+                  {/* Ideal4Finance Fields - Only shown when Ideal4Finance is selected (old invoice flow) */}
+                  {contractDetails.paymentMethod === 'ideal4finance' && (
                     <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <h4 className="text-xs font-semibold text-amber-800 mb-3 flex items-center">
                         <PoundSterling className="w-3 h-3 mr-1" />
-                        PAYL8R BREAKDOWN
+                        IDEAL4FINANCE BREAKDOWN
                       </h4>
                       <div className="grid grid-cols-2 gap-4 mb-4">
                         <div>
@@ -1607,7 +1607,7 @@ const SendContractModal = ({
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-amber-700 mb-1">Payl8r Amount (Remaining)</label>
+                          <label className="block text-xs font-medium text-amber-700 mb-1">Ideal4Finance Amount (Remaining)</label>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-600">£</span>
                             <input
@@ -1793,15 +1793,15 @@ const SendContractModal = ({
                     <span className="capitalize">{contractDetails.paymentMethod}</span>
                     {contractDetails.authCode && <span className="text-gray-400 ml-2">(Auth: {contractDetails.authCode})</span>}
                   </div>
-                  {/* DYNAMIC: Payl8r breakdown in review */}
-                  {contractDetails.paymentMethod === 'payl8r' && (
+                  {/* DYNAMIC: Ideal4Finance breakdown in review */}
+                  {contractDetails.paymentMethod === 'ideal4finance' && (
                     <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
                       <div className="flex justify-between text-sm">
                         <span className="text-amber-700">Deposit Paid:</span>
                         <span className="font-medium text-amber-800">{formatCurrency(contractDetails.depositAmount)}</span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-amber-700">Payl8r Amount:</span>
+                        <span className="text-amber-700">Ideal4Finance Amount:</span>
                         <span className="font-semibold text-amber-800">{formatCurrency(contractDetails.financeAmount)}</span>
                       </div>
                     </div>

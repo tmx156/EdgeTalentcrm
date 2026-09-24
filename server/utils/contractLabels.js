@@ -60,14 +60,14 @@ const DEFAULT_LABELS = {
   payment_card_label: 'CREDIT/DEBIT CARD',
   payment_cash_label: 'CASH',
   payment_finance_label: 'FINANCE',
-  payment_payl8r_label: 'PAYL8R',
+  payment_ideal4finance_label: 'IDEAL4FINANCE',
   payment_subtotal_label: 'SUB TOTAL',
   payment_vat_label: 'VAT@',
   payment_auth_code_label: 'AUTHORISATION CODE',
-  payment_payl8r_ref_label: 'PAYL8R',
+  payment_ideal4finance_ref_label: 'IDEAL4FINANCE',
   payment_total_label: 'TOTAL',
-  payl8r_deposit_label: 'DEPOSIT TODAY',
-  payl8r_amount_label: 'PAYL8R AMOUNT',
+  ideal4finance_deposit_label: 'DEPOSIT TODAY',
+  ideal4finance_amount_label: 'IDEAL4FINANCE AMOUNT',
 
   // ---- Page 1: signature block ----
   signature_customer_label: 'CUSTOMER SIGNATURE:',

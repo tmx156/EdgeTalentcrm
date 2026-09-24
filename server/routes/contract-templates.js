@@ -118,17 +118,17 @@ const SAMPLE_CONTRACT_DATA_FINANCE = {
   }
 };
 
-// Sample contract data for preview - Payl8r mode (identical to finance but with Payl8er branding)
-const SAMPLE_CONTRACT_DATA_PAYL8R = {
+// Sample contract data for preview - Ideal4Finance mode (identical to finance but with Ideal4Finance branding)
+const SAMPLE_CONTRACT_DATA_IDEAL4FINANCE = {
   date: new Date(),
   signedAt: null,
   customerNumber: '123457',
-  customerName: 'Alex Payl8r',
+  customerName: 'Alex Ideal',
   clientNameIfDifferent: '',
-  address: '789 Payl8r Street, Birmingham',
+  address: '789 Ideal Street, Birmingham',
   postcode: 'B1 1AA',
   phone: '07888 999000',
-  email: 'alex.payl8r@email.com',
+  email: 'alex.ideal@email.com',
   isVip: false,
   studioNumber: 'Studio 3',
   photographer: 'Emma Wilson',
@@ -143,11 +143,11 @@ const SAMPLE_CONTRACT_DATA_PAYL8R = {
   influencerPassword: '',
   allowImageUse: true,
   imagesReceived: 'N.A',
-  notes: 'Package: Ultimate Portfolio Package (Payl8r)',
+  notes: 'Package: Ultimate Portfolio Package (Ideal4Finance)',
   subtotal: 832.50,
   vatAmount: 166.50,
   total: 999.00,
-  paymentMethod: 'payl8r',
+  paymentMethod: 'ideal4finance',
   depositAmount: 199.00,
   financeAmount: 800.00,
   authCode: '',
@@ -203,7 +203,7 @@ const DEFAULT_TEMPLATE = {
   form_title: 'INVOICE & ORDER FORM',
   form_subtitle: 'PLEASE CHECK YOUR ORDER BEFORE LEAVING YOUR VIEWING',
   form_contact_info: 'FOR ALL ENQUIRIES PLEASE EMAIL CUSTOMER SERVICES ON SALES@EDGETALENT.CO.UK',
-  terms_and_conditions: `By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Payl8r documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk`,
+  terms_and_conditions: `By signing this invoice, you confirm that you have viewed, selected and approved all images and all cropping, editing and adjustments. You understand that all orders are final and due to the immediate nature of digital delivery this order is strictly non-refundable, non-cancellable and non-amendable once you leave the premises, without affecting your statutory rights. All digital products, including images, efolios and Z-cards and Project Influencer are delivered immediately upon full payment. Project Influencer has been added to this order as a complimentary addition to your purchased package and holds no independent monetary value. By signing you accept responsibility for downloading, backing up and securely storing your files once they are provided. Finance customers must complete all Ideal4Finance documentation prior to receipt of goods. Efolios include 10 images and hosting for 1 year, which may require renewal thereafter; content may be removed if renewal fees are unpaid. You own the copyright to all images purchased and unless you opt out in writing at the time of signing, Edge Talent may use your images for promotional purposes (above) including, but not limited to, display on its website and social media channels. You acknowledge that Edge Talent is not a talent casting company/agency and does not guarantee work, representation or casting opportunities. Edge Talent accepts no liability for compatibility issues, loss of files after delivery, missed opportunities, or indirect losses and total liability is limited to the amount paid for your order. All personal data is processed in accordance with GDPR and used only to fulfil your order or meet legal requirements. By signing below, you acknowledge that you have read, understood and agree to these Terms & Conditions. For any post-delivery assistance, please contact sales@edgetalent.co.uk`,
   signature_instruction: 'PLEASE SIGN BELOW TO INDICATE YOUR ACCEPTANCE OF THE ABOVE TERMS, AND ENSURE YOU RECEIVE YOUR OWN SIGNED COPY OF THIS INVOICE FOR YOUR RECORDS',
   footer_line1: 'Edge Talent is a trading name of S&A Advertising Ltd',
   footer_line2: 'Company No 8708429 VAT Reg No 171339904',
@@ -218,7 +218,7 @@ const DEFAULT_TEMPLATE = {
   non_finance_payment_label: 'PAYMENT TODAY',
   finance_deposit_label: 'DEPOSIT PAID',
   finance_amount_label: 'FINANCE AMOUNT',
-  finance_provider_text: 'FINANCE VIA PAYL8R',
+  finance_provider_text: 'FINANCE VIA IDEAL4FINANCE',
   finance_info_text: 'Complete docs before receipt',
   // Payment section
   cash_initial_text: 'Viewer must initial any cash received and sign here',
@@ -297,17 +297,19 @@ router.get('/active', auth, async (req, res) => {
 // @route   GET /api/contract-templates/preview
 // @desc    Get the actual HTML preview of the contract using the current template
 // @access  Private (Admin only)
-// @query   mode - 'normal' (default), 'finance', or 'payl8r' to show respective payment section preview
+// @query   mode - 'normal' (default), 'finance', or 'ideal4finance' to show respective payment section preview
 router.get('/preview', auth, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Admin only.' });
     }
 
-    // Get preview mode from query param (default: normal, options: normal, finance, payl8r)
+    // Get preview mode from query param (default: normal, options: normal, finance, ideal4finance)
     let previewMode = 'normal';
     if (req.query.mode === 'finance') previewMode = 'finance';
-    else if (req.query.mode === 'payl8r') previewMode = 'payl8r';
+    // 'payl8r' is the legacy name for this mode - still accepted so a cached
+    // browser tab does not get an unexpected preview
+    else if (req.query.mode === 'ideal4finance' || req.query.mode === 'payl8r') previewMode = 'ideal4finance';
 
     // Get the active template from database or use defaults
     const { data: dbTemplate, error } = await supabase
@@ -346,8 +348,8 @@ router.get('/preview', auth, async (req, res) => {
         labels: template.labels || {}
       };
       html = generateFinanceContractHTML(sampleData, financeTemplate);
-    } else if (previewMode === 'payl8r') {
-      sampleData = SAMPLE_CONTRACT_DATA_PAYL8R;
+    } else if (previewMode === 'ideal4finance') {
+      sampleData = SAMPLE_CONTRACT_DATA_IDEAL4FINANCE;
       html = generateContractHTML(sampleData, template);
     } else {
       sampleData = SAMPLE_CONTRACT_DATA_NORMAL;

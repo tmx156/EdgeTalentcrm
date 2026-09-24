@@ -257,7 +257,7 @@ router.post('/create', auth, async (req, res) => {
       if (!validPackageId && packageId) {
         console.log(`📦 Processing individual items - packageId "${packageId}" is not a valid UUID, using null`);
       }
-      // INVOICE CONTRACT - existing flow (card/cash/payl8r)
+      // INVOICE CONTRACT - existing flow (card/cash/ideal4finance)
       contractData = {
         // Dates - convert to ISO strings for JSONB storage
         date: new Date().toISOString(),
@@ -1142,8 +1142,10 @@ router.post('/sign/:token', async (req, res) => {
       console.error('Error creating sale:', saleError);
     }
 
-    // 3. Create Finance Agreement for Finance/Payl8r payment methods
-    if (signedContractData.paymentMethod === 'finance' || signedContractData.paymentMethod === 'payl8r') {
+    // 3. Create Finance Agreement for Finance/Ideal4Finance payment methods
+    if (signedContractData.paymentMethod === 'finance' ||
+        signedContractData.paymentMethod === 'ideal4finance' ||
+        signedContractData.paymentMethod === 'payl8r') { // 'payl8r' = legacy Ideal4Finance
       try {
         console.log(`🏦 Creating finance agreement for ${signedContractData.paymentMethod} contract ${contract.id}...`);
         
