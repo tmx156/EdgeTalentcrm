@@ -1,14 +1,14 @@
 {
-  "version": "1.0.307",
-  "commitHash": "352cce6",
-  "fullCommitHash": "352cce6a894ae7171bc04e0dae8cfc435ff3c149",
-  "commitMessage": "Rename Payl8r to Ideal4Finance across the contract flow",
-  "commitDate": "2026-09-24 05:35:42 +0100",
+  "version": "1.0.295",
+  "commitHash": "08a4917",
+  "fullCommitHash": "08a4917ee38c5b90e4bd405ffc37efe6afcde09b",
+  "commitMessage": "Fix message sending and booking-history bugs",
+  "commitDate": "2026-07-01 19:43:51 +0100",
   "author": "Tinashe",
   "branch": "main",
-  "commitCount": 307,
-  "buildTimestamp": "2026-09-29T06:39:21.742Z",
-  "buildId": "352cce6-1790663961743",
-  "releaseName": "Autumn Update",
-  "seenKey": "main-352cce6"
+  "commitCount": 295,
+  "buildTimestamp": "2026-07-24T19:03:20.091Z",
+  "buildId": "08a4917-1784919800092",
+  "releaseName": "Summer Update",
+  "seenKey": "main-08a4917"
 }

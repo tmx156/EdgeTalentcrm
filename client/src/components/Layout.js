@@ -5,6 +5,7 @@ import { useSocket } from '../context/SocketContext';
 import axios from 'axios';
 import ConnectionStatus from './ConnectionStatus';
 import MessageModal from './MessageModal';
+import PatchNotesModal, { PatchNotesProvider, PatchNotesButton } from './PatchNotesModal';
 import {
   FiHome,
   FiUsers,
@@ -33,7 +34,7 @@ import {
 import { RiRobot2Line } from 'react-icons/ri';
 
 // Logo is now served from public/images folder
-const CompanyLogo = '/images/aura-lndn-logo.png';
+const EdgeTalentLogo = '/images/edge-talent-logo.png';
 
 const Layout = ({ children }) => {
   const notificationsEnabled = String(process.env.REACT_APP_NOTIFICATIONS_ENABLED || 'true').toLowerCase() !== 'false';
@@ -844,10 +845,9 @@ const Layout = ({ children }) => {
           <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
             <div className="flex-shrink-0 flex items-center px-4">
               <img
-                src={CompanyLogo}
-                alt="Aura LNDN"
-                className="block w-full max-w-[170px] h-auto object-contain select-none"
-                draggable={false}
+                src={EdgeTalentLogo}
+                alt="EDGE TALENT"
+                className="h-10 w-auto object-contain"
               />
             </div>
             <nav className="mt-5 px-2 space-y-1">
@@ -1024,12 +1024,11 @@ const Layout = ({ children }) => {
             </div>
           </button>
           <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto overflow-x-hidden">
-            <div className={`flex items-center flex-shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'justify-center px-2' : 'px-5'}`}>
+            <div className={`flex items-center flex-shrink-0 px-4 transition-all duration-300 ${sidebarCollapsed ? 'justify-center' : ''}`}>
               <img
-                src={CompanyLogo}
-                alt="Aura LNDN"
-                className={`block w-full h-auto object-contain select-none transition-all duration-300 ${sidebarCollapsed ? 'max-w-[44px]' : 'max-w-[170px]'}`}
-                draggable={false}
+                src={EdgeTalentLogo}
+                alt="EDGE TALENT"
+                className={`h-10 w-auto object-contain transition-all duration-300 ${sidebarCollapsed ? 'h-8' : 'h-10'}`}
               />
             </div>
             <nav className={`mt-5 flex-1 bg-white space-y-1 transition-all duration-300 ${sidebarCollapsed ? 'px-1' : 'px-2'}`}>
@@ -1345,6 +1344,11 @@ const Layout = ({ children }) => {
         onReply={handleReplySent}
       />
 
+      {/* Patch Notes System */}
+      <PatchNotesProvider>
+        <PatchNotesModal />
+        <PatchNotesButton />
+      </PatchNotesProvider>
     </div>
   );
 };
